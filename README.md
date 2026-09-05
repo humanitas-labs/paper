@@ -78,6 +78,7 @@ window.height = 876
 
 ## More
 
+- [Add Paper to ChatGPT’s Open menu](docs/chatgpt.md)
 - [Build and test](docs/build.md)
 - [Architecture](docs/architecture.md)
 

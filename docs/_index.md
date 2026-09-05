@@ -2,6 +2,7 @@
 
 | Doc | What it covers |
 | --- | --- |
+| [chatgpt.md](chatgpt.md) | Add Paper and its icon to the ChatGPT/Codex desktop Open menu |
 | [build.md](build.md) | Building and testing from source (XcodeGen, xcodebuild) |
 | [architecture.md](architecture.md) | How the editor is put together — document lifecycle, TextKit pipeline, styling |
 | [decisions/](decisions/) | Architecture decision records |
