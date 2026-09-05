@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The scroller is the wide one with a track under it, and stays so whether a mouse or a trackpad is attached. macOS used to switch every window between the two styles as the input device changed.
+
 ## 0.7.3 — 2026.09.04
 
 - Documents open at the top, every time. AppKit scrolls a text view's caret into view whenever its frame changes size, and the caret sits at the top of a freshly opened document; a band taking its height as its image decoded, or the top margin settling as the window attached, left the document a little scrolled. The viewport now stays put across any frame change that is not typing (#49).

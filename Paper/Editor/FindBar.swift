@@ -18,6 +18,15 @@ final class PaperScrollView: NSScrollView {
 
     private var textView: NSTextView? { documentView as? NSTextView }
 
+    /// The wide scroller with a track under it, kept whatever the input
+    /// device. AppKit re-applies the system's preferred style to every
+    /// scroll view when a mouse comes or goes, through this same setter,
+    /// so the choice is made here rather than once at setup.
+    override var scrollerStyle: NSScroller.Style {
+        get { super.scrollerStyle }
+        set { super.scrollerStyle = .legacy }
+    }
+
     // MARK: - Actions (Edit ▸ Find)
 
     /// ⌘F: open the pill, seeded with a short single-line selection, and

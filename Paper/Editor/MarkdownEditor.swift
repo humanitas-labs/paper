@@ -26,7 +26,7 @@ struct MarkdownEditor: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
+        scrollView.scrollerStyle = .legacy
         // Under the full-size content view AppKit would inset the content
         // and the scroller by the title area; the text view carries that
         // band in its top margin instead, so the track runs corner to
