@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.4 — 2026.09.05
 
 - The scroller is the wide one with a track under it, and stays so whether a mouse or a trackpad is attached. macOS used to switch every window between the two styles as the input device changed.
 
