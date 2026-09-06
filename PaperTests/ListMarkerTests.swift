@@ -225,8 +225,40 @@ struct ListMarkerTests {
         #expect(storage.attribute(.kern, at: 2, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap, "gap after `)`")
         #expect(style(28)?.firstLineHeadIndent == Appearance.listIndent, "1b.")
         #expect(style(45)?.firstLineHeadIndent == Appearance.listIndent, "2A)")
-        #expect(style(56)?.firstLineHeadIndent == 0, "a bare letter is prose, not a marker")
+        #expect(style(56)?.firstLineHeadIndent == Appearance.listIndent, "a bare letter is a marker too (#70)")
         #expect(storage.attribute(.glyphSubstitute, at: 0, effectiveRange: nil) == nil, "ordered markers keep their glyphs")
+    }
+
+    @Test
+    func letteredMarkersAreOrderedItems() throws {
+        // #70: `a. ` and `a) ` are list prefixes like `1. `, muted and
+        // hanging, their punctuation kept as written. Only a single letter
+        // qualifies; abbreviations and words stay prose.
+        let text = "a. no catalyzing event\nB) second\n  - nested under it\n1. top\n   c. nested letter\n\na.m. call\n\nab. word\n"
+        let (textView, _) = makeTextView(text, selectedAt: text.utf16.count)
+        let storage = try #require(textView.textStorage)
+        let source = text as NSString
+        func style(_ needle: String) -> NSParagraphStyle? {
+            storage.attribute(.paragraphStyle, at: source.range(of: needle).location, effectiveRange: nil) as? NSParagraphStyle
+        }
+        func ink(_ needle: String) -> NSColor? {
+            storage.attribute(.foregroundColor, at: source.range(of: needle).location, effectiveRange: nil) as? NSColor
+        }
+        #expect(style("a. no")?.firstLineHeadIndent == Appearance.listIndent, "a.")
+        #expect(ink("a. no") == Appearance.mutedInk, "the marker is muted like a number")
+        #expect(storage.attribute(.kern, at: 1, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap, "gap after the period")
+        #expect(storage.attribute(.glyphSubstitute, at: 0, effectiveRange: nil) == nil, "`a.` keeps its glyphs")
+        #expect(storage.attribute(.listMarker, at: 0, effectiveRange: nil) as? Bool == true)
+        #expect(style("B) second")?.firstLineHeadIndent == Appearance.listIndent, "B)")
+        let one = try #require(style("1. top"))
+        let nestedBullet = try #require(style("- nested"))
+        let nestedLetter = try #require(style("c. nested"))
+        #expect(nestedBullet.firstLineHeadIndent > one.firstLineHeadIndent, "a bullet nests under a lettered item")
+        #expect(nestedLetter.firstLineHeadIndent > one.firstLineHeadIndent, "a lettered item nests under a number")
+        #expect(style("a.m.")?.firstLineHeadIndent == 0, "an abbreviation is prose")
+        #expect(ink("a.m.") == Appearance.ink)
+        #expect(style("ab.")?.firstLineHeadIndent == 0, "two letters are prose")
+        #expect(textView.string == text)
     }
 
     @Test

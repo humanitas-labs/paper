@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Lettered lists. A line starting `a. ` or `a) ` (upper case too) is an ordered item like `1. `: the marker mutes and keeps its punctuation, wrapped lines hang under the text, the prefix is one unit for the caret, Return continues `a.` as `b.` and ends the list on an empty item, and `[]` after the marker makes a task. A single letter only; `a.m.` and `ab.` stay prose (#70).
+
 ## 0.7.5 — 2026.09.05
 
 - Export as PDF… (⇧⌘E) writes the document as it reads in Paper onto Letter or A4 pages: the same type, spacing, code bands, quote rules, task circles, and images, the body at `print.font.size` (10 pt) between `print.margin`s (64 pt), both in the config and in Settings, at zoom 100% whatever the window shows. Lines wrap to the page. AppKit breaks pages between lines; an image moves whole to the next page. Print… (⌘P) makes the same pages, and its PDF menu saves them; it used to answer with "Error while printing".

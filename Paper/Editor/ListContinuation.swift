@@ -18,7 +18,7 @@ enum ListContinuation {
     /// A line that is only indent, quote prefix, and marker — an item the
     /// writer left empty before pressing Return.
     private static let emptyItemPattern = try! NSRegularExpression(
-        pattern: #"^([\t ]*(?:>[\t ]?)*)([-+*]|\d+[A-Za-z]?[.)])(?:[\t ]+\[[ xX]\])?[\t ]*$"#
+        pattern: #"^([\t ]*(?:>[\t ]?)*)([-+*]|\d+[A-Za-z]?[.)]|[A-Za-z][.)])(?:[\t ]+\[[ xX]\])?[\t ]*$"#
     )
 
     /// The edit Return should perform at `selection`, or nil when ordinary
@@ -144,8 +144,8 @@ enum ListContinuation {
     }
 
     /// The marker for the item after one marked `marker`: unordered markers
-    /// repeat, numbers count up, and a letter suffix advances instead
-    /// (`1a)` → `1b)`).
+    /// repeat, numbers count up, and a letter advances instead, whether it
+    /// suffixes a number (`1a)` → `1b)`) or stands alone (`a.` → `b.`).
     static func nextMarker(after marker: String) -> String {
         switch marker {
         case "-", "*", "+":

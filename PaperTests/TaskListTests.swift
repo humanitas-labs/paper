@@ -133,7 +133,7 @@ struct TaskListTests {
 
     @Test
     func plainAndOrderedItemsAreUnitsToo() throws {
-        let text = "- dash\n1. one\n> * quoted\n"
+        let text = "- dash\n1. one\nb) two\n> * quoted\n"
         let (textView, _) = makeTextView(text, selectedAt: 2)
         func caret() -> NSRange { textView.selectedRange() }
         textView.moveLeft(nil)
@@ -152,6 +152,14 @@ struct TaskListTests {
         textView.moveLeftAndModifySelection(nil)
         #expect(caret() == NSRange(location: one.location, length: 3))
 
+        // A lettered prefix is a unit like a numbered one (#70).
+        let lettered = (text as NSString).range(of: "b) two")
+        textView.setSelectedRange(NSRange(location: lettered.location + 3, length: 0))
+        textView.moveLeft(nil)
+        #expect(caret() == NSRange(location: lettered.location, length: 0), "`b) ` is one unit")
+        textView.setSelectedRange(NSRange(location: lettered.location + 1, length: 0))
+        #expect(caret() == NSRange(location: lettered.location + 3, length: 0), "a caret inside it lands at the text")
+
         // The quote prefix is outside the unit.
         let quoted = (text as NSString).range(of: "> * quoted")
         textView.setSelectedRange(NSRange(location: quoted.location + 4, length: 0))
@@ -167,12 +175,12 @@ struct TaskListTests {
         host.undoManager.beginUndoGrouping()
         textView.deleteBackward(nil)
         host.undoManager.endUndoGrouping()
-        #expect(textView.string == "- dash\n1. one\n> quoted\n")
+        #expect(textView.string == "- dash\n1. one\nb) two\n> quoted\n")
         textView.setSelectedRange(NSRange(location: 2, length: 0))
         host.undoManager.beginUndoGrouping()
         textView.deleteBackward(nil)
         host.undoManager.endUndoGrouping()
-        #expect(textView.string == "dash\n1. one\n> quoted\n")
+        #expect(textView.string == "dash\n1. one\nb) two\n> quoted\n")
         host.undoManager.undo()
         host.undoManager.undo()
         #expect(textView.string == text)
@@ -333,6 +341,7 @@ struct TaskListTests {
         #expect(typed("  [") == ("  - [ ] ", 8), "the indent carries, so the task nests")
         #expect(typed("> [") == ("> - [ ] ", 8))
         #expect(typed("1. [") == ("1. [ ] ", 7))
+        #expect(typed("a. [") == ("a. [ ] ", 7), "a lettered item takes a box too (#70)")
         #expect(typed("first\n[") == ("first\n- [ ] ", 12), "only the line's own start counts")
         #expect(typed("see [") == ("see []", 6), "mid-line brackets are prose")
         #expect(typed("- [x] [") == ("- [x] []", 8), "a second pair on a task is prose")

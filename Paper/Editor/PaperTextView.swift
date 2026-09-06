@@ -845,7 +845,7 @@ final class PaperTextView: NSTextView {
     /// optionally a list marker with its gap. Anything else and the
     /// brackets are prose.
     private static let taskBoxLeadPattern = try! NSRegularExpression(
-        pattern: #"^[\t ]*(?:>[\t ]?)*(?:(?:[-+*]|\d+[A-Za-z]?[.)])[\t ]+)?$"#
+        pattern: #"^[\t ]*(?:>[\t ]?)*(?:(?:[-+*]|\d+[A-Za-z]?[.)]|[A-Za-z][.)])[\t ]+)?$"#
     )
 
     /// `[]` at the start of a line's content becomes an open task: `[]`
