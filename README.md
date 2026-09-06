@@ -75,6 +75,8 @@ list.indent = 0.8
 theme = enso
 window.width = 1400
 window.height = 876
+print.font.size = 10
+print.margin = 64
 ```
 
 ## More

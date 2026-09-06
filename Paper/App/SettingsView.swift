@@ -190,6 +190,14 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Print and PDF") {
+                numberRow("Body size", binding(\.printFontSize), in: Configuration.printFontSizeRange, unit: "pt")
+                numberRow("Margin", binding(\.printMargin), in: Configuration.printMarginRange, unit: "pt")
+                Text("Pages made by Print (⌘P) and Export as PDF (⇧⌘E). Lines wrap to the page at this size.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("CLI") {
                 CommandLineToolRow()
                 DefaultApplicationRow()
