@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Export as PDF… (⇧⌘E) writes the document as it reads in Paper onto Letter or A4 pages: the same type, spacing, code bands, quote rules, task circles, and images, the body at 10 pt between 64 pt margins, at zoom 100% whatever the window shows. Lines wrap to the page. AppKit breaks pages between lines; an image moves whole to the next page. Print… (⌘P) makes the same pages.
+- Export as PDF… (⌘P) writes the document as it reads in Paper onto Letter or A4 pages: the same type, spacing, code bands, quote rules, task circles, and images, the body at 10 pt between 64 pt margins, at zoom 100% whatever the window shows. Lines wrap to the page. AppKit breaks pages between lines; an image moves whole to the next page.
 
 ## 0.7.5 — 2026.09.05
 

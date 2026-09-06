@@ -41,11 +41,14 @@ struct PaperApp: App {
                     .keyboardShortcut("k", modifiers: .command)
             }
             // The path, as plain text, for pasting into a prompt; Finder's key.
+            // Print is the PDF: the document as Paper sets it, on pages.
+            CommandGroup(replacing: .printItem) {
+                Button("Export as PDF…") { NSApp.sendAction(#selector(PaperTextView.exportPDF(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("p", modifiers: .command)
+            }
             CommandGroup(after: .saveItem) {
                 Button("Copy Path") { NSApp.sendAction(#selector(PaperTextView.copyPath(_:)), to: nil, from: nil) }
                     .keyboardShortcut("c", modifiers: [.command, .option])
-                Button("Export as PDF…") { NSApp.sendAction(#selector(PaperTextView.exportPDF(_:)), to: nil, from: nil) }
-                    .keyboardShortcut("e", modifiers: [.command, .shift])
             }
             // SwiftUI's document app leaves the Find submenu out of Edit, so
             // nothing would reach find. Built here; the scroll view that
