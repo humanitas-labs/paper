@@ -44,6 +44,11 @@ struct Configuration: Equatable, Sendable {
     /// last size after that.
     var windowWidth: Double = 1400
     var windowHeight: Double = 876
+    /// The body type's size on an exported or printed page, and the
+    /// text's distance from every page edge, both in points. The page is
+    /// laid out fresh at that size; the window's zoom plays no part.
+    var printFontSize: Double = 10
+    var printMargin: Double = 64
     /// Whether to ask GitHub, once a day on launch, for the latest release
     /// and show a download icon in the welcome window when it is newer.
     /// Off never makes the request.
@@ -119,6 +124,8 @@ struct Configuration: Equatable, Sendable {
     static let listIndentRange: ClosedRange<Double> = 0...4
     static let windowWidthRange: ClosedRange<Double> = 640...4000
     static let windowHeightRange: ClosedRange<Double> = 520...3000
+    static let printFontSizeRange: ClosedRange<Double> = 6...18
+    static let printMarginRange: ClosedRange<Double> = 18...144
 
     static let didChangeNotification = Notification.Name("paper.configuration.didChange")
 
@@ -185,6 +192,12 @@ struct Configuration: Equatable, Sendable {
     # after that.
     window.width = 1400
     window.height = 876
+
+    # Exported and printed pages (⇧⌘E, ⌘P): the body type's size and the
+    # text's distance from every page edge, in points. Lines wrap to the
+    # page at that size; the window's zoom plays no part.
+    print.font.size = 10
+    print.margin = 64
 
     # Once a day on launch, ask GitHub whether a newer Paper is out and show
     # a download icon in the welcome window when there is. Off never makes
@@ -278,6 +291,10 @@ struct Configuration: Equatable, Sendable {
             windowWidth = Self.number(value, in: Self.windowWidthRange) ?? windowWidth
         case "window.height":
             windowHeight = Self.number(value, in: Self.windowHeightRange) ?? windowHeight
+        case "print.font.size":
+            printFontSize = Self.number(value, in: Self.printFontSizeRange) ?? printFontSize
+        case "print.margin":
+            printMargin = Self.number(value, in: Self.printMarginRange) ?? printMargin
         case "update.check":
             updateCheck = Self.flag(value) ?? updateCheck
         case "theme":
@@ -310,6 +327,8 @@ struct Configuration: Equatable, Sendable {
             ("theme", theme),
             ("window.width", Self.format(windowWidth)),
             ("window.height", Self.format(windowHeight)),
+            ("print.font.size", Self.format(printFontSize)),
+            ("print.margin", Self.format(printMargin)),
             ("update.check", updateCheck ? "on" : "off"),
         ] + Self.colorEntries(colorOverrides)
     }

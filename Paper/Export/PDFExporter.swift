@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 /// The document as Paper draws it, paginated onto Letter or A4.
 ///
 /// An offscreen `PaperTextView` is styled at zoom 1 with a measure derived
-/// from the page (the body at `bodySizeOnPage` between `pageMargin`s),
+/// from the page (the configured print body size between print margins),
 /// every image band pinned and decoded, no active paragraph and no
 /// selection, then handed to an `NSPrintOperation` with a save job. AppKit breaks pages between line fragments (an image band is
 /// part of its paragraph's fragment, so it moves whole); the view's own
@@ -79,12 +79,19 @@ enum PDFExporter {
     }
 
     /// The body type on the page, whatever size it reads at on screen,
-    /// and the text's distance from every page edge.
-    static let bodySizeOnPage: CGFloat = 10
-    static let pageMargin: CGFloat = 64
+    /// and the text's distance from every page edge: `print.font.size`
+    /// and `print.margin` in the config.
+    static var bodySizeOnPage: CGFloat { CGFloat(Appearance.configuration.printFontSize) }
+    static var pageMargin: CGFloat { CGFloat(Appearance.configuration.printMargin) }
 
     /// The page's scale: the on-screen body brought to `bodySizeOnPage`.
     private static var scale: CGFloat { bodySizeOnPage / Appearance.bodySize }
+
+    /// The margin as set, or the view's own side inset at the page's scale
+    /// when that is wider: the inset is part of the margin, never past it.
+    private static var effectiveMargin: CGFloat {
+        max(pageMargin, Appearance.minimumHorizontalMargin * scale)
+    }
 
     /// The column that fills the page between its margins at that scale,
     /// with Paper's minimum side margins around it (the quote rules and
@@ -93,7 +100,7 @@ enum PDFExporter {
     private static func makeSurface(text: String, documentURL: URL?, paper: Paper) -> PaperTextView {
         let textView = PaperTextView()
         textView.isPrintSurface = true
-        let measure = (paper.size.width - 2 * pageMargin) / scale
+        let measure = (paper.size.width - 2 * effectiveMargin) / scale
         let width = measure + 2 * Appearance.minimumHorizontalMargin
         textView.frame = NSRect(x: 0, y: 0, width: width, height: 100)
         textView.documentURL = documentURL
@@ -133,11 +140,11 @@ enum PDFExporter {
         info.paperSize = paper.size
         info.orientation = .portrait
         info.scalingFactor = scale
-        let side = pageMargin - Appearance.minimumHorizontalMargin * scale
+        let side = effectiveMargin - Appearance.minimumHorizontalMargin * scale
         info.leftMargin = side
         info.rightMargin = side
-        info.topMargin = pageMargin
-        info.bottomMargin = pageMargin
+        info.topMargin = effectiveMargin
+        info.bottomMargin = effectiveMargin
         info.horizontalPagination = .clip
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
