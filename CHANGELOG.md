@@ -1,11 +1,8 @@
 # Changelog
 
-## Unreleased
-
-- Export as PDF… (⇧⌘E) writes the document as it reads in Paper onto Letter or A4 pages: the same type, spacing, code bands, quote rules, task circles, and images, the body at `print.font.size` (10 pt) between `print.margin`s (64 pt), both in the config and in Settings, at zoom 100% whatever the window shows. Lines wrap to the page. AppKit breaks pages between lines; an image moves whole to the next page. Print… (⌘P) makes the same pages, and its PDF menu saves them; it used to answer with "Error while printing".
-
 ## 0.7.5 — 2026.09.05
 
+- Export as PDF… (⇧⌘E) writes the document as it reads in Paper onto Letter or A4 pages: the same type, spacing, code bands, quote rules, task circles, and images, the body at `print.font.size` (10 pt) between `print.margin`s (64 pt), both in the config and in Settings, at zoom 100% whatever the window shows. Lines wrap to the page. AppKit breaks pages between lines; an image moves whole to the next page. Print… (⌘P) makes the same pages, and its PDF menu saves them; it used to answer with "Error while printing".
 - Document how to add Paper and its icon to the ChatGPT/Codex desktop Open menu, with an agent prompt, manual setup, and troubleshooting.
 
 ## 0.7.4 — 2026.09.05
