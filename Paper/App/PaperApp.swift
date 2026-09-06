@@ -41,6 +41,13 @@ struct PaperApp: App {
                     .keyboardShortcut("k", modifiers: .command)
             }
             // The path, as plain text, for pasting into a prompt; Finder's key.
+            // SwiftUI's own Print… item goes to its document object, which
+            // cannot print and answers with "Error while printing"; this one
+            // reaches the text view, whose pages are the export's.
+            CommandGroup(replacing: .printItem) {
+                Button("Print…") { NSApp.sendAction(#selector(PaperTextView.printPages(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("p", modifiers: .command)
+            }
             CommandGroup(after: .saveItem) {
                 Button("Copy Path") { NSApp.sendAction(#selector(PaperTextView.copyPath(_:)), to: nil, from: nil) }
                     .keyboardShortcut("c", modifiers: [.command, .option])
