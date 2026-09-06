@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 /// An offscreen `PaperTextView` is styled at zoom 1 with a measure derived
 /// from the page (the body at `bodySizeOnPage` between `pageMargin`s),
 /// every image band pinned and decoded, no active paragraph and no
-/// selection, then handed to an `NSPrintOperation` with a save job. AppKit breaks pages between line fragments (an image band is
+/// selection, then handed to an `NSPrintOperation` with a save job. ⌘P
+/// is this export; there is no print panel. AppKit breaks pages between line fragments (an image band is
 /// part of its paragraph's fragment, so it moves whole); the view's own
 /// `drawBackground` puts the code bands, quote rules, breaks, task circles,
 /// and images on each page. The column is scaled so the body type lands
@@ -142,32 +143,6 @@ enum PDFExporter {
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
         info.isVerticallyCentered = false
-    }
-
-    // MARK: - File ▸ Print…
-
-    /// The print panel over the same surface the export paginates, so a
-    /// printed page and an exported one are the same page. The panel's
-    /// own PDF button works too. App-modal, as the images stay pinned
-    /// only for the length of the call.
-    static func print(_ textView: PaperTextView) {
-        Zoom.withScale(1) {
-            let info = NSPrintInfo.shared.copy() as! NSPrintInfo
-            let paper = abs(info.paperSize.width - Paper.a4.size.width) < 1 ? Paper.a4 : .letter
-            let surface = makeSurface(text: textView.string, documentURL: textView.documentURL, paper: paper)
-            let owner = ObjectIdentifier(surface)
-            defer { ImageStore.shared.removeDemand(for: owner) }
-            try? pinImages(of: surface, owner: owner)
-            surface.layoutManager?.ensureLayout(for: surface.textContainer!)
-            surface.sizeToFit()
-
-            configure(info, for: paper)
-            let operation = NSPrintOperation(view: surface, printInfo: info)
-            operation.jobTitle = textView.printJobTitle
-            operation.showsPrintPanel = true
-            operation.showsProgressPanel = true
-            operation.run()
-        }
     }
 
     // MARK: - Save panel

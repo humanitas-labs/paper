@@ -38,16 +38,16 @@ final class PaperTextView: NSTextView {
 
     // MARK: - File ▸ Export as PDF…
 
-    /// ⇧⌘E: the buffer as it reads here, on Letter or A4 pages; see
+    /// ⌘P: the buffer as it reads here, on Letter or A4 pages; see
     /// `PDFExporter`. Unsaved edits export; the file on disk is not touched.
     @objc func exportPDF(_ sender: Any?) {
         PDFExporter.present(for: self)
     }
 
-    /// ⌘P prints the pages the export makes, not AppKit's rendering of
-    /// the live view.
+    /// Print is the export: AppKit's own rendering of the live view would
+    /// carry the chrome and lose the decorations.
     override func printView(_ sender: Any?) {
-        PDFExporter.print(self)
+        exportPDF(sender)
     }
 
     /// The PDF's title and the print job's name.
