@@ -32,3 +32,4 @@ dist/
 
 # Coverage artifacts
 *.profraw
+.tmp/
