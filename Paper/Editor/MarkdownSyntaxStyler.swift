@@ -73,12 +73,15 @@ final class MarkdownSyntaxStyler {
     )
     /// Groups: 1 the marker, 2 the gap after it, 3 a task box (`[ ]`,
     /// `[x]`, `[X]`) when the item is a task, 4 the gap after the box.
+    /// Ordered markers are a number (`1.`, `1)`, `1a)`) or a single letter
+    /// (`a.`, `A)`), as Pandoc's fancy lists read them (#70); a paragraph
+    /// starting `a. ` takes the list reading, as CommonMark's `1. ` does.
     nonisolated static let listMarkerPattern = try! NSRegularExpression(
         // `\S` or end of line: an item freshly continued by Return is just
         // `- ` and must already sit like a list item, not inherit the
         // previous line's indent until its first character. The box needs
         // whitespace (or the line's end) after it, so `- [ ]x` is prose.
-        pattern: #"(?m)^(?:[\t ]*(?:>[\t ]?)*)([-+*]|\d+[A-Za-z]?[.)])([\t ]+)(?:(\[[ xX]\])([\t ]+|$))?(?=\S|$)"#
+        pattern: #"(?m)^(?:[\t ]*(?:>[\t ]?)*)([-+*]|\d+[A-Za-z]?[.)]|[A-Za-z][.)])([\t ]+)(?:(\[[ xX]\])([\t ]+|$))?(?=\S|$)"#
     )
 
     /// The room a task item's `[` reserves off the active paragraph: the

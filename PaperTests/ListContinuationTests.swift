@@ -40,6 +40,19 @@ struct ListContinuationTests {
     }
 
     @Test
+    func lettersAdvanceAndAnEmptyLetteredItemEndsTheList() {
+        // #70
+        let (text, _) = returnPressed(in: "a. first", at: NSRange(location: 8, length: 0))!
+        #expect(text == "a. first\nb. ")
+        let (paren, _) = returnPressed(in: "  B) second", at: NSRange(location: 11, length: 0))!
+        #expect(paren == "  B) second\n  C) ")
+        let (ended, selection) = returnPressed(in: "a. first\nb. ", at: NSRange(location: 12, length: 0))!
+        #expect(ended == "a. first\n")
+        #expect(selection == NSRange(location: 9, length: 0))
+        #expect(returnPressed(in: "a.m. call", at: NSRange(location: 9, length: 0)) == nil, "an abbreviation is prose")
+    }
+
+    @Test
     func continuesInsideABlockQuote() {
         let (text, _) = returnPressed(in: "> - quoted item", at: NSRange(location: 15, length: 0))!
         #expect(text == "> - quoted item\n> - ")
