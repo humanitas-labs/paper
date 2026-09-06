@@ -44,10 +44,14 @@ final class PaperTextView: NSTextView {
         PDFExporter.present(for: self)
     }
 
-    /// ⌘P prints the pages the export makes, not AppKit's rendering of
-    /// the live view.
-    override func printView(_ sender: Any?) {
+    /// ⌘P: the print panel over the pages the export makes, not AppKit's
+    /// rendering of the live view; its PDF menu saves the same pages.
+    @objc func printPages(_ sender: Any?) {
         PDFExporter.print(self)
+    }
+
+    override func printView(_ sender: Any?) {
+        printPages(sender)
     }
 
     /// The PDF's title and the print job's name.
