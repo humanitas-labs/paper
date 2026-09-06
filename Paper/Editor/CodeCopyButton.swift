@@ -282,6 +282,13 @@ extension PaperTextView {
     /// drops the rest. Called from drawing, after layout has settled, and
     /// only mutates the view tree when a band has appeared, moved, or gone.
     func syncCodeCopyButtons() {
+        // A print or PDF pass draws subviews whatever their alpha, and the
+        // button is chrome, not document: none is made or shown for it.
+        if NSPrintOperation.current != nil {
+            for button in codeCopyButtons { button.isHidden = true }
+            return
+        }
+        for button in codeCopyButtons { button.isHidden = false }
         guard let layoutManager = layoutManager as? PaperLayoutManager,
               let container = textContainer else { return }
         let origin = textContainerOrigin

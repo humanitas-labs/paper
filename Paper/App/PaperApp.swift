@@ -44,6 +44,8 @@ struct PaperApp: App {
             CommandGroup(after: .saveItem) {
                 Button("Copy Path") { NSApp.sendAction(#selector(PaperTextView.copyPath(_:)), to: nil, from: nil) }
                     .keyboardShortcut("c", modifiers: [.command, .option])
+                Button("Export as PDF…") { NSApp.sendAction(#selector(PaperTextView.exportPDF(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
             }
             // SwiftUI's document app leaves the Find submenu out of Edit, so
             // nothing would reach find. Built here; the scroll view that

@@ -3,13 +3,19 @@ import Testing
 @testable import Paper
 
 /// Offscreen renders and restyle timings for manual review. Runs only when
-/// `PAPER_PROBE_DIR` is set (export it, and pass
-/// `TEST_RUNNER_PAPER_PROBE_DIR=…` too, to `xcodebuild test-without-building`);
+/// `PAPER_PROBE_DIR` is set: the scheme takes it from the build setting of
+/// the same name, so pass `PAPER_PROBE_DIR=/abs/path` to `xcodebuild test`;
 /// otherwise every probe is skipped.
 @MainActor
 struct RenderProbeTests {
     nonisolated static var probeDirectory: URL? {
-        ProcessInfo.processInfo.environment["PAPER_PROBE_DIR"].map { URL(fileURLWithPath: $0) }
+        probeEnvironment("PAPER_PROBE_DIR").map { URL(fileURLWithPath: $0) }
+    }
+
+    /// The scheme sets every probe variable, empty when not passed.
+    nonisolated static func probeEnvironment(_ name: String) -> String? {
+        let value = ProcessInfo.processInfo.environment[name] ?? ""
+        return value.isEmpty ? nil : value
     }
 
     private func makeEditor(width: CGFloat, height: CGFloat, text: String) -> (NSScrollView, PaperTextView) {
