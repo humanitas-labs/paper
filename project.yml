@@ -93,6 +93,15 @@ schemes:
       config: Debug
     test:
       config: Debug
+      # Probes read these; pass them as build settings on the command line
+      # (`xcodebuild test PAPER_PROBE_DIR=/abs/path`), empty otherwise.
+      environmentVariables:
+        - variable: PAPER_PROBE_DIR
+          value: $(PAPER_PROBE_DIR)
+          isEnabled: true
+        - variable: PAPER_PROBE_DOC
+          value: $(PAPER_PROBE_DOC)
+          isEnabled: true
       gatherCoverageData: true
       targets:
         - PaperTests

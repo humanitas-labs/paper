@@ -36,6 +36,25 @@ final class PaperTextView: NSTextView {
         return super.validateUserInterfaceItem(item)
     }
 
+    // MARK: - File ▸ Export as PDF…
+
+    /// ⇧⌘E: the buffer as it reads here, on Letter or A4 pages; see
+    /// `PDFExporter`. Unsaved edits export; the file on disk is not touched.
+    @objc func exportPDF(_ sender: Any?) {
+        PDFExporter.present(for: self)
+    }
+
+    /// ⌘P prints the pages the export makes, not AppKit's rendering of
+    /// the live view.
+    override func printView(_ sender: Any?) {
+        PDFExporter.print(self)
+    }
+
+    /// The PDF's title and the print job's name.
+    override var printJobTitle: String {
+        documentURL?.deletingPathExtension().lastPathComponent ?? Self.placeholderTitle
+    }
+
     init() {
         let storage = NSTextStorage()
         let layoutManager = PaperLayoutManager()
@@ -156,11 +175,16 @@ final class PaperTextView: NSTextView {
             enclosingScrollView?.reflectScrolledClipView(clip)
         }
 
-        let margin = max(
+        // A print surface's measure is the page's, whatever the configured
+        // maximum; the exporter sizes it with the minimum margins around.
+        let margin = isPrintSurface ? Appearance.minimumHorizontalMargin : max(
             Appearance.minimumHorizontalMargin,
             (newSize.width - Appearance.maximumMeasure) / 2
         )
-        textContainerInset = NSSize(width: margin, height: Appearance.topMargin + titleBarHeight)
+        // A print surface carries no title band and no top margin: the
+        // page margins set those, the same on every page.
+        let top = isPrintSurface ? 0 : Appearance.topMargin + titleBarHeight
+        textContainerInset = NSSize(width: margin, height: top)
 
         // A block image is fitted to the measure when styled; a window
         // narrower than the measure plus its margins shrinks the container,
@@ -173,6 +197,10 @@ final class PaperTextView: NSTextView {
     }
 
     private var styledMeasure: CGFloat = 0
+
+    /// Set on the offscreen view `PDFExporter` paginates: the document
+    /// without the window's chrome around it.
+    var isPrintSurface = false
 
     /// The band under the window's transparent title bar and empty
     /// toolbar. The scroll view no longer insets its content by it
@@ -566,6 +594,8 @@ final class PaperTextView: NSTextView {
             placeholderVisible = false
             return
         }
+        // The ghost is an editing prompt: a printed empty page stays blank.
+        guard NSPrintOperation.current == nil else { return }
         placeholderVisible = true
         let origin = textContainerOrigin
         Self.ghostTitle.draw(
@@ -1149,11 +1179,35 @@ final class PaperTextView: NSTextView {
     }
 
     /// SF Symbols' checkmark, in the canvas colour, cut out of a done disc.
+    /// The symbol rasterised once per canvas colour: a symbol image draws
+    /// nothing into a PDF context (the print pass), a bitmap draws
+    /// anywhere, and at 256 px it is crisp at any disc the text can set.
+    private static var checkmarks: [NSColor: NSImage] = [:]
+
     private static var checkmark: NSImage? {
+        let canvas = Appearance.canvas
+        if let cached = checkmarks[canvas] { return cached }
         let configuration = NSImage.SymbolConfiguration(pointSize: 64, weight: .bold)
-            .applying(.init(paletteColors: [Appearance.canvas]))
-        return NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
-            .withSymbolConfiguration(configuration)
+            .applying(.init(paletteColors: [canvas]))
+        guard let symbol = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return nil }
+        let side = 256
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        symbol.draw(
+            in: NSRect(x: 0, y: 0, width: side, height: side), from: .zero,
+            operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil
+        )
+        NSGraphicsContext.restoreGraphicsState()
+        let image = NSImage(size: NSSize(width: side, height: side))
+        image.addRepresentation(rep)
+        checkmarks[canvas] = image
+        return image
     }
 
     /// The flip in progress: the prefix it belongs to and when it began.

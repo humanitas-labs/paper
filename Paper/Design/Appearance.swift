@@ -387,6 +387,17 @@ enum Zoom {
 
     static func set(percent: Int) { set(CGFloat(percent) / 100) }
 
+    /// Runs `body` with `scale` reading `value`, then restores it. Nothing
+    /// is posted or published, so the live windows keep their zoom and are
+    /// not restyled: a surface styled inside `body` (the PDF export) takes
+    /// the scale, nothing else notices.
+    static func withScale<T>(_ value: CGFloat, _ body: () throws -> T) rethrows -> T {
+        let previous = scale
+        cached = clamp(value)
+        defer { cached = previous }
+        return try body()
+    }
+
     /// Clamped into `range` and rounded to whole percent, so the badge
     /// shows exactly what was set.
     static func clamp(_ value: CGFloat) -> CGFloat {
