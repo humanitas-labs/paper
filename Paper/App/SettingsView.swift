@@ -263,12 +263,53 @@ struct SettingsView: View {
     ) -> some View {
         HStack {
             Slider(value: value, in: range) { Text(title) }
-            TextField(title, value: value, format: .number.precision(.fractionLength(0...2)))
-                .labelsHidden()
-                .multilineTextAlignment(.trailing)
-                .frame(width: 56)
+            NumberField(value: value.wrappedValue, range: range) { value.wrappedValue = $0 }
             Text(unit).frame(width: 18, alignment: .leading)
         }
+    }
+}
+
+/// A number field beside a slider. The text is a draft while it has focus,
+/// committed on Return or when focus leaves, then clamped to the range;
+/// a value field bound straight to the config wrote every keystroke, so
+/// typing 14 over 40 went 4, 8 (the floor), 81, 40, and never took 14.
+/// Text that is not a number snaps back to the current value.
+private struct NumberField: View {
+    let value: Double
+    let range: ClosedRange<Double>
+    let commit: (Double) -> Void
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    private static let format = FloatingPointFormatStyle<Double>.number.precision(.fractionLength(0...2))
+
+    var body: some View {
+        TextField("Value", text: $draft)
+            .labelsHidden()
+            .multilineTextAlignment(.trailing)
+            .frame(width: 56)
+            .focused($focused)
+            .onAppear { draft = Self.format.format(value) }
+            .onChange(of: value) { _, new in if !focused { draft = Self.format.format(new) } }
+            .onChange(of: focused) { _, isFocused in if !isFocused { submit() } }
+            .onSubmit(submit)
+    }
+
+    private func submit() {
+        if let typed = Self.parse(draft) {
+            let clamped = min(max(typed, range.lowerBound), range.upperBound)
+            if clamped != value { commit(clamped) }
+            draft = Self.format.format(clamped)
+        } else {
+            draft = Self.format.format(value)
+        }
+    }
+
+    /// The typed number, accepting a locale decimal or a plain period.
+    static func parse(_ text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if let value = try? Double(trimmed, format: format) { return value }
+        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
     }
 }
 

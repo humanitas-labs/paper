@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The number fields in Settings take what you type. Each wrote on every keystroke and the range clamp rewrote the field mid-word, so typing 14 over 40 went 4, 8, 81, 40 and never landed on 14; the field now holds a draft and commits on Return or when focus leaves, clamped once.
+
 ## 0.7.6 — 2026.09.06
 
 - Every built-in theme selects the way Enso does: the ink as the block and the canvas as the selected text, from the theme's own pair, in both appearances. Apple, Paper, Slate, Mono, and Spatial used to fall back to a wash of the ink at 13%.
