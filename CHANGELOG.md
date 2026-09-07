@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.6 — 2026.09.06
 
 - Every built-in theme selects the way Enso does: the ink as the block and the canvas as the selected text, from the theme's own pair, in both appearances. Apple, Paper, Slate, Mono, and Spatial used to fall back to a wash of the ink at 13%.
 - Settings ▸ Theme has Selection and Selection (dark) rows, a colour well and a hex field each, writing `color.selection` and `color.selection.dark`. The keys reloaded live already; there was no way to set them from Settings. An unset selection shows the tone the editor draws, the ink over the canvas at 13%.
