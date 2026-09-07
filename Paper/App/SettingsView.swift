@@ -53,7 +53,20 @@ struct SettingsView: View {
 
     /// A colour well bound to one hex override; nil shows the theme's colour.
     private func colorRow(_ title: String, _ keyPath: WritableKeyPath<Configuration, String?>, themeValue: KeyPath<Palette, String>) -> some View {
-        let current = store.current[keyPath: keyPath] ?? store.resolvedTheme.palette[keyPath: themeValue]
+        colorRow(title, keyPath, current: store.current[keyPath: keyPath] ?? store.resolvedTheme.palette[keyPath: themeValue])
+    }
+
+    /// The selection highlight rows. A theme may set no selection tone; the
+    /// well then shows the ink over the canvas at the opacity the editor
+    /// draws it, so a change starts from what is on screen.
+    private func selectionRow(_ title: String, _ keyPath: WritableKeyPath<Configuration, String?>, dark: Bool) -> some View {
+        let palette = store.resolvedTheme.palette
+        let themeTone = dark ? palette.selectionDark : palette.selection
+        let derived = HexColor.blend(dark ? palette.inkDark : palette.ink, over: dark ? palette.canvasDark : palette.canvas, alpha: 0.13)
+        return colorRow(title, keyPath, current: store.current[keyPath: keyPath] ?? themeTone ?? derived ?? palette.ink)
+    }
+
+    private func colorRow(_ title: String, _ keyPath: WritableKeyPath<Configuration, String?>, current: String) -> some View {
         func write(_ hex: String) {
             var configuration = store.current
             configuration[keyPath: keyPath] = hex
@@ -127,6 +140,8 @@ struct SettingsView: View {
                 colorRow("Ink", \.ink, themeValue: \.ink)
                 colorRow("Canvas (dark)", \.canvasDark, themeValue: \.canvasDark)
                 colorRow("Ink (dark)", \.inkDark, themeValue: \.inkDark)
+                selectionRow("Selection", \.selection, dark: false)
+                selectionRow("Selection (dark)", \.selectionDark, dark: true)
                 HStack {
                     Button("Save as Theme…") {
                         themeName = ""
