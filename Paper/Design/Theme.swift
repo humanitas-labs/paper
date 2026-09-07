@@ -206,6 +206,14 @@ enum HexColor {
         return string(red: c.red, green: c.green, blue: c.blue)
     }
 
+    /// `top` laid over `base` at `alpha`, as a hex: the opaque colour a
+    /// translucent tone reads as on the canvas, so Settings can show it.
+    static func blend(_ top: String, over base: String, alpha: Double) -> String? {
+        guard let t = components(top), let b = components(base) else { return nil }
+        func mix(_ a: Double, _ c: Double) -> Double { c + (a - c) * alpha }
+        return string(red: mix(t.red, b.red), green: mix(t.green, b.green), blue: mix(t.blue, b.blue))
+    }
+
     static func string(red: Double, green: Double, blue: Double) -> String {
         func byte(_ v: Double) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
         return String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))

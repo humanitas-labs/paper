@@ -73,6 +73,16 @@ struct Configuration: Equatable, Sendable {
         get { colorOverrides.inkDark }
         set { colorOverrides.inkDark = newValue }
     }
+    /// The selection highlight, as Settings binds it; nil is the theme's
+    /// tone, or the ink at 13% when the theme sets none.
+    var selection: String? {
+        get { colorOverrides.selection }
+        set { colorOverrides.selection = newValue }
+    }
+    var selectionDark: String? {
+        get { colorOverrides.selectionDark }
+        set { colorOverrides.selectionDark = newValue }
+    }
 
     /// A `color.*` key and the override it sets.
     struct ColorKey: Sendable {

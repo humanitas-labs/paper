@@ -81,6 +81,9 @@ struct ThemeTests {
         #expect(HexColor.normalized("#f6f3ec") == "#F6F3EC")
         #expect(HexColor.normalized(" 1B1916 ") == "#1B1916")
         #expect(HexColor.normalized("#FFF") == nil)
+        #expect(HexColor.blend("#000000", over: "#FFFFFF", alpha: 0.5) == "#808080")
+        #expect(HexColor.blend("#FF0000", over: "#FFFFFF", alpha: 0.13) == "#FFDEDE", "a 13% wash of red over white")
+        #expect(HexColor.blend("nope", over: "#FFFFFF", alpha: 0.5) == nil)
         #expect(HexColor.normalized("#GGGGGG") == nil)
         #expect(HexColor.normalized("") == nil)
         let c = HexColor.components("#FF8000")!
