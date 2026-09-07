@@ -160,6 +160,13 @@ struct ThemeTests {
         """)
         #expect(Theme.user(named: "x", text: "").palette.canvas == Theme.enso.palette.canvas)
         #expect(Theme.user(named: "x", text: "").palette.selection == nil, "optional tones are not inherited")
+        for theme in Theme.builtIn {
+            let palette = theme.palette
+            #expect(palette.selection == palette.ink || theme.name == "enso", "\(theme.name) selects in its ink")
+            #expect(palette.selectionInk == palette.canvas || theme.name == "enso", "\(theme.name) selected text is the canvas")
+            #expect(palette.selectionDark == palette.inkDark, "\(theme.name) dark")
+            #expect(palette.selectionInkDark == palette.canvasDark, "\(theme.name) dark text")
+        }
     }
 
     @Test
