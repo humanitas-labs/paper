@@ -106,7 +106,24 @@ enum PDFExporter {
         textView.documentURL = documentURL
         textView.string = text
         textView.syntaxStyler.apply(to: textView)
+        annotateLinks(in: textView)
         return textView
+    }
+
+    /// AppKit writes a URL rectangle into the PDF for every run carrying
+    /// its own link attribute, so each link's visible text gets one over
+    /// the styler's destination, resolved the way a click resolves it.
+    /// Fragments name headings in this document; the PDF has no anchor
+    /// for them, so they are left unlinked. The screen view never carries
+    /// the attribute; it handles clicks itself.
+    private static func annotateLinks(in textView: PaperTextView) {
+        guard let storage = textView.textStorage, storage.length > 0 else { return }
+        let whole = NSRange(location: 0, length: storage.length)
+        storage.enumerateAttribute(.linkDestination, in: whole) { value, range, _ in
+            guard let destination = value as? String, !destination.hasPrefix("#"),
+                  let url = textView.linkURL(for: destination) else { return }
+            storage.addAttribute(.link, value: url, range: range)
+        }
     }
 
     /// Every band's file, pinned against eviction for the length of the
