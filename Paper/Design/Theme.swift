@@ -32,6 +32,17 @@ struct Palette: Equatable, Sendable {
 
     /// The colour keys of a theme file or of the config's overrides: each
     /// value is a `#RRGGBB` string or nil to inherit.
+    /// A palette whose selection inverts its own pair: the ink as the
+    /// highlight, the canvas as the selected text's colour, in both
+    /// appearances.
+    static func inverting(canvas: String, ink: String, canvasDark: String, inkDark: String) -> Palette {
+        Palette(
+            canvas: canvas, ink: ink, canvasDark: canvasDark, inkDark: inkDark,
+            selection: ink, selectionInk: canvas,
+            selectionDark: inkDark, selectionInkDark: canvasDark
+        )
+    }
+
     struct Overrides: Equatable, Sendable {
         var canvas: String?
         var ink: String?
@@ -137,21 +148,24 @@ struct Theme: Equatable, Sendable, Identifiable {
     )
 
     static let builtIn: [Theme] = [
+        // Every built-in selects the way Enso does: the ink as the block
+        // and the canvas as the text, from the theme's own pair. A wash
+        // of the ink at 13% is what a theme with no selection tone gets.
         enso,
         Theme(name: "apple", title: "Apple",
-              palette: Palette(canvas: "#FFFFFF", ink: "#272727", canvasDark: "#212323", inkDark: "#DDDDDD"),
+              palette: .inverting(canvas: "#FFFFFF", ink: "#272727", canvasDark: "#212323", inkDark: "#DDDDDD"),
               isBuiltIn: true),
         Theme(name: "paper", title: "Paper",
-              palette: Palette(canvas: "#F6F3EC", ink: "#1B1916", canvasDark: "#1B1916", inkDark: "#E8E3D6"),
+              palette: .inverting(canvas: "#F6F3EC", ink: "#1B1916", canvasDark: "#1B1916", inkDark: "#E8E3D6"),
               isBuiltIn: true),
         Theme(name: "slate", title: "Slate",
-              palette: Palette(canvas: "#F2F3F5", ink: "#1F2328", canvasDark: "#15181C", inkDark: "#D9DEE5"),
+              palette: .inverting(canvas: "#F2F3F5", ink: "#1F2328", canvasDark: "#15181C", inkDark: "#D9DEE5"),
               isBuiltIn: true),
         Theme(name: "mono", title: "Mono",
-              palette: Palette(canvas: "#FFFFFF", ink: "#000000", canvasDark: "#000000", inkDark: "#EDEDED"),
+              palette: .inverting(canvas: "#FFFFFF", ink: "#000000", canvasDark: "#000000", inkDark: "#EDEDED"),
               isBuiltIn: true),
         Theme(name: "spatial", title: "Spatial",
-              palette: Palette(canvas: "#FFFFFF", ink: "#161819", canvasDark: "#191B1D", inkDark: "#F4F9FA"),
+              palette: .inverting(canvas: "#FFFFFF", ink: "#161819", canvasDark: "#191B1D", inkDark: "#F4F9FA"),
               isBuiltIn: true),
     ]
 

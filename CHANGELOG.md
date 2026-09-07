@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Every built-in theme selects the way Enso does: the ink as the block and the canvas as the selected text, from the theme's own pair, in both appearances. Apple, Paper, Slate, Mono, and Spatial used to fall back to a wash of the ink at 13%.
 - Settings ▸ Theme has Selection and Selection (dark) rows, a colour well and a hex field each, writing `color.selection` and `color.selection.dark`. The keys reloaded live already; there was no way to set them from Settings. An unset selection shows the tone the editor draws, the ink over the canvas at 13%.
 - Lettered lists. A line starting `a. ` or `a) ` (upper case too) is an ordered item like `1. `: the marker mutes and keeps its punctuation, wrapped lines hang under the text, the prefix is one unit for the caret, Return continues `a.` as `b.` and ends the list on an empty item, and `[]` after the marker makes a task. A single letter only; `a.m.` and `ab.` stay prose (#70).
 
