@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Links in an exported or printed PDF are clickable: each link's text carries its destination into the file, so a viewer opens it, a wrapped link included. Relative destinations resolve against the document's folder; a `#fragment` stays plain, as the PDF has no anchor for it.
 - The number fields in Settings take what you type. Each wrote on every keystroke and the range clamp rewrote the field mid-word, so typing 14 over 40 went 4, 8, 81, 40 and never landed on 14; the field now holds a draft and commits on Return or when focus leaves, clamped once.
 
 ## 0.7.6 — 2026.09.06

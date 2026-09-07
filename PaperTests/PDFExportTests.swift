@@ -49,6 +49,34 @@ struct PDFExportTests {
     }
 
     @Test
+    func linksAreClickableAndFragmentsAreNot() throws {
+        makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let filler = String(repeating: "Words that fill the line so the link below wraps onto a second line. ", count: 4)
+        let text = """
+        A [remote link](https://example.com/page) and a [local one](notes/other.md) and a [fragment](#heading).
+
+        \(filler)[a link whose text is long enough to wrap around the end of the line and continue](https://example.com/wrapped)
+
+        ## Heading
+        """
+        let output = folder.appendingPathComponent("links.pdf")
+        let document = folder.appendingPathComponent("doc.md")
+        try PDFExporter.export(text: text, documentURL: document, to: output)
+        let pdf = try #require(PDFDocument(url: output))
+        var urls: [String] = []
+        for index in 0..<pdf.pageCount {
+            for annotation in pdf.page(at: index)?.annotations ?? [] {
+                if let url = annotation.url { urls.append(url.absoluteString) }
+            }
+        }
+        #expect(urls.contains("https://example.com/page"))
+        #expect(urls.contains(folder.appendingPathComponent("notes/other.md").absoluteString), "a relative destination resolves beside the document")
+        #expect(urls.filter { $0 == "https://example.com/wrapped" }.count >= 2, "a wrapped link gets a rectangle per line")
+        #expect(!urls.contains { $0.hasSuffix("#heading") }, "a fragment has no anchor in the PDF")
+    }
+
+    @Test
     func extractedTextHidesMarkersAndKeepsWords() throws {
         makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
