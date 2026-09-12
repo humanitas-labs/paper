@@ -54,7 +54,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         let pinned = MenuBarModel.pinned(PinStore.shared.pins)
         if pinned.isEmpty {
-            let none = NSMenuItem(title: "No Pinned Documents", action: nil, keyEquivalent: "")
+            let none = NSMenuItem(title: "None pinned", action: nil, keyEquivalent: "")
             none.isEnabled = false
             menu.addItem(none)
         }
