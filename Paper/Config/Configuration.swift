@@ -54,8 +54,8 @@ struct Configuration: Equatable, Sendable {
     /// Off never makes the request.
     var updateCheck: Bool = true
     /// Whether the menu bar carries Paper's item with the pinned documents
-    /// (#77). Off by default: nobody who did not ask gets a new icon.
-    var menuBar: Bool = false
+    /// (#77). On by default; off takes the item away.
+    var menuBar: Bool = true
     /// Hex overrides for the theme's colours; nil inherits the theme.
     var colorOverrides = Palette.Overrides()
 
@@ -219,7 +219,7 @@ struct Configuration: Equatable, Sendable {
 
     # A Paper item in the menu bar, beside the clock, listing the pinned
     # documents (File ▸ Pin Document), the recent ones, New, and Open.
-    menu.bar = off
+    menu.bar = on
 
     # Colour overrides as #RRGGBB. Leave a value empty to use the theme's.
     color.canvas =
