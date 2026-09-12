@@ -6,6 +6,7 @@ import SwiftUI
 /// file by hand updates these controls the same way.
 struct SettingsView: View {
     @ObservedObject private var store = ConfigurationStore.shared
+    @ObservedObject private var pins = PinStore.shared
     @State private var isNamingPreset = false
     @State private var isRenamingPreset = false
     @State private var presetName = ""
@@ -210,6 +211,22 @@ struct SettingsView: View {
                 Text("An item beside the clock listing the pinned documents (File ▸ Pin Document), the recent ones, New, and Open.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if !pins.pins.urls.isEmpty {
+                    // The pinned list in its menu order; drag to reorder.
+                    ForEach(pins.pins.urls, id: \.self) { url in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(url.lastPathComponent)
+                                Text((url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Unpin") { pins.remove(url) }
+                        }
+                    }
+                    .onMove { source, destination in pins.move(fromOffsets: source, toOffset: destination) }
+                }
             }
 
             Section("Print and PDF") {
