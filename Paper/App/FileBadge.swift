@@ -123,7 +123,10 @@ private struct MenuAnchor: NSViewRepresentable {
             let pin = NSMenuItem(title: pinned ? "Unpin Document" : "Pin Document", action: #selector(togglePin), keyEquivalent: "")
             pin.target = self
             pin.isEnabled = fileURL != nil
-            menu.items = [path, name, .separator(), finder, .separator(), pin]
+            let rename = NSMenuItem(title: "Rename Pin…", action: #selector(renamePin), keyEquivalent: "")
+            rename.target = self
+            rename.isEnabled = pinned
+            menu.items = [path, name, .separator(), finder, .separator(), pin, rename]
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -6), in: self)
         }
 
@@ -131,5 +134,23 @@ private struct MenuAnchor: NSViewRepresentable {
         @objc private func copyName() { DocumentPath.copyName(fileURL) }
         @objc private func reveal() { if let fileURL { DocumentPath.reveal(fileURL) } }
         @objc private func togglePin() { if let fileURL { PinStore.shared.toggle(fileURL) } }
+
+        /// The name the pin goes by in the menu bar; blank returns it to
+        /// the file name.
+        @objc private func renamePin() {
+            guard let fileURL, let pin = PinStore.shared.pins.pin(for: fileURL) else { return }
+            let alert = NSAlert()
+            alert.messageText = "Name this pin"
+            alert.informativeText = "Shown in the menu bar in place of \(fileURL.lastPathComponent). Leave it empty to use the file name."
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+            field.stringValue = pin.name ?? ""
+            field.placeholderString = fileURL.lastPathComponent
+            alert.accessoryView = field
+            alert.addButton(withTitle: "Name")
+            alert.addButton(withTitle: "Cancel")
+            alert.window.initialFirstResponder = field
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            PinStore.shared.rename(fileURL, to: field.stringValue)
+        }
     }
 }

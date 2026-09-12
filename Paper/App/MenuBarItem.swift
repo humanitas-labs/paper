@@ -59,7 +59,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             menu.addItem(none)
         }
         for entry in pinned {
-            let item = documentItem(entry.url, symbol: "pin.fill")
+            let item = documentItem(entry.url, title: entry.name, symbol: "pin.fill")
             if entry.missing {
                 item.attributedTitle = NSAttributedString(
                     string: entry.name, attributes: [.foregroundColor: NSColor.tertiaryLabelColor]
@@ -71,7 +71,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             .filter { recent in !pinned.contains { $0.url == recent.url } }
         if !recents.isEmpty {
             menu.addItem(.separator())
-            for recent in recents { menu.addItem(documentItem(recent.url, symbol: "clock")) }
+            for recent in recents { menu.addItem(documentItem(recent.url, title: recent.name, symbol: "clock")) }
         }
         menu.addItem(.separator())
         let new = NSMenuItem(title: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "")
@@ -84,8 +84,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     /// A pin beside the pinned, a clock beside the recent, in the grey a
     /// section header uses, so the symbol reads as a label and not a button.
-    private func documentItem(_ url: URL, symbol: String) -> NSMenuItem {
-        let item = NSMenuItem(title: url.lastPathComponent, action: #selector(open(_:)), keyEquivalent: "")
+    private func documentItem(_ url: URL, title: String, symbol: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(open(_:)), keyEquivalent: "")
         item.target = self
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(paletteColors: [.secondaryLabelColor]))
