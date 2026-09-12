@@ -118,12 +118,18 @@ private struct MenuAnchor: NSViewRepresentable {
             let finder = NSMenuItem(title: "Show in Finder", action: #selector(reveal), keyEquivalent: "")
             finder.target = self
             finder.isEnabled = fileURL != nil
-            menu.items = [path, name, .separator(), finder]
+            // The menu bar item's list (#77); the same toggle as File ▸ Pin.
+            let pinned = fileURL.map(PinStore.shared.pins.contains) == true
+            let pin = NSMenuItem(title: pinned ? "Unpin Document" : "Pin Document", action: #selector(togglePin), keyEquivalent: "")
+            pin.target = self
+            pin.isEnabled = fileURL != nil
+            menu.items = [path, name, .separator(), finder, .separator(), pin]
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -6), in: self)
         }
 
         @objc private func copyPath() { if let fileURL { DocumentPath.copy(fileURL) } }
         @objc private func copyName() { DocumentPath.copyName(fileURL) }
         @objc private func reveal() { if let fileURL { DocumentPath.reveal(fileURL) } }
+        @objc private func togglePin() { if let fileURL { PinStore.shared.toggle(fileURL) } }
     }
 }
