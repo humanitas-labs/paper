@@ -205,6 +205,13 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Menu bar") {
+                Toggle("Show Paper in the menu bar", isOn: binding(\.menuBar))
+                Text("An item beside the clock listing the pinned documents (File ▸ Pin Document), the recent ones, New, and Open.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Print and PDF") {
                 numberRow("Body size", binding(\.printFontSize), in: Configuration.printFontSizeRange, unit: "pt")
                 numberRow("Margin", binding(\.printMargin), in: Configuration.printMarginRange, unit: "pt")
