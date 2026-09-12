@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel?.cancel(nil)
         guard !testing else { return }
         UpdateCheck.runIfDue(configuration: ConfigurationStore.shared.current)
+        PinStore.shared.start()
+        MenuBarItem.shared.start()
         let firstLaunch = ConfigurationStore.shared.isFirstLaunch
         if panel != nil, !firstLaunch { WelcomeWindow.show() }
         Task {

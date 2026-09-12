@@ -53,6 +53,9 @@ struct Configuration: Equatable, Sendable {
     /// and show a download icon in the welcome window when it is newer.
     /// Off never makes the request.
     var updateCheck: Bool = true
+    /// Whether the menu bar carries Paper's item with the pinned documents
+    /// (#77). Off by default: nobody who did not ask gets a new icon.
+    var menuBar: Bool = false
     /// Hex overrides for the theme's colours; nil inherits the theme.
     var colorOverrides = Palette.Overrides()
 
@@ -214,6 +217,10 @@ struct Configuration: Equatable, Sendable {
     # the request.
     update.check = on
 
+    # A Paper item in the menu bar, beside the clock, listing the pinned
+    # documents (File ▸ Pin Document), the recent ones, New, and Open.
+    menu.bar = off
+
     # Colour overrides as #RRGGBB. Leave a value empty to use the theme's.
     color.canvas =
     color.ink =
@@ -307,6 +314,8 @@ struct Configuration: Equatable, Sendable {
             printMargin = Self.number(value, in: Self.printMarginRange) ?? printMargin
         case "update.check":
             updateCheck = Self.flag(value) ?? updateCheck
+        case "menu.bar":
+            menuBar = Self.flag(value) ?? menuBar
         case "theme":
             let name = Theme.canonicalName(value)
             if !name.isEmpty { theme = name }
@@ -340,6 +349,7 @@ struct Configuration: Equatable, Sendable {
             ("print.font.size", Self.format(printFontSize)),
             ("print.margin", Self.format(printMargin)),
             ("update.check", updateCheck ? "on" : "off"),
+            ("menu.bar", menuBar ? "on" : "off"),
         ] + Self.colorEntries(colorOverrides)
     }
 
