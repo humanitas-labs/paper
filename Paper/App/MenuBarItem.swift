@@ -52,9 +52,6 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        // Section headers say which group is which; without them the
-        // first pin and the first recent read alike.
-        menu.addItem(.sectionHeader(title: "Pinned"))
         let pinned = MenuBarModel.pinned(PinStore.shared.pins)
         if pinned.isEmpty {
             let none = NSMenuItem(title: "No Pinned Documents", action: nil, keyEquivalent: "")
@@ -62,7 +59,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             menu.addItem(none)
         }
         for entry in pinned {
-            let item = documentItem(entry.url)
+            let item = documentItem(entry.url, symbol: "pin.fill")
             if entry.missing {
                 item.attributedTitle = NSAttributedString(
                     string: entry.name, attributes: [.foregroundColor: NSColor.tertiaryLabelColor]
@@ -74,8 +71,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             .filter { recent in !pinned.contains { $0.url == recent.url } }
         if !recents.isEmpty {
             menu.addItem(.separator())
-            menu.addItem(.sectionHeader(title: "Recent"))
-            for recent in recents { menu.addItem(documentItem(recent.url)) }
+            for recent in recents { menu.addItem(documentItem(recent.url, symbol: "clock")) }
         }
         menu.addItem(.separator())
         let new = NSMenuItem(title: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "")
@@ -86,9 +82,12 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(open)
     }
 
-    private func documentItem(_ url: URL) -> NSMenuItem {
+    /// A pin marks the pinned, a clock the recent; the symbol says which
+    /// group an item is in where the two run together.
+    private func documentItem(_ url: URL, symbol: String) -> NSMenuItem {
         let item = NSMenuItem(title: url.lastPathComponent, action: #selector(open(_:)), keyEquivalent: "")
         item.target = self
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         item.representedObject = url
         item.toolTip = (url.path as NSString).abbreviatingWithTildeInPath
         return item
