@@ -82,12 +82,13 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(open)
     }
 
-    /// A pin marks the pinned, a clock the recent; the symbol says which
-    /// group an item is in where the two run together.
+    /// A pin beside the pinned, a clock beside the recent, in the grey a
+    /// section header uses, so the symbol reads as a label and not a button.
     private func documentItem(_ url: URL, symbol: String) -> NSMenuItem {
         let item = NSMenuItem(title: url.lastPathComponent, action: #selector(open(_:)), keyEquivalent: "")
         item.target = self
-        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(paletteColors: [.secondaryLabelColor]))
         item.representedObject = url
         item.toolTip = (url.path as NSString).abbreviatingWithTildeInPath
         return item
