@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Pinning asks for the name first. File ▸ Pin Document… (⇧⌘P) and the pill's Pin Document… open a dialog with the file name filled in; Pin takes it, Cancel pins nothing. Unpinning stays one step. Rename Pin… runs the same dialog on a pin that exists.
+
 ## 0.8.0 — 2026.09.12
 
 - Paper in the menu bar, with pinned documents (#77). Settings ▸ Menu bar, or `menu.bar = on`, puts the Enso beside the clock; its menu lists the pinned documents, then the recent ones, then New and Open. File ▸ Pin Document (⇧⌘P) and the corner pill's menu pin and unpin the front document; a pinned document's window closes like any other, and picking it from the bar opens it or brings it forward. The list is Paper's own state in Application Support, so it survives an update and a config reset; a file that has gone stays in the list dimmed, and picking it offers to unpin it. A pin can carry a name shown in place of the file name, set from Settings or Rename Pin… in the pill's menu. Settings lists the pins for naming, reordering by drag, and unpinning; the toggle there, or `menu.bar = off`, takes the item away.

@@ -25,8 +25,10 @@ struct PinCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .saveItem) {
             Divider()
-            Button(url.map(pins.pins.contains) == true ? "Unpin Document" : "Pin Document") {
-                if let url { pins.toggle(url) }
+            // Pinning asks for the name first; unpinning is one step.
+            Button(url.map(pins.pins.contains) == true ? "Unpin Document" : "Pin Document…") {
+                guard let url else { return }
+                if pins.pins.contains(url) { pins.toggle(url) } else { PinPrompt.pin(url) }
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
             .disabled(url == nil)
