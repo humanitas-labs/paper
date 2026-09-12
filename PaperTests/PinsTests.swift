@@ -75,3 +75,27 @@ struct PinsTests {
         #expect(third.pins.urls.map(\.lastPathComponent) == ["a.md"])
     }
 }
+
+struct PinNameTests {
+    private func url(_ path: String) -> URL { URL(fileURLWithPath: path) }
+
+    @Test func aNameShowsInPlaceOfTheFileNameAndBlankClearsIt() {
+        var pins = Pins([url("/tmp/wm-session.md"), url("/tmp/b.md")])
+        pins.rename(url("/tmp/wm-session.md"), to: "  Session plan ")
+        #expect(pins.pin(for: url("/tmp/wm-session.md"))?.name == "Session plan")
+        #expect(MenuBarModel.pinned(pins) { _ in true }.map(\.name) == ["Session plan", "b.md"])
+        pins.rename(url("/tmp/wm-session.md"), to: "   ")
+        #expect(pins.pin(for: url("/tmp/wm-session.md"))?.name == nil)
+        pins.rename(url("/tmp/not-pinned.md"), to: "x")
+        #expect(pins.urls.count == 2, "naming an unpinned file pins nothing")
+    }
+
+    @Test func namesRoundTripAndTheOldBarePathFormStillReads() {
+        var pins = Pins([url("/tmp/a.md"), url("/tmp/b.md")])
+        pins.rename(url("/tmp/a.md"), to: "Today")
+        #expect(Pins.decode(pins.encoded()) == pins)
+        let old = Pins.decode(Data("{\"pins\": [\"/tmp/a.md\", {\"path\": \"/tmp/b.md\", \"name\": \"Plan\"}, 7]}".utf8))
+        #expect(old.urls.map(\.lastPathComponent) == ["a.md", "b.md"])
+        #expect(old.pin(for: url("/tmp/b.md"))?.name == "Plan")
+    }
+}

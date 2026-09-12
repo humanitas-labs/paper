@@ -41,6 +41,12 @@ final class PinStore: ObservableObject {
         write(next)
     }
 
+    func rename(_ url: URL, to name: String?) {
+        var next = pins
+        next.rename(url, to: name)
+        write(next)
+    }
+
     func move(fromOffsets source: IndexSet, toOffset destination: Int) {
         var next = pins
         next.move(fromOffsets: source, toOffset: destination)

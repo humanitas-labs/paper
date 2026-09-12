@@ -213,16 +213,17 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 if !pins.pins.urls.isEmpty {
                     // The pinned list in its menu order; drag to reorder.
-                    ForEach(pins.pins.urls, id: \.self) { url in
+                    ForEach(pins.pins.pins, id: \.url) { pin in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(url.lastPathComponent)
-                                Text((url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+                                // The name the bar shows; empty means the file name.
+                                PinNameField(pin: pin) { pins.rename(pin.url, to: $0) }
+                                Text((pin.url.path as NSString).abbreviatingWithTildeInPath)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Unpin") { pins.remove(url) }
+                            Button("Unpin") { pins.remove(pin.url) }
                         }
                     }
                     .onMove { source, destination in pins.move(fromOffsets: source, toOffset: destination) }
@@ -339,6 +340,25 @@ private struct NumberField: View {
 
 /// A hex colour field beside a colour well. Edits commit on Return or when
 /// focus leaves; invalid text snaps back to the current value.
+/// A pin's name in Settings: a draft committed on Return or when focus
+/// leaves, as the number fields do; the file name is the placeholder.
+private struct PinNameField: View {
+    let pin: Pins.Pin
+    let commit: (String) -> Void
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField(pin.url.lastPathComponent, text: $draft)
+            .textFieldStyle(.plain)
+            .focused($focused)
+            .onAppear { draft = pin.name ?? "" }
+            .onChange(of: pin.name) { _, name in if !focused { draft = name ?? "" } }
+            .onSubmit { commit(draft) }
+            .onChange(of: focused) { _, focused in if !focused { commit(draft) } }
+    }
+}
+
 private struct HexField: View {
     let value: String
     let commit: (String) -> Void
