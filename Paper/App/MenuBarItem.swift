@@ -52,6 +52,9 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        // Section headers say which group is which; without them the
+        // first pin and the first recent read alike.
+        menu.addItem(.sectionHeader(title: "Pinned"))
         let pinned = MenuBarModel.pinned(PinStore.shared.pins)
         if pinned.isEmpty {
             let none = NSMenuItem(title: "No Pinned Documents", action: nil, keyEquivalent: "")
@@ -71,6 +74,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             .filter { recent in !pinned.contains { $0.url == recent.url } }
         if !recents.isEmpty {
             menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "Recent"))
             for recent in recents { menu.addItem(documentItem(recent.url)) }
         }
         menu.addItem(.separator())
