@@ -86,6 +86,7 @@ struct PaperApp: App {
                 Button("Actual Size") { Zoom.reset() }
                     .keyboardShortcut("0", modifiers: .command)
             }
+            PinCommands()
         }
 
         Settings {
@@ -119,6 +120,8 @@ private struct DocumentView: View {
             .overlay(alignment: .top) { UpdateToast().ignoresSafeArea(.container, edges: .top) }
             .frame(minWidth: 640, minHeight: 520)
             .ignoresSafeArea()
+            // File ▸ Pin Document reads the front document's file from here.
+            .focusedSceneValue(\.documentURL, fileURL)
             .onChange(of: fileURL, initial: true) { _, url in
                 // The welcome window lists recents; SwiftUI's document
                 // controller does not note them itself.
