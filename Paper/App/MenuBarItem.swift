@@ -2,7 +2,7 @@ import AppKit
 
 /// Paper's item in the menu bar (#77): the pinned documents, then the
 /// recent ones, then New and Open. Behind `menu.bar` in the config; the
-/// item comes and goes as the key changes. The menu is rebuilt each time
+/// item comes and goes as the key changes, on by default. The menu is rebuilt each time
 /// it opens, so it reflects pins, recents, and files that have come or
 /// gone since the last click.
 @MainActor
@@ -44,7 +44,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     private static var mark: NSImage? {
         guard let image = NSImage(named: "Enso")?.copy() as? NSImage else { return nil }
         image.isTemplate = true
-        image.size = NSSize(width: 18, height: 18)
+        image.size = NSSize(width: 16, height: 16)
         return image
     }
 
