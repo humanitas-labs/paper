@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1 — 2026.09.12
 
 - Pinning asks for the name first. File ▸ Pin Document… (⇧⌘P) and the pill's Pin Document… open a dialog with the file name filled in; Pin takes it, Cancel pins nothing. Unpinning stays one step. Rename Pin… runs the same dialog on a pin that exists.
 
