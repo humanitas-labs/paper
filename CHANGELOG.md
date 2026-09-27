@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Math settings (#80). `math.font` sets math in any of the twelve faces SwiftMath bundles (Latin Modern, the default; TeX Gyre Termes, XITS, Libertinus, Garamond, KpMath and KpMath Sans, Asana, Euler, Fira Math, Noto Sans Math, Lete Sans); inline math keeps matching the text's x-height in each. `math.scale` sizes display and inline math together, 0.5 to 2. `color.math` and `color.math.dark` ink it, following the ink when unset. `math = off` leaves `$` and `$$` as typed and turns `math` fences back into code. Settings ▸ Math has a row for each, and the README a Math section.
+
 ## 0.9.0 — 2026.09.27
 
 - Display math (#80). A `$$ … $$` block or a ```` ```math ```` fence draws as the typeset formula, centred at the measure in the theme's ink, scaled down when wider. The caret on any of its rows shows the source, with the formula previewed beneath it; nothing below moves. A formula that does not parse keeps its source visible with the error under it. A faint expand icon in the block's top-right corner, shown on hover, opens the formula enlarged in Quick Look, with ← → across the page's images and formulas; its PDFs live in a temporary folder emptied at every launch. Export as PDF and Print draw math as vector text. Typesetting is SwiftMath 1.7.3, Paper's first package dependency.

@@ -74,6 +74,7 @@ final class MathStore {
         let latex: String
         let style: Style
         let size: CGFloat
+        let font: MathFont
     }
 
     /// Enough for every formula in a long document at two sizes; beyond
@@ -81,11 +82,16 @@ final class MathStore {
     private let capacity = 1024
     private var entries: [Key: Result<Formula, Failure>] = [:]
     private var order: [Key] = []
-    private var fonts: [CGFloat: MTFont] = [:]
+    private var fonts: [FontKey: MTFont] = [:]
+
+    private struct FontKey: Hashable {
+        let font: MathFont
+        let size: CGFloat
+    }
     private let fontManager = MTFontManager()
 
     func typeset(_ latex: String, style: Style, size: CGFloat) -> Result<Formula, Failure> {
-        let key = Key(latex: latex, style: style, size: size)
+        let key = Key(latex: latex, style: style, size: size, font: Appearance.mathFont)
         if let entry = entries[key] { return entry }
         let entry = make(key)
         entries[key] = entry
@@ -105,7 +111,7 @@ final class MathStore {
         label.labelMode = key.style == .display ? .display : .text
         label.textAlignment = .left
         label.contentInsets = NSEdgeInsets()
-        label.font = font(size: key.size)
+        label.font = font(key.font, size: key.size)
         label.latex = trimmed
         if let error = label.error {
             return .failure(Failure(message: error.localizedDescription))
@@ -160,7 +166,7 @@ final class MathStore {
     /// temporary directory and reused; nil when the source does not parse
     /// or the file cannot be written.
     func previewFile(for latex: String) -> URL? {
-        let digest = SHA256.hash(data: Data(latex.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: Data((Appearance.mathFont.rawValue + "\n" + latex).utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
         let folder = Self.previewFolder
         let url = folder.appendingPathComponent("formula-\(digest).pdf")
         if FileManager.default.fileExists(atPath: url.path) { return url }
@@ -187,10 +193,11 @@ final class MathStore {
         return url
     }
 
-    private func font(size: CGFloat) -> MTFont? {
-        if let font = fonts[size] { return font }
-        let font = fontManager.latinModernFont(withSize: size)
-        fonts[size] = font
+    private func font(_ face: MathFont, size: CGFloat) -> MTFont? {
+        let key = FontKey(font: face, size: size)
+        if let font = fonts[key] { return font }
+        let font = fontManager.font(withName: face.resourceName, size: size)
+        fonts[key] = font
         return font
     }
 }

@@ -67,6 +67,16 @@ struct SettingsView: View {
         return colorRow(title, keyPath, current: store.current[keyPath: keyPath] ?? themeTone ?? derived ?? palette.ink)
     }
 
+    /// The math ink rows: the theme's math tone when it sets one, else
+    /// the ink, which is what math draws in until either is set.
+    private func mathInkRow(_ title: String, _ keyPath: WritableKeyPath<Configuration, String?>, dark: Bool) -> some View {
+        // The palette with the config's overrides applied, so an ink set
+        // in the config shows here when math follows it.
+        let palette = store.current.palette(over: store.resolvedTheme.palette)
+        let current = dark ? palette.mathDark ?? palette.inkDark : palette.math ?? palette.ink
+        return colorRow(title, keyPath, current: current)
+    }
+
     private func colorRow(_ title: String, _ keyPath: WritableKeyPath<Configuration, String?>, current: String) -> some View {
         func write(_ hex: String) {
             var configuration = store.current
@@ -195,6 +205,22 @@ struct SettingsView: View {
 
             Section("Images") {
                 numberRow("Corner radius", binding(\.imageCornerRadius), in: Configuration.imageCornerRadiusRange, unit: "pt")
+            }
+
+            Section("Math") {
+                Toggle("Typeset math", isOn: binding(\.math))
+                Picker("Typeface", selection: binding(\.mathFont)) {
+                    ForEach(MathFont.allCases) { Text($0.title).tag($0) }
+                }
+                .disabled(!store.current.math)
+                numberRow("Scale", binding(\.mathScale), in: Configuration.mathScaleRange, unit: "×")
+                    .disabled(!store.current.math)
+                mathInkRow("Ink", \.mathColor, dark: false)
+                    .disabled(!store.current.math)
+                mathInkRow("Ink (dark)", \.mathColorDark, dark: true)
+                    .disabled(!store.current.math)
+                Text("`$…$` in a line, `$$ … $$` blocks, and ```` ```math ```` fences. Off leaves them as typed.")
+                    .font(.caption)
             }
 
 

@@ -21,6 +21,8 @@ struct Palette: Equatable, Sendable {
     /// The one coloured tone: the update arrow in the welcome window.
     /// Nil is the label ink.
     var accent: String?
+    /// The ink math draws in; nil is the ink.
+    var math: String?
     var inkMutedDark: String?
     var inkQuoteDark: String?
     var inkLabelDark: String?
@@ -29,6 +31,7 @@ struct Palette: Equatable, Sendable {
     var codeBackgroundDark: String?
     var ruleDark: String?
     var accentDark: String?
+    var mathDark: String?
 
     /// The colour keys of a theme file or of the config's overrides: each
     /// value is a `#RRGGBB` string or nil to inherit.
@@ -56,6 +59,7 @@ struct Palette: Equatable, Sendable {
         var codeBackground: String?
         var rule: String?
         var accent: String?
+        var math: String?
         var inkMutedDark: String?
         var inkQuoteDark: String?
         var inkLabelDark: String?
@@ -64,6 +68,7 @@ struct Palette: Equatable, Sendable {
         var codeBackgroundDark: String?
         var ruleDark: String?
         var accentDark: String?
+        var mathDark: String?
 
         var isEmpty: Bool { self == Overrides() }
     }
@@ -83,6 +88,7 @@ struct Palette: Equatable, Sendable {
             codeBackground: o.codeBackground ?? codeBackground,
             rule: o.rule ?? rule,
             accent: o.accent ?? accent,
+            math: o.math ?? math,
             inkMutedDark: o.inkMutedDark ?? inkMutedDark,
             inkQuoteDark: o.inkQuoteDark ?? inkQuoteDark,
             inkLabelDark: o.inkLabelDark ?? inkLabelDark,
@@ -90,7 +96,8 @@ struct Palette: Equatable, Sendable {
             selectionInkDark: o.selectionInkDark ?? selectionInkDark,
             codeBackgroundDark: o.codeBackgroundDark ?? codeBackgroundDark,
             ruleDark: o.ruleDark ?? ruleDark,
-            accentDark: o.accentDark ?? accentDark
+            accentDark: o.accentDark ?? accentDark,
+            mathDark: o.mathDark ?? mathDark
         )
     }
 
@@ -99,10 +106,10 @@ struct Palette: Equatable, Sendable {
         Overrides(
             canvas: canvas, ink: ink, canvasDark: canvasDark, inkDark: inkDark,
             inkMuted: inkMuted, inkQuote: inkQuote, inkLabel: inkLabel, selection: selection, selectionInk: selectionInk,
-            codeBackground: codeBackground, rule: rule, accent: accent,
+            codeBackground: codeBackground, rule: rule, accent: accent, math: math,
             inkMutedDark: inkMutedDark, inkQuoteDark: inkQuoteDark, inkLabelDark: inkLabelDark,
             selectionDark: selectionDark, selectionInkDark: selectionInkDark,
-            codeBackgroundDark: codeBackgroundDark, ruleDark: ruleDark, accentDark: accentDark
+            codeBackgroundDark: codeBackgroundDark, ruleDark: ruleDark, accentDark: accentDark, mathDark: mathDark
         )
     }
 }

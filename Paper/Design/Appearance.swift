@@ -73,18 +73,21 @@ enum Appearance {
     /// Math is set larger than the body: Latin Modern's small x-height
     /// reads a size smaller than the text faces beside it, and a display
     /// formula is a figure, not a line of text.
-    static var mathSize: CGFloat { bodySize * 1.25 }
-    /// Inline math sets at the size where Latin Modern's x-height meets
+    static var mathSize: CGFloat { bodySize * 1.25 * mathScale }
+    /// Whether math renders at all (`math = off` leaves it as typed).
+    static var mathEnabled: Bool { configuration.math }
+    static var mathFont: MathFont { configuration.mathFont }
+    static var mathScale: CGFloat { CGFloat(configuration.mathScale) }
+    /// Inline math sets at the size where the math face's x-height meets
     /// the surrounding text's, so a formula reads as part of the line
     /// rather than a size larger or smaller; kept between the text's size
-    /// and a third above it for faces with extreme x-heights.
+    /// and a third above it for faces with extreme x-heights, then scaled.
     static func inlineMathSize(for font: NSFont) -> CGFloat {
         let size = font.pointSize
-        guard font.xHeight > 0 else { return size }
-        return size * min(4 / 3, max(1, font.xHeight / (size * latinModernXHeight)))
+        guard font.xHeight > 0 else { return size * mathScale }
+        let matched = font.xHeight / (size * CGFloat(mathFont.xHeight))
+        return size * min(4 / 3, max(1, matched)) * mathScale
     }
-    /// Latin Modern's x-height as a fraction of its size.
-    static let latinModernXHeight: CGFloat = 0.431
     /// Space kept between a tall inline formula and the lines around it.
     static var inlineMathClearance: CGFloat { (bodySize * 0.15).rounded() }
     /// Room above and below a display formula inside its band.
@@ -137,6 +140,10 @@ enum Appearance {
     /// theme's accent, else the label ink.
     static var accent: NSColor { colors.accent }
 
+    /// The ink math draws in: the theme's or the config's math tone, else
+    /// the ink itself.
+    static var mathInk: NSColor { colors.mathInk }
+
     static var palette: Palette { ConfigurationStore.shared.palette }
 
     private struct Colors {
@@ -147,6 +154,7 @@ enum Appearance {
         let quoteInk: NSColor
         let labelInk: NSColor
         let accent: NSColor
+        let mathInk: NSColor
         let selection: NSColor
         let selectionInk: NSColor?
         let hover: NSColor
@@ -176,6 +184,7 @@ enum Appearance {
             quoteInk: tone(palette.inkQuote, palette.inkQuoteDark, alpha: 0.62),
             labelInk: tone(palette.inkLabel, palette.inkLabelDark, alpha: 0.62),
             accent: tone(palette.accent ?? palette.inkLabel, palette.accentDark ?? palette.inkLabelDark, alpha: 0.62),
+            mathInk: tone(palette.math, palette.mathDark, alpha: 1),
             selection: tone(palette.selection, palette.selectionDark, alpha: 0.13),
             selectionInk: (palette.selectionInk ?? palette.selectionInkDark) == nil ? nil : dynamic(
                 light: color(hex: palette.selectionInk ?? palette.canvas),

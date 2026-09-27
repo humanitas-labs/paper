@@ -557,7 +557,7 @@ final class PaperTextView: NSTextView {
         let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: container)
         for figure in mathFigures(in: glyphRange) where figure.area.intersects(dirtyRect) {
             guard case .success(let formula) = MathStore.shared.display(figure.latex) else { continue }
-            formula.draw(in: figure.formula, color: Appearance.ink)
+            formula.draw(in: figure.formula, color: Appearance.mathInk)
         }
         for math in layoutManager.mathBands(forGlyphRange: glyphRange, width: MarkdownSyntaxStyler.measure(of: self)) {
             guard case .failure(let failure) = MathStore.shared.display(math.latex) else { continue }

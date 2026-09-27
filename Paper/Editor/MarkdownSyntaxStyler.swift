@@ -257,11 +257,13 @@ final class MarkdownSyntaxStyler {
         // Inline math is set in the code font straight after, for the same
         // reason: `a_1 * b_2` is LaTeX, not emphasis. Its rendering is set
         // later, once lists and quotes have settled the paragraph styles.
-        let displayMath = Self.mathBlocks(in: source, range: range, fenced: fenced, comments: comments)
-        let inlineMath = Self.inlineMathSpans(
+        // With math off, dollars are prose and a `math` fence is code.
+        let math = Appearance.mathEnabled
+        let displayMath = math ? Self.mathBlocks(in: source, range: range, fenced: fenced, comments: comments) : []
+        let inlineMath = math ? Self.inlineMathSpans(
             in: source, range: range,
             excluding: fenced + comments + displayMath.map(\.range)
-        )
+        ) : []
         markInlineMath(inlineMath, in: storage)
         applyDelimitedStyle(
             Self.strongEmphasisPattern,
@@ -591,7 +593,8 @@ final class MarkdownSyntaxStyler {
         fenced: [NSRange]
     ) {
         let text = source as NSString
-        for blockRange in fenced where Self.touches(blockRange, range) && !Self.isMathFence(blockRange, in: text) {
+        let math = Appearance.mathEnabled
+        for blockRange in fenced where Self.touches(blockRange, range) && !(math && Self.isMathFence(blockRange, in: text)) {
             let block = text.paragraphRange(for: blockRange)
 
             var attributes = Self.baseAttributes
@@ -755,7 +758,7 @@ final class MarkdownSyntaxStyler {
                 neighbour = span.range.location - 1
             }
             var font = Appearance.bodyFont()
-            var color = Appearance.ink
+            var color = Appearance.mathInk
             if let neighbour {
                 if let near = storage.attribute(.font, at: neighbour, effectiveRange: nil) as? NSFont,
                    near != Appearance.codeFont() {

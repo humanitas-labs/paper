@@ -56,6 +56,14 @@ struct Configuration: Equatable, Sendable {
     /// Whether the menu bar carries Paper's item with the pinned documents
     /// (#77). On by default; off takes the item away.
     var menuBar: Bool = true
+    /// Whether `$…$`, `$$ … $$`, and `math` fences draw as typeset math.
+    /// Off leaves them as typed, and a `math` fence is a code block.
+    var math: Bool = true
+    /// The math typeface, one SwiftMath bundles.
+    var mathFont: MathFont = .latinModern
+    /// Math size as a multiple of its default: display math at 1.25× the
+    /// body, inline math at the body's x-height.
+    var mathScale: Double = 1
     /// Hex overrides for the theme's colours; nil inherits the theme.
     var colorOverrides = Palette.Overrides()
 
@@ -86,6 +94,16 @@ struct Configuration: Equatable, Sendable {
         get { colorOverrides.selectionDark }
         set { colorOverrides.selectionDark = newValue }
     }
+    /// The ink math draws in, as Settings binds it; nil is the theme's
+    /// math ink, or the text's ink when the theme sets none.
+    var mathColor: String? {
+        get { colorOverrides.math }
+        set { colorOverrides.math = newValue }
+    }
+    var mathColorDark: String? {
+        get { colorOverrides.mathDark }
+        set { colorOverrides.mathDark = newValue }
+    }
 
     /// A `color.*` key and the override it sets.
     struct ColorKey: Sendable {
@@ -112,6 +130,7 @@ struct Configuration: Equatable, Sendable {
         ColorKey("color.code.background", \.codeBackground),
         ColorKey("color.rule", \.rule),
         ColorKey("color.accent", \.accent),
+        ColorKey("color.math", \.math),
         ColorKey("color.ink.muted.dark", \.inkMutedDark),
         ColorKey("color.ink.quote.dark", \.inkQuoteDark),
         ColorKey("color.ink.label.dark", \.inkLabelDark),
@@ -120,6 +139,7 @@ struct Configuration: Equatable, Sendable {
         ColorKey("color.code.background.dark", \.codeBackgroundDark),
         ColorKey("color.rule.dark", \.ruleDark),
         ColorKey("color.accent.dark", \.accentDark),
+        ColorKey("color.math.dark", \.mathDark),
     ]
 
     /// The overrides applied over a resolved theme's palette.
@@ -139,6 +159,7 @@ struct Configuration: Equatable, Sendable {
     static let windowHeightRange: ClosedRange<Double> = 520...3000
     static let printFontSizeRange: ClosedRange<Double> = 6...18
     static let printMarginRange: ClosedRange<Double> = 18...144
+    static let mathScaleRange: ClosedRange<Double> = 0.5...2
 
     static let didChangeNotification = Notification.Name("paper.configuration.didChange")
 
@@ -221,6 +242,15 @@ struct Configuration: Equatable, Sendable {
     # documents (File ▸ Pin Document), the recent ones, New, and Open.
     menu.bar = on
 
+    # Math: $…$ in a line, $$ … $$ blocks, and ```math fences draw as
+    # typeset formulas; off leaves them as typed. The typeface is one of
+    # latin-modern, termes, xits, libertinus, garamond, kpmath,
+    # kpmath-sans, asana, euler, fira, noto-sans, or lete-sans. The scale
+    # multiplies math's size, which matches the text by default.
+    math = on
+    math.font = latin-modern
+    math.scale = 1
+
     # Colour overrides as #RRGGBB. Leave a value empty to use the theme's.
     color.canvas =
     color.ink =
@@ -232,8 +262,8 @@ struct Configuration: Equatable, Sendable {
     # text; the welcome window's labels and icons; the selection highlight,
     # and the ink of selected text (unset keeps the text's own colour); the
     # code band and chip; the thematic break rule; the accent, the one
-    # coloured tone, on the welcome window's update arrow. Each has a .dark
-    # form for the dark appearance.
+    # coloured tone, on the welcome window's update arrow; math, which
+    # unset is the ink. Each has a .dark form for the dark appearance.
     color.ink.muted =
     color.ink.quote =
     color.ink.label =
@@ -242,6 +272,7 @@ struct Configuration: Equatable, Sendable {
     color.code.background =
     color.rule =
     color.accent =
+    color.math =
     color.ink.muted.dark =
     color.ink.quote.dark =
     color.ink.label.dark =
@@ -250,6 +281,7 @@ struct Configuration: Equatable, Sendable {
     color.code.background.dark =
     color.rule.dark =
     color.accent.dark =
+    color.math.dark =
 
     """
 
@@ -316,6 +348,12 @@ struct Configuration: Equatable, Sendable {
             updateCheck = Self.flag(value) ?? updateCheck
         case "menu.bar":
             menuBar = Self.flag(value) ?? menuBar
+        case "math":
+            math = Self.flag(value) ?? math
+        case "math.font":
+            mathFont = MathFont(configName: value) ?? mathFont
+        case "math.scale":
+            mathScale = Self.number(value, in: Self.mathScaleRange) ?? mathScale
         case "theme":
             let name = Theme.canonicalName(value)
             if !name.isEmpty { theme = name }
@@ -350,6 +388,9 @@ struct Configuration: Equatable, Sendable {
             ("print.margin", Self.format(printMargin)),
             ("update.check", updateCheck ? "on" : "off"),
             ("menu.bar", menuBar ? "on" : "off"),
+            ("math", math ? "on" : "off"),
+            ("math.font", mathFont.rawValue),
+            ("math.scale", Self.format(mathScale)),
         ] + Self.colorEntries(colorOverrides)
     }
 
@@ -415,5 +456,82 @@ struct Configuration: Equatable, Sendable {
     private static func number(_ value: String, in range: ClosedRange<Double>) -> Double? {
         guard let parsed = Double(value), parsed.isFinite else { return nil }
         return min(max(parsed, range.lowerBound), range.upperBound)
+    }
+}
+
+/// The math typefaces SwiftMath bundles, by their config names. Each
+/// carries its resource name and x-height, which sizes inline math to the
+/// text around it.
+enum MathFont: String, CaseIterable, Sendable, Identifiable {
+    case latinModern = "latin-modern"
+    case termes
+    case xits
+    case libertinus
+    case garamond
+    case kpMath = "kpmath"
+    case kpMathSans = "kpmath-sans"
+    case asana
+    case euler
+    case fira
+    case notoSans = "noto-sans"
+    case leteSans = "lete-sans"
+
+    var id: String { rawValue }
+
+    /// Case, spaces, and underscores are forgiven: `Latin Modern` and
+    /// `latin_modern` both name Latin Modern.
+    init?(configName: String) {
+        let name = configName.trimmingCharacters(in: .whitespaces).lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "_", with: "-")
+        self.init(rawValue: name)
+    }
+
+    var title: String {
+        switch self {
+        case .latinModern: "Latin Modern"
+        case .termes: "TeX Gyre Termes"
+        case .xits: "XITS"
+        case .libertinus: "Libertinus"
+        case .garamond: "Garamond"
+        case .kpMath: "KpMath"
+        case .kpMathSans: "KpMath Sans"
+        case .asana: "Asana"
+        case .euler: "Euler"
+        case .fira: "Fira Math"
+        case .notoSans: "Noto Sans Math"
+        case .leteSans: "Lete Sans"
+        }
+    }
+
+    /// The name SwiftMath's font manager loads it by.
+    var resourceName: String {
+        switch self {
+        case .latinModern: "latinmodern-math"
+        case .termes: "texgyretermes-math"
+        case .xits: "xits-math"
+        case .libertinus: "LibertinusMath-Regular"
+        case .garamond: "Garamond-Math"
+        case .kpMath: "KpMath-Light"
+        case .kpMathSans: "KpMath-Sans"
+        case .asana: "Asana-Math"
+        case .euler: "Euler-Math"
+        case .fira: "FiraMath-Regular"
+        case .notoSans: "NotoSansMath-Regular"
+        case .leteSans: "LeteSansMath"
+        }
+    }
+
+    /// The x-height as a fraction of the size, measured from each file.
+    var xHeight: Double {
+        switch self {
+        case .latinModern: 0.431
+        case .libertinus: 0.429
+        case .kpMath, .kpMathSans: 0.442
+        case .termes, .xits, .garamond, .leteSans: 0.450
+        case .asana, .euler: 0.462
+        case .fira: 0.527
+        case .notoSans: 0.536
+        }
     }
 }

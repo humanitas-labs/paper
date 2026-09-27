@@ -58,6 +58,12 @@ The window has no title bar. Rest the pointer in the top-left corner and a pill 
 
 Pasting or dropping an image into an unsaved document asks you to save first. Images go beside the document by default; set `image.paste.directory = assets` to use a relative subfolder instead. Undo removes the inserted Markdown, but keeps the image file.
 
+## Math
+
+LaTeX between dollar signs is typeset in place, the way GitHub reads it. `$E = mc^2$` in a line sits on the text's baseline; a `$$ … $$` block, on one line or several, or a ```` ```math ```` fence, is centred on its own. Click into the paragraph to edit the source; nothing below it moves. Prices and paths stay prose: there is no space just inside either `$` of a formula and no digit after its closer, so `$5 and $10` and `$HOME` read as typed, and `\$` is a literal dollar. Hover a display formula and click the icon in its corner to open it enlarged. Math exports and prints as vector type.
+
+Typesetting is [SwiftMath](https://github.com/mgriebling/SwiftMath), which covers most of the LaTeX math people write day to day (fractions, roots, sums and integrals, matrices, `cases`, Greek, accents, `\text`); a command it lacks, like `\operatorname`, shows its source with the error. `math.font` picks the typeface, `math.scale` the size, `color.math` the ink, and `math = off` leaves every dollar as typed. Settings (⌘,) has the same under Math.
+
 ## Configuration
 
 Settings live in `$XDG_CONFIG_HOME/paper/config` when set, otherwise `~/.config/paper/config`. The file is written as a commented template on first launch and applied live to open windows whenever it is saved. Selected defaults are shown below; the generated template documents every key.
@@ -78,6 +84,9 @@ window.width = 1400
 window.height = 876
 print.font.size = 10
 print.margin = 64
+math = on
+math.font = latin-modern
+math.scale = 1
 ```
 
 ## More
