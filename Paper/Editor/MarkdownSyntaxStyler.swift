@@ -44,6 +44,13 @@ final class MarkdownSyntaxStyler {
     private static let codePattern = try! NSRegularExpression(
         pattern: #"(?<!`)(`+)([^\n]+?)(?<!`)\1(?!`)"#
     )
+    /// `$…$`, inline math as GitHub and Pandoc read it: no space just
+    /// inside either `$`, the closer not followed by a digit, and a `\$`
+    /// literal, so prices (`$5 and $10`) and paths (`$HOME`) stay prose.
+    /// A `$` next to another `$` is display syntax, never inline.
+    private static let inlineMathPattern = try! NSRegularExpression(
+        pattern: #"(?<![\\$])\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<!\s)\$(?![$\d])"#
+    )
     /// `[text](destination)`; an image (`![…]`) is left alone.
     private static let linkPattern = try! NSRegularExpression(
         pattern: #"(?<!!)\[([^\]\n]+)\]\(([^)\s]+)\)"#
@@ -247,6 +254,15 @@ final class MarkdownSyntaxStyler {
         // skip anything already set in the code font, so span content
         // stays literal.
         applyInlineCode(to: storage, source: source, range: range)
+        // Inline math is set in the code font straight after, for the same
+        // reason: `a_1 * b_2` is LaTeX, not emphasis. Its rendering is set
+        // later, once lists and quotes have settled the paragraph styles.
+        let displayMath = Self.mathBlocks(in: source, range: range, fenced: fenced, comments: comments)
+        let inlineMath = Self.inlineMathSpans(
+            in: source, range: range,
+            excluding: fenced + comments + displayMath.map(\.range)
+        )
+        markInlineMath(inlineMath, in: storage)
         applyDelimitedStyle(
             Self.strongEmphasisPattern,
             trait: [.bold, .italic],
@@ -293,12 +309,9 @@ final class MarkdownSyntaxStyler {
             excluding: fenced + comments
         )
         applyListMarkers(to: storage, source: source, range: range)
+        applyInlineMath(inlineMath, to: storage, source: source, width: Self.measure(of: textView))
         applyCodeBlocks(to: storage, source: source, range: range, fenced: fenced)
-        applyDisplayMath(
-            to: storage, source: source, range: range,
-            fenced: fenced, comments: comments,
-            width: Self.measure(of: textView)
-        )
+        applyDisplayMath(displayMath, to: storage, source: source, range: range, width: Self.measure(of: textView))
         applyComments(to: storage, source: source, range: range, comments: comments)
         // Concealed characters stay in the layout as zero-advance control
         // glyphs; a kern (the letter spacing) on them would still widen the
@@ -635,16 +648,14 @@ final class MarkdownSyntaxStyler {
     /// band carries the error. Runs after the code pass, over whatever the
     /// passes before it set, as that pass does for code.
     private func applyDisplayMath(
+        _ blocks: [(range: NSRange, latex: String)],
         to storage: NSTextStorage,
         source: String,
         range: NSRange,
-        fenced: [NSRange],
-        comments: [NSRange],
         width: CGFloat
     ) {
         let text = source as NSString
-        for block in Self.mathBlocks(in: source, range: range, fenced: fenced, comments: comments)
-        where Self.touches(block.range, range) {
+        for block in blocks where Self.touches(block.range, range) {
             let paragraphs = text.paragraphRange(for: block.range)
             var attributes = Self.baseAttributes
             attributes[.font] = Appearance.codeFont()
@@ -684,6 +695,126 @@ final class MarkdownSyntaxStyler {
             }
         }
     }
+
+    /// The inline formulas in `range`, `$` to `$`, with their LaTeX, in
+    /// document order. Code spans win: a formula overlapping one is left
+    /// as typed, as is one inside an `excluding` range (fences, comments,
+    /// display blocks).
+    static func inlineMathSpans(
+        in source: String,
+        range: NSRange,
+        excluding: [NSRange]
+    ) -> [(range: NSRange, latex: String)] {
+        let text = source as NSString
+        var code: [NSRange] = []
+        codePattern.enumerateMatches(in: source, range: range) { match, _, _ in
+            if let match { code.append(match.range) }
+        }
+        var spans: [(range: NSRange, latex: String)] = []
+        inlineMathPattern.enumerateMatches(in: source, range: range) { match, _, _ in
+            guard let match, !(code + excluding).contains(where: { touches($0, match.range) }) else { return }
+            spans.append((match.range, text.substring(with: match.range(at: 1))))
+        }
+        return spans
+    }
+
+    /// Sets each formula's source in the code font, muted, so the inline
+    /// passes that follow skip it as they skip a code span.
+    private func markInlineMath(_ spans: [(range: NSRange, latex: String)], in storage: NSTextStorage) {
+        for span in spans {
+            storage.addAttribute(.font, value: Appearance.codeFont(), range: span.range)
+            storage.addAttribute(.foregroundColor, value: Appearance.mutedInk, range: span.range)
+        }
+    }
+
+    /// An inline formula draws in the line, typeset by `MathStore` at the
+    /// size that matches the text around it: off the active paragraph its
+    /// source conceals and its first `$` reserves the formula's width,
+    /// where the text view draws it on the baseline; on it the source
+    /// shows, as a link's destination does. Source that does not parse
+    /// stays visible, with the error as its tooltip. A paragraph holding a
+    /// formula taller than its lines gets lines tall enough for it in both
+    /// states, so the caret entering it never changes its height.
+    private func applyInlineMath(
+        _ spans: [(range: NSRange, latex: String)],
+        to storage: NSTextStorage,
+        source: String,
+        width: CGFloat
+    ) {
+        let text = source as NSString
+        var extents: [NSRange: (ascent: CGFloat, descent: CGFloat)] = [:]
+        for span in spans {
+            let paragraph = text.paragraphRange(for: span.range)
+            // The text beside the formula sets its size and ink: the
+            // character after it on the line, or else the one before.
+            var neighbour: Int?
+            let after = NSMaxRange(span.range)
+            if after < NSMaxRange(paragraph), ![0x0A, 0x0D].contains(text.character(at: after)) {
+                neighbour = after
+            } else if span.range.location > paragraph.location {
+                neighbour = span.range.location - 1
+            }
+            var font = Appearance.bodyFont()
+            var color = Appearance.ink
+            if let neighbour {
+                if let near = storage.attribute(.font, at: neighbour, effectiveRange: nil) as? NSFont,
+                   near != Appearance.codeFont() {
+                    font = near
+                }
+                if storage.attribute(.foregroundColor, at: neighbour, effectiveRange: nil) as? NSColor == Appearance.quoteInk {
+                    color = Appearance.quoteInk
+                }
+            }
+            let size = Appearance.inlineMathSize(for: font)
+
+            // Emphasis around the formula may have added a trait to the
+            // code font; the source reads the same either way.
+            storage.addAttribute(.font, value: Appearance.codeFont(), range: span.range)
+            storage.addAttribute(.foregroundColor, value: Appearance.mutedInk, range: span.range)
+            storage.addAttribute(.inlineMath, value: InlineMath(latex: span.latex, size: size, color: color), range: span.range)
+            switch MathStore.shared.typeset(span.latex, style: .inline, size: size) {
+            case .success(let formula):
+                let fitted = formula.fitted(to: width)
+                let scale = formula.width > 0 ? fitted.width / formula.width : 1
+                storage.addAttribute(.concealable, value: true, range: span.range)
+                storage.addAttribute(.reservedWidth, value: fitted.width, range: NSRange(location: span.range.location, length: 1))
+                let extent = extents[paragraph] ?? (0, 0)
+                extents[paragraph] = (max(extent.ascent, formula.ascent * scale), max(extent.descent, formula.descent * scale))
+            case .failure(let failure):
+                storage.addAttribute(.toolTip, value: failure.message, range: span.range)
+            }
+        }
+
+        for (paragraph, extent) in extents {
+            // The tallest face on the paragraph sets its ordinary line; the
+            // code font of the formula's source is never the tallest.
+            var font = Appearance.bodyFont()
+            storage.enumerateAttribute(.font, in: paragraph) { value, _, _ in
+                if let near = value as? NSFont, near.ascender - near.descender > font.ascender - font.descender { font = near }
+            }
+            let current = storage.attribute(.paragraphStyle, at: paragraph.location, effectiveRange: nil) as? NSParagraphStyle
+                ?? Appearance.paragraphStyle()
+            guard let style = current.mutableCopy() as? NSMutableParagraphStyle else { continue }
+            // TextKit puts a line's extra height above its glyphs, so the
+            // room above the baseline is the line less the face's descent,
+            // and a formula's descent overhangs into the leading above the
+            // next line. Lines at least as tall as the face's ordinary line
+            // also keep a line holding nothing but a formula (whose
+            // concealed source is in the smaller code font) from shrinking.
+            let multiple = style.lineHeightMultiple > 0 ? style.lineHeightMultiple : 1
+            let ordinary = layoutManagerLineHeight(for: font) * multiple
+            let needed = max(extent.ascent - font.descender, extent.descent + font.ascender) + Appearance.inlineMathClearance
+            style.minimumLineHeight = max(style.minimumLineHeight, ordinary, needed.rounded(.up))
+            storage.addAttribute(.paragraphStyle, value: style, range: paragraph)
+        }
+    }
+
+    /// The height TextKit gives a line set in `font` alone.
+    private func layoutManagerLineHeight(for font: NSFont) -> CGFloat {
+        Self.measuringLayoutManager.defaultLineHeight(for: font)
+    }
+
+    private static let measuringLayoutManager = NSLayoutManager()
 
     /// The display-math blocks touching `range`, in document order, each
     /// with its LaTeX: fences whose info string is `math`, and `$$` blocks

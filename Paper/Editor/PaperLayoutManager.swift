@@ -51,6 +51,10 @@ extension NSAttributedString.Key {
     /// fence), delimiters included; the value is its `MathBlock`. The last
     /// line's spacing reserves the band the text view draws the formula in.
     static let mathSource = NSAttributedString.Key("paper.mathSource")
+    /// Marks an inline formula's source, `$` to `$`; the value is its
+    /// `InlineMath`. Off the active paragraph the first `$` reserves the
+    /// formula's width and the text view draws the formula there.
+    static let inlineMath = NSAttributedString.Key("paper.inlineMath")
 }
 
 /// The LaTeX of one display-math block. Equal by source, so a restyle
@@ -68,6 +72,28 @@ final class MathBlock: NSObject {
     }
 
     override var hash: Int { latex.hashValue }
+}
+
+/// One inline formula: its LaTeX, the size it sets at (matched to the
+/// surrounding text), and the ink it draws in. Equal by value, like
+/// `MathBlock`, so an incremental restyle compares equal to a full pass.
+final class InlineMath: NSObject {
+    let latex: String
+    let size: CGFloat
+    let color: NSColor
+
+    init(latex: String, size: CGFloat, color: NSColor) {
+        self.latex = latex
+        self.size = size
+        self.color = color
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? InlineMath else { return false }
+        return other.latex == latex && other.size == size && other.color == color
+    }
+
+    override var hash: Int { latex.hashValue ^ size.hashValue }
 }
 
 /// TextKit 1 layout manager that computes margin decorations and conceals
@@ -589,6 +615,43 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             bands.append((block, band, math.latex, active))
         }
         return bands
+    }
+
+    /// Each concealed inline formula intersecting `glyphRange`, in
+    /// text-container coordinates: the rect its first `$` reserves, as wide
+    /// as the formula, with the formula's baseline on the line's. A span
+    /// the caret has revealed shows its source and yields nothing.
+    @MainActor
+    func inlineFormulas(forGlyphRange glyphRange: NSRange) -> [(rect: NSRect, math: InlineMath)] {
+        guard let storage = textStorage else { return [] }
+        let characterRange = self.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        var formulas: [(rect: NSRect, math: InlineMath)] = []
+        var measured: [NSRange] = []
+        storage.enumerateAttribute(.inlineMath, in: characterRange) { value, partial, _ in
+            guard let math = value as? InlineMath else { return }
+            var span = NSRange()
+            _ = storage.attribute(
+                .inlineMath, at: partial.location,
+                longestEffectiveRange: &span, in: NSRange(location: 0, length: storage.length)
+            )
+            guard !measured.contains(span) else { return }
+            measured.append(span)
+            guard let width = storage.attribute(.reservedWidth, at: span.location, effectiveRange: nil) as? CGFloat,
+                  self.isConcealed(characterAt: span.location),
+                  case .success(let formula) = MathStore.shared.typeset(math.latex, style: .inline, size: math.size)
+            else { return }
+            let glyph = self.glyphIndexForCharacter(at: span.location)
+            let fragment = self.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let location = self.location(forGlyphAt: glyph)
+            let scale = formula.width > 0 ? width / formula.width : 1
+            formulas.append((NSRect(
+                x: fragment.minX + location.x,
+                y: fragment.minY + location.y - formula.ascent * scale,
+                width: width,
+                height: formula.height * scale
+            ), math))
+        }
+        return formulas
     }
 
     /// Line-fragment rects (in text-container coordinates) of each concealed

@@ -30,6 +30,8 @@ struct IncrementalStyleTests {
 
     Plain paragraph between the blocks, before the fence.
 
+    Inline $\\frac{x}{y}$ math and $a * b$ in a line, costing $5.
+
     ```swift
     let x = 1  // not *italic*
     func f() -> Int { x }
@@ -133,6 +135,9 @@ struct IncrementalStyleTests {
         Edit(name: "type inside display math", local: true) { t, v in t.insert("^2", at: t.location(of: "+ c", in: v, offset: 3), in: v) },
         Edit(name: "delete display math's closer", local: true) { t, v in t.replace("+ c\n$$", with: "+ c", in: v) },
         Edit(name: "close display math on its opening line", local: true) { t, v in t.replace("$$\n\\frac", with: "$$ x $$\n\\frac", in: v) },
+        Edit(name: "type inside inline math", local: true) { t, v in t.insert("^2", at: t.location(of: "{y}", in: v, offset: 3), in: v) },
+        Edit(name: "delete an inline closer", local: true) { t, v in t.replace("{y}$", with: "{y}", in: v) },
+        Edit(name: "close a price into inline math", local: true) { t, v in t.replace("costing $5.", with: "costing $5$.", in: v) },
         Edit(name: "type after an arrow", local: true) { t, v in t.insert(">", at: t.location(of: "-> arrow", in: v, offset: 2), in: v) },
         Edit(name: "paste three paragraphs", local: true) { t, v in t.insert("Pasted A\n\n- pasted item\n  wrapped\n\n> pasted quote\n\n", at: t.location(of: "Plain paragraph", in: v), in: v) },
         Edit(name: "paste a fenced block", local: true) { t, v in t.insert("```\ncode\n```\n\n", at: t.location(of: "Plain paragraph", in: v), in: v) },

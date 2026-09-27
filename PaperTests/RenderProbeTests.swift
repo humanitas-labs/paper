@@ -113,6 +113,39 @@ struct RenderProbeTests {
         try png.write(to: dir.appendingPathComponent("render-math-\(appearance == .aqua ? "light" : "dark").png"))
     }
 
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func renderInlineMath(appearance: NSAppearance.Name) throws {
+        guard let dir = Self.probeDirectory else { return }
+        let text = #"""
+        ## Inline math
+
+        Einstein wrote $E = mc^2$ in 1905, and the roots of $ax^2 + bx + c = 0$ are $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$, which sits in the line.
+
+        The degree of operating leverage is $\text{DOL} = \frac{\%\Delta \text{EBIT}}{\%\Delta \text{Sales}}$ and a sum $\sum_{i=1}^{n} x_i$ reads compact.
+
+        Prices stay prose: it costs $5 and $10, and $HOME/bin is a path.
+
+        > A quote with $\alpha + \beta$ in it, and one that fails: $\frac{a}{$.
+
+        - A list item with $\sqrt{2}$ and **bold $x_1$ text**.
+
+        The caret is on this line, with $e^{i\pi} + 1 = 0$ revealed.
+
+        # Heading $x^2$ too
+
+        Last paragraph.
+        """#
+        let (scrollView, textView) = makeEditor(width: 900, height: 820, text: text)
+        scrollView.appearance = NSAppearance(named: appearance)
+        textView.setSelectedRange(NSRange(location: (text as NSString).range(of: "caret is").location, length: 0))
+        scrollView.layoutSubtreeIfNeeded()
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        let rep = try #require(scrollView.bitmapImageRepForCachingDisplay(in: scrollView.bounds))
+        scrollView.cacheDisplay(in: scrollView.bounds, to: rep)
+        let png = try #require(rep.representation(using: .png, properties: [:]))
+        try png.write(to: dir.appendingPathComponent("render-inline-math-\(appearance == .aqua ? "light" : "dark").png"))
+    }
+
     @Test(arguments: [(1120.0, 800.0), (640.0, 520.0), (1800.0, 900.0)], [NSAppearance.Name.aqua, .darkAqua])
     func renderSample(size: (Double, Double), appearance: NSAppearance.Name) throws {
         guard let dir = Self.probeDirectory else { return }

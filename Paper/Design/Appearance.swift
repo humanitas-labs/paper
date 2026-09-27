@@ -74,6 +74,19 @@ enum Appearance {
     /// reads a size smaller than the text faces beside it, and a display
     /// formula is a figure, not a line of text.
     static var mathSize: CGFloat { bodySize * 1.25 }
+    /// Inline math sets at the size where Latin Modern's x-height meets
+    /// the surrounding text's, so a formula reads as part of the line
+    /// rather than a size larger or smaller; kept between the text's size
+    /// and a third above it for faces with extreme x-heights.
+    static func inlineMathSize(for font: NSFont) -> CGFloat {
+        let size = font.pointSize
+        guard font.xHeight > 0 else { return size }
+        return size * min(4 / 3, max(1, font.xHeight / (size * latinModernXHeight)))
+    }
+    /// Latin Modern's x-height as a fraction of its size.
+    static let latinModernXHeight: CGFloat = 0.431
+    /// Space kept between a tall inline formula and the lines around it.
+    static var inlineMathClearance: CGFloat { (bodySize * 0.15).rounded() }
     /// Room above and below a display formula inside its band.
     static var mathBandPadding: CGFloat { (bodySize * 0.5).rounded() }
     /// One cached instance per palette: the chip drawing in the layout

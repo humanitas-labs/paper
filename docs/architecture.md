@@ -40,6 +40,8 @@ Block images use paragraph spacing to reserve a stable drawing band below the so
 
 Display math (`$$ … $$` and `math` fences) follows the same pattern: the closing line's spacing reserves a band as tall as `MathStore` typesets the formula, whether the source is shown or not. Off the active paragraph the source conceals and the formula centres on the block and band together; on it the source shows and the formula previews in the band. The caret on any row reveals the whole block. Source that does not parse stays visible with the error in its band.
 
+Inline math (`$…$`) is found right after code spans and set in the code font, so emphasis and the other inline passes skip it. Once lists and quotes have set the paragraph styles, each formula is typeset at the size that matches the x-height of the text beside it; off the active paragraph its first `$` reserves the formula's width (`.reservedWidth`, laid out as whitespace) and the rest conceals, and the text view draws the formula there on the baseline. A paragraph whose formula is taller than its lines gets a `minimumLineHeight` large enough for it in both states.
+
 `PDFExporter` paginates the same pipeline: an offscreen `PaperTextView` marked as a print surface, styled at zoom 1 with a measure derived from the page (a 10 pt body between 64 pt margins), every image band pinned and decoded, no active paragraph, handed to an `NSPrintOperation` whose print info scales the column onto the paper. Export writes with a save job to a staging file moved into place; Print shows the panel over the same surface. Page breaks are AppKit's, between line fragments; the view's background pass draws each page's bands, rules, and images.
 
 ## 3. Invariants and configuration

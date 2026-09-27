@@ -502,6 +502,7 @@ final class PaperTextView: NSTextView {
         drawTaskCircles(in: rect)
         drawImages(in: rect)
         drawMath(in: rect)
+        drawInlineMath(in: rect)
         syncMathExpandButtons()
         drawImageSelection(in: rect)
         drawPlaceholder()
@@ -566,6 +567,23 @@ final class PaperTextView: NSTextView {
                 .font: Appearance.codeFont(),
                 .foregroundColor: Appearance.mutedInk,
             ]).draw(at: NSPoint(x: band.minX, y: band.minY + Appearance.mathBandPadding / 2))
+        }
+    }
+
+    /// Inline formulas draw in the width their concealed source reserves,
+    /// on the line's baseline, in the ink of the text around them.
+    private func drawInlineMath(in dirtyRect: NSRect) {
+        guard let layoutManager = layoutManager as? PaperLayoutManager,
+              let container = textContainer else { return }
+        let origin = textContainerOrigin
+        let containerRect = dirtyRect.offsetBy(dx: -origin.x, dy: -origin.y)
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: container)
+        for inline in layoutManager.inlineFormulas(forGlyphRange: glyphRange) {
+            let rect = inline.rect.offsetBy(dx: origin.x, dy: origin.y)
+            guard rect.intersects(dirtyRect),
+                  case .success(let formula) = MathStore.shared.typeset(inline.math.latex, style: .inline, size: inline.math.size)
+            else { continue }
+            formula.draw(in: rect, color: inline.math.color)
         }
     }
 
@@ -1458,7 +1476,8 @@ final class PaperTextView: NSTextView {
     }
 
     nonisolated static func isCode(_ attributes: [NSAttributedString.Key: Any]) -> Bool {
-        if attributes[.codeBlock] != nil || attributes[.address] != nil || attributes[.mathSource] != nil { return true }
+        if attributes[.codeBlock] != nil || attributes[.address] != nil || attributes[.mathSource] != nil
+            || attributes[.inlineMath] != nil { return true }
         guard let color = attributes[.backgroundColor] as? NSColor else { return false }
         return MainActor.assumeIsolated { color == Appearance.codeBlockBackground }
     }
