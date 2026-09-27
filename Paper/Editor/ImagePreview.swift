@@ -18,6 +18,16 @@ extension PaperTextView: @preconcurrency QLPreviewPanelDataSource, @preconcurren
             .map { (rect: $0.rect.offsetBy(dx: origin.x, dy: origin.y), url: $0.url) }
     }
 
+    /// What the Quick Look panel steps through: the page's images and its
+    /// formulas (as their enlarged PDFs), in document order, each with the
+    /// rect it occupies on the page.
+    var previewItems: [(rect: NSRect, url: URL)] {
+        let formulas = mathFigures().compactMap { figure in
+            MathStore.shared.previewFile(for: figure.latex).map { (rect: figure.formula, url: $0) }
+        }
+        return (imageBands + formulas).sorted { $0.rect.minY < $1.rect.minY }
+    }
+
     /// The I-beam belongs to text; over an image the plain arrow, as in
     /// Messages, and over a code block's copy icon the hand. The text view
     /// sets its cursor on every mouse move, over any cursor rects, so the
@@ -30,7 +40,8 @@ extension PaperTextView: @preconcurrency QLPreviewPanelDataSource, @preconcurren
             return
         }
         let point = convert(event.locationInWindow, from: nil)
-        if codeCopyButtons.contains(where: { $0.isOnIcon(point) }) {
+        if codeCopyButtons.contains(where: { $0.isOnIcon(point) })
+            || mathExpandButtons.contains(where: { !$0.isHidden && $0.alphaValue > 0 && $0.isOnIcon(point) }) {
             NSCursor.pointingHand.set()
         } else if imageURL(at: event) != nil {
             NSCursor.arrow.set()
@@ -121,13 +132,13 @@ extension PaperTextView: @preconcurrency QLPreviewPanelDataSource, @preconcurren
     }
 
     /// Shows the panel on `url`, which becomes the current item among the
-    /// page's images. The panel asks up the responder chain for a data
-    /// source; the text view is first responder, so it answers.
+    /// page's images and formulas. The panel asks up the responder chain
+    /// for a data source; the text view is first responder, so it answers.
     func preview(_ url: URL) {
         guard let panel = QLPreviewPanel.shared() else { return }
         window?.makeFirstResponder(self)
         panel.makeKeyAndOrderFront(nil)
-        if let index = imageBands.firstIndex(where: { $0.url == url }) {
+        if let index = previewItems.firstIndex(where: { $0.url == url }) {
             panel.currentPreviewItemIndex = index
         }
     }
@@ -149,11 +160,11 @@ extension PaperTextView: @preconcurrency QLPreviewPanelDataSource, @preconcurren
     }
 
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        imageBands.count
+        previewItems.count
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        let bands = imageBands
+        let bands = previewItems
         guard bands.indices.contains(index) else { return nil }
         return bands[index].url as NSURL
     }
@@ -162,7 +173,7 @@ extension PaperTextView: @preconcurrency QLPreviewPanelDataSource, @preconcurren
     /// back into it. A band scrolled out of view zooms from the centre.
     func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: QLPreviewItem!) -> NSRect {
         guard let url = item.previewItemURL,
-              let band = imageBands.first(where: { $0.url == url }),
+              let band = previewItems.first(where: { $0.url == url }),
               band.rect.intersects(visibleRect),
               let window else { return .zero }
         return window.convertToScreen(convert(band.rect, to: nil))

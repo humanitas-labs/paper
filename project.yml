@@ -7,6 +7,13 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+packages:
+  # Pinned exactly: 1.7.3 is the last release before the tokenizing
+  # typesetter, which drops the spacing between atoms (#80).
+  SwiftMath:
+    url: https://github.com/mgriebling/SwiftMath
+    exactVersion: 1.7.3
+
 settings:
   base:
     CURRENT_PROJECT_VERSION: 1
@@ -31,6 +38,7 @@ targets:
         buildPhase: resources
     dependencies:
       - sdk: Quartz.framework
+      - package: SwiftMath
     info:
       path: Paper/Resources/Info.plist
       properties:

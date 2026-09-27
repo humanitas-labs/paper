@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Display math (#80). A `$$ … $$` block or a ```` ```math ```` fence draws as the typeset formula, centred at the measure in the theme's ink, scaled down when wider. The caret on any of its rows shows the source, with the formula previewed beneath it; nothing below moves. A formula that does not parse keeps its source visible with the error under it. A faint expand icon in the block's top-right corner, shown on hover, opens the formula enlarged in Quick Look, with ← → across the page's images and formulas; its PDFs live in a temporary folder emptied at every launch. Export as PDF and Print draw math as vector text. Typesetting is SwiftMath 1.7.3, Paper's first package dependency.
+
 ## 0.8.1 — 2026.09.12
 
 - Pinning asks for the name first. File ▸ Pin Document… (⇧⌘P) and the pill's Pin Document… open a dialog with the file name filled in; Pin takes it, Cancel pins nothing. Unpinning stays one step. Rename Pin… runs the same dialog on a pin that exists.

@@ -12,6 +12,7 @@ import AppKit
 /// document can say where it went.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        MathStore.removePreviewFiles()
         // Not under tests: the test host would put the link on the
         // tester's PATH, open the guide over the test run, and build the
         // welcome window from the run loop inside a test's task, where the

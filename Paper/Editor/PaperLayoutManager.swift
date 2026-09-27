@@ -47,6 +47,27 @@ extension NSAttributedString.Key {
     /// width the value (a `CGFloat`) names: room for something the text view
     /// draws itself, like a task item's circle.
     static let reservedWidth = NSAttributedString.Key("paper.reservedWidth")
+    /// Marks the paragraphs of a display-math block (`$$ … $$` or a `math`
+    /// fence), delimiters included; the value is its `MathBlock`. The last
+    /// line's spacing reserves the band the text view draws the formula in.
+    static let mathSource = NSAttributedString.Key("paper.mathSource")
+}
+
+/// The LaTeX of one display-math block. Equal by source, so a restyle
+/// that sets the same block again leaves the storage equal to a full pass;
+/// the price is that two identical blocks on consecutive lines read as one.
+final class MathBlock: NSObject {
+    let latex: String
+
+    init(latex: String) {
+        self.latex = latex
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        (object as? MathBlock)?.latex == latex
+    }
+
+    override var hash: Int { latex.hashValue }
 }
 
 /// TextKit 1 layout manager that computes margin decorations and conceals
@@ -522,6 +543,50 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             }
             guard bottom > -CGFloat.greatestFiniteMagnitude else { return }
             bands.append((NSRect(x: padding, y: bottom, width: size.width, height: size.height), url))
+        }
+        return bands
+    }
+
+    /// Each display-math block intersecting `glyphRange`, in text-container
+    /// coordinates: `block` spans its source rows and its band, `band` the
+    /// band alone, under the closing row's used rect, as tall as
+    /// `MathStore` says the styler reserved. `active` is whether the caret
+    /// has revealed the block's source.
+    @MainActor
+    func mathBands(
+        forGlyphRange glyphRange: NSRange, width: CGFloat
+    ) -> [(block: NSRect, band: NSRect, latex: String, active: Bool)] {
+        guard let storage = textStorage else { return [] }
+        let characterRange = self.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        var bands: [(block: NSRect, band: NSRect, latex: String, active: Bool)] = []
+        var measured: [NSRange] = []
+        storage.enumerateAttribute(.mathSource, in: characterRange) { value, partial, _ in
+            guard let math = value as? MathBlock else { return }
+            var range = NSRange()
+            _ = storage.attribute(
+                .mathSource, at: partial.location,
+                longestEffectiveRange: &range, in: NSRange(location: 0, length: storage.length)
+            )
+            guard !measured.contains(range) else { return }
+            measured.append(range)
+            let glyphs = self.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            var top = CGFloat.greatestFiniteMagnitude
+            var bottom = -CGFloat.greatestFiniteMagnitude
+            var padding: CGFloat = 0
+            enumerateLineFragments(forGlyphRange: glyphs) { fragment, used, container, fragmentGlyphs, _ in
+                let first = self.characterIndexForGlyph(at: fragmentGlyphs.location)
+                guard NSLocationInRange(first, range) else { return }
+                top = min(top, fragment.minY)
+                bottom = max(bottom, used.maxY)
+                padding = container.lineFragmentPadding
+            }
+            guard bottom > top else { return }
+            let height = MathStore.shared.bandHeight(for: math.latex, width: width)
+            let band = NSRect(x: padding, y: bottom, width: width, height: height)
+            let block = NSRect(x: padding, y: top, width: width, height: band.maxY - top)
+            let active = NSIntersectionRange(range, activeRange).length > 0
+                || (activeRange.length == 0 && NSLocationInRange(activeRange.location, range))
+            bands.append((block, band, math.latex, active))
         }
         return bands
     }

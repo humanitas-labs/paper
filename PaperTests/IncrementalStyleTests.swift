@@ -35,6 +35,10 @@ struct IncrementalStyleTests {
     func f() -> Int { x }
     ```
 
+    $$
+    \\frac{a}{b} + c
+    $$
+
     ---
 
     ![missing picture](images/none.png)
@@ -126,6 +130,9 @@ struct IncrementalStyleTests {
         Edit(name: "open a comment", local: nil) { t, v in t.insert("<!-- ", at: t.location(of: "Second line", in: v), in: v) },
         Edit(name: "type inside the comment", local: true) { t, v in t.insert("!", at: t.location(of: "note", in: v, offset: 2), in: v) },
         Edit(name: "delete the comment's closer", local: nil) { t, v in t.replace(" -->", with: "", in: v) },
+        Edit(name: "type inside display math", local: true) { t, v in t.insert("^2", at: t.location(of: "+ c", in: v, offset: 3), in: v) },
+        Edit(name: "delete display math's closer", local: true) { t, v in t.replace("+ c\n$$", with: "+ c", in: v) },
+        Edit(name: "close display math on its opening line", local: true) { t, v in t.replace("$$\n\\frac", with: "$$ x $$\n\\frac", in: v) },
         Edit(name: "type after an arrow", local: true) { t, v in t.insert(">", at: t.location(of: "-> arrow", in: v, offset: 2), in: v) },
         Edit(name: "paste three paragraphs", local: true) { t, v in t.insert("Pasted A\n\n- pasted item\n  wrapped\n\n> pasted quote\n\n", at: t.location(of: "Plain paragraph", in: v), in: v) },
         Edit(name: "paste a fenced block", local: true) { t, v in t.insert("```\ncode\n```\n\n", at: t.location(of: "Plain paragraph", in: v), in: v) },

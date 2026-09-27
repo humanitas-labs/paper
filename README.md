@@ -47,6 +47,7 @@ If I am someone who works in the terminal, also tell me that `paper <file>` open
 | ⌘F / ⌘G / ⇧⌘G | find; next and previous match. Return and ⇧Return step from the field, Esc closes |
 | click / ⌘-click | open a link |
 | double-click an image | open it in Quick Look |
+| click the corner icon on a `$$` formula | open it enlarged in Quick Look |
 | paste or drop an image | saved beside the document, inserted as `![](…)` |
 | ⌘+ / ⌘− / ⌘0 | zoom the view in and out, back to actual size; click the badge at the top right to type a percentage; per machine, never written to the config |
 | ⇧⌘E / ⌘P | export the document as a PDF, or print it, as it reads here on Letter or A4 pages |

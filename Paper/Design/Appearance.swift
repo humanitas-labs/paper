@@ -70,6 +70,12 @@ enum Appearance {
     /// Block images are clipped to this radius; the default matches the
     /// code band, and Settings can change it.
     static var imageCornerRadius: CGFloat { CGFloat(configuration.imageCornerRadius) }
+    /// Math is set larger than the body: Latin Modern's small x-height
+    /// reads a size smaller than the text faces beside it, and a display
+    /// formula is a figure, not a line of text.
+    static var mathSize: CGFloat { bodySize * 1.25 }
+    /// Room above and below a display formula inside its band.
+    static var mathBandPadding: CGFloat { (bodySize * 0.5).rounded() }
     /// One cached instance per palette: the chip drawing in the layout
     /// manager recognises spans by this exact colour.
     static var codeBlockBackground: NSColor { colors.codeBackground }

@@ -68,6 +68,51 @@ struct RenderProbeTests {
         try png.write(to: dir.appendingPathComponent("render-readme.png"))
     }
 
+    /// Display math off and on the active paragraph, a math fence, a
+    /// formula wider than the measure, and one that does not parse (#80).
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func renderMath(appearance: NSAppearance.Name) throws {
+        guard let dir = Self.probeDirectory else { return }
+        let text = #"""
+        ## Display math
+
+        The Gaussian integral:
+
+        $$
+        \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+        $$
+
+        A piecewise function, fenced:
+
+        ```math
+        f(x) = \begin{cases} x^2 & x \ge 0 \\ -x & x < 0 \end{cases}
+        ```
+
+        $$\begin{pmatrix} a & b \\ c & d \end{pmatrix} \begin{pmatrix} x \\ y \end{pmatrix} = \begin{pmatrix} ax + by \\ cx + dy \end{pmatrix}$$
+
+        $$ \sum_{i=1}^{n} a_i b_i + \sum_{i=1}^{n} c_i d_i + \sum_{i=1}^{n} e_i f_i + \sum_{i=1}^{n} g_i h_i + \sum_{i=1}^{n} p_i q_i + \sum_{i=1}^{n} r_i s_i $$
+
+        $$\frac{a}{$$
+
+        The caret is on the next block:
+
+        $$
+        \hat{\theta} = \arg\max_{\theta} \log p_\theta(x)
+        $$
+
+        Last paragraph.
+        """#
+        let (scrollView, textView) = makeEditor(width: 1120, height: 1100, text: text)
+        scrollView.appearance = NSAppearance(named: appearance)
+        textView.setSelectedRange(NSRange(location: (text as NSString).range(of: "hat{").location, length: 0))
+        scrollView.layoutSubtreeIfNeeded()
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        let rep = try #require(scrollView.bitmapImageRepForCachingDisplay(in: scrollView.bounds))
+        scrollView.cacheDisplay(in: scrollView.bounds, to: rep)
+        let png = try #require(rep.representation(using: .png, properties: [:]))
+        try png.write(to: dir.appendingPathComponent("render-math-\(appearance == .aqua ? "light" : "dark").png"))
+    }
+
     @Test(arguments: [(1120.0, 800.0), (640.0, 520.0), (1800.0, 900.0)], [NSAppearance.Name.aqua, .darkAqua])
     func renderSample(size: (Double, Double), appearance: NSAppearance.Name) throws {
         guard let dir = Self.probeDirectory else { return }

@@ -294,6 +294,11 @@ final class MarkdownSyntaxStyler {
         )
         applyListMarkers(to: storage, source: source, range: range)
         applyCodeBlocks(to: storage, source: source, range: range, fenced: fenced)
+        applyDisplayMath(
+            to: storage, source: source, range: range,
+            fenced: fenced, comments: comments,
+            width: Self.measure(of: textView)
+        )
         applyComments(to: storage, source: source, range: range, comments: comments)
         // Concealed characters stay in the layout as zero-advance control
         // glyphs; a kern (the letter spacing) on them would still widen the
@@ -573,7 +578,7 @@ final class MarkdownSyntaxStyler {
         fenced: [NSRange]
     ) {
         let text = source as NSString
-        for blockRange in fenced where Self.touches(blockRange, range) {
+        for blockRange in fenced where Self.touches(blockRange, range) && !Self.isMathFence(blockRange, in: text) {
             let block = text.paragraphRange(for: blockRange)
 
             var attributes = Self.baseAttributes
@@ -618,6 +623,139 @@ final class MarkdownSyntaxStyler {
                 }
             }
         }
+    }
+
+    /// A display-math block draws as its formula, typeset by `MathStore`,
+    /// in a band its closing line's paragraph spacing reserves, as a block
+    /// image does. The band is there whether the block is revealed or not,
+    /// so the caret entering it moves nothing: off the active paragraph the
+    /// source conceals and the formula centres on the block and its band
+    /// together; on it the source shows and the formula previews in the
+    /// band below. Source that does not parse is never concealed, and its
+    /// band carries the error. Runs after the code pass, over whatever the
+    /// passes before it set, as that pass does for code.
+    private func applyDisplayMath(
+        to storage: NSTextStorage,
+        source: String,
+        range: NSRange,
+        fenced: [NSRange],
+        comments: [NSRange],
+        width: CGFloat
+    ) {
+        let text = source as NSString
+        for block in Self.mathBlocks(in: source, range: range, fenced: fenced, comments: comments)
+        where Self.touches(block.range, range) {
+            let paragraphs = text.paragraphRange(for: block.range)
+            var attributes = Self.baseAttributes
+            attributes[.font] = Appearance.codeFont()
+            attributes[.foregroundColor] = Appearance.mutedInk
+            attributes[.paragraphStyle] = Appearance.paragraphStyle(spacing: 0)
+            storage.setAttributes(attributes, range: paragraphs)
+            storage.addAttribute(.mathSource, value: MathBlock(latex: block.latex), range: paragraphs)
+
+            let closingLine = text.paragraphRange(for: NSRange(location: NSMaxRange(block.range) - 1, length: 0))
+            let band = MathStore.shared.bandHeight(for: block.latex, width: width)
+            storage.addAttribute(
+                .paragraphStyle,
+                value: Appearance.paragraphStyle(spacing: band + Appearance.paragraphSpacing),
+                range: closingLine
+            )
+            guard case .success = MathStore.shared.display(block.latex) else { continue }
+
+            var location = paragraphs.location
+            while location < NSMaxRange(paragraphs) {
+                var line = text.paragraphRange(for: NSRange(location: location, length: 0))
+                location = NSMaxRange(line)
+                while line.length > 0 {
+                    let last = text.character(at: NSMaxRange(line) - 1)
+                    guard last == 0x0A || last == 0x0D else { break }
+                    line.length -= 1
+                }
+                guard line.length > 0 else { continue }
+                // As with a fence, the first character draws as an
+                // invisible space so each row keeps its own fragment.
+                storage.addAttribute(.glyphSubstitute, value: " ", range: NSRange(location: line.location, length: 1))
+                if line.length > 1 {
+                    storage.addAttribute(
+                        .concealable, value: true,
+                        range: NSRange(location: line.location + 1, length: line.length - 1)
+                    )
+                }
+            }
+        }
+    }
+
+    /// The display-math blocks touching `range`, in document order, each
+    /// with its LaTeX: fences whose info string is `math`, and `$$` blocks
+    /// outside fences and comments. A `$$` block opens on a line starting
+    /// with `$$` (indented three spaces at most) and closes on the first
+    /// line ending with `$$`, the same line or a later one; a blank line
+    /// first means no block, so a half-typed `$$` never swallows what
+    /// follows, and a block never spans the blank lines that bound a
+    /// restyle chunk.
+    static func mathBlocks(
+        in source: String,
+        range: NSRange,
+        fenced: [NSRange],
+        comments: [NSRange]
+    ) -> [(range: NSRange, latex: String)] {
+        let text = source as NSString
+        var blocks: [(range: NSRange, latex: String)] = fenced
+            .filter { touches($0, range) && isMathFence($0, in: text) }
+            .map { block in
+                let opening = text.paragraphRange(for: NSRange(location: block.location, length: 0))
+                let closing = text.paragraphRange(for: NSRange(location: NSMaxRange(block) - 1, length: 0))
+                let body = NSRange(location: NSMaxRange(opening), length: max(0, closing.location - NSMaxRange(opening)))
+                return (block, text.substring(with: body))
+            }
+
+        var open: (start: Int, latex: String)?
+        var location = range.location
+        while location < NSMaxRange(range) {
+            let paragraph = text.paragraphRange(for: NSRange(location: location, length: 0))
+            location = NSMaxRange(paragraph)
+            guard !(fenced + comments).contains(where: { NSLocationInRange(paragraph.location, $0) }) else {
+                open = nil
+                continue
+            }
+            let raw = text.substring(with: paragraph)
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            var end = NSMaxRange(paragraph)
+            while end > paragraph.location, [0x0A, 0x0D].contains(text.character(at: end - 1)) { end -= 1 }
+
+            if let opened = open {
+                if line.isEmpty {
+                    open = nil
+                } else if line.hasSuffix("$$") {
+                    blocks.append((
+                        NSRange(location: opened.start, length: end - opened.start),
+                        opened.latex + "\n" + line.dropLast(2)
+                    ))
+                    open = nil
+                } else {
+                    open = (opened.start, opened.latex + "\n" + line)
+                }
+                continue
+            }
+            guard raw.prefix(while: { $0 == " " }).count <= 3, line.hasPrefix("$$") else { continue }
+            let rest = line.dropFirst(2)
+            if rest.count >= 2, rest.hasSuffix("$$") {
+                let latex = String(rest.dropLast(2))
+                guard !latex.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+                blocks.append((NSRange(location: paragraph.location, length: end - paragraph.location), latex))
+            } else {
+                open = (paragraph.location, String(rest))
+            }
+        }
+        return blocks.sorted { $0.range.location < $1.range.location }
+    }
+
+    /// Whether a fenced block's info string names math (` ```math `).
+    static func isMathFence(_ block: NSRange, in text: NSString) -> Bool {
+        let opening = text.paragraphRange(for: NSRange(location: block.location, length: 0))
+        guard let match = fenceLinePattern.firstMatch(in: text as String, range: opening) else { return false }
+        let info = text.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return info.split(separator: " ").first?.lowercased() == "math"
     }
 
     private func applyBlockQuotes(

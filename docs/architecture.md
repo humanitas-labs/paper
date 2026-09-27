@@ -1,6 +1,6 @@
 # Paper — Architecture
 
-Last updated: `2026.09.03`
+Last updated: `2026.09.27`
 
 > Paper is a native macOS editor for ordinary UTF-8 Markdown files. The file is the only persistent document state. Rendering, configuration, and window state remain outside it.
 
@@ -14,6 +14,7 @@ Last updated: `2026.09.03`
 | `PaperTextView` | Provide editing behavior and draw page decorations |
 | `MarkdownSyntaxStyler` | Add temporary presentation attributes to the source |
 | `PaperLayoutManager` | Conceal or substitute glyphs without changing storage |
+| `MathStore` | Typeset and cache LaTeX formulas through SwiftMath |
 | `ConfigurationStore` | Load, write, and watch user settings and presets |
 | `Appearance` | Resolve configuration into fonts, spacing, and colours |
 
@@ -37,6 +38,8 @@ The styler replaces presentation attributes across the in-memory text storage, t
 
 Block images use paragraph spacing to reserve a stable drawing band below the source line. The source remains present for selection, undo, copy, find, and saving. `ImageStore` decodes and downsamples local images off the main actor according to visible and prefetched demand. Its cache evicts least-recently-used unpinned entries under byte and entry budgets; visible images remain pinned and can exceed the byte budget. Image changes on disk invalidate cached content.
 
+Display math (`$$ … $$` and `math` fences) follows the same pattern: the closing line's spacing reserves a band as tall as `MathStore` typesets the formula, whether the source is shown or not. Off the active paragraph the source conceals and the formula centres on the block and band together; on it the source shows and the formula previews in the band. The caret on any row reveals the whole block. Source that does not parse stays visible with the error in its band.
+
 `PDFExporter` paginates the same pipeline: an offscreen `PaperTextView` marked as a print surface, styled at zoom 1 with a measure derived from the page (a 10 pt body between 64 pt margins), every image band pinned and decoded, no active paragraph, handed to an `NSPrintOperation` whose print info scales the column onto the paper. Export writes with a save job to a staging file moved into place; Print shows the panel over the same surface. Page breaks are AppKit's, between line fragments; the view's background pass draws each page's bands, rules, and images.
 
 ## 3. Invariants and configuration
@@ -58,3 +61,4 @@ Block images use paragraph spacing to reserve a stable drawing band below the so
 | [ADR-002](decisions/002-contextual-syntax-concealment.md) | Contextual syntax concealment without source mutation | Accepted; mechanism revised by ADR-004 |
 | [ADR-003](decisions/003-markdown-resource-resolution.md) | File-relative Markdown resource resolution | Accepted |
 | [ADR-004](decisions/004-zero-advance-control-glyphs.md) | Zero-advance control glyphs for concealed syntax | Accepted |
+| [ADR-005](decisions/005-swiftmath-typesetting.md) | SwiftMath for LaTeX typesetting | Accepted |

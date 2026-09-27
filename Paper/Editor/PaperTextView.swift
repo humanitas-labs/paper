@@ -155,7 +155,18 @@ final class PaperTextView: NSTextView {
         let text = storage.string as NSString
         var active: NSRange?
         for value in selectedRanges {
-            let paragraph = text.paragraphRange(for: value.rangeValue.clamped(to: text.length))
+            var paragraph = text.paragraphRange(for: value.rangeValue.clamped(to: text.length))
+            // A display-math block reveals whole: its rows are one formula,
+            // and revealing a row alone would leave the rest concealed.
+            for edge in [paragraph.location, NSMaxRange(paragraph) - 1] where edge >= 0 && edge < storage.length {
+                var block = NSRange()
+                if storage.attribute(
+                    .mathSource, at: edge,
+                    longestEffectiveRange: &block, in: NSRange(location: 0, length: storage.length)
+                ) != nil {
+                    paragraph = NSUnionRange(paragraph, block)
+                }
+            }
             active = active.map { NSUnionRange($0, paragraph) } ?? paragraph
         }
         layoutManager.setActiveRange(active ?? NSRange(location: 0, length: 0))
@@ -490,6 +501,8 @@ final class PaperTextView: NSTextView {
         drawThematicBreaks(in: rect)
         drawTaskCircles(in: rect)
         drawImages(in: rect)
+        drawMath(in: rect)
+        syncMathExpandButtons()
         drawImageSelection(in: rect)
         drawPlaceholder()
     }
@@ -528,6 +541,31 @@ final class PaperTextView: NSTextView {
                 respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high]
             )
             NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+
+    /// Display math draws centred on the measure: over its concealed
+    /// source and band together off the active paragraph, in the band
+    /// alone under the revealed source on it. A block that does not parse
+    /// shows the error in its band instead.
+    private func drawMath(in dirtyRect: NSRect) {
+        guard let layoutManager = layoutManager as? PaperLayoutManager,
+              let container = textContainer else { return }
+        let origin = textContainerOrigin
+        let containerRect = dirtyRect.offsetBy(dx: -origin.x, dy: -origin.y)
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: container)
+        for figure in mathFigures(in: glyphRange) where figure.area.intersects(dirtyRect) {
+            guard case .success(let formula) = MathStore.shared.display(figure.latex) else { continue }
+            formula.draw(in: figure.formula, color: Appearance.ink)
+        }
+        for math in layoutManager.mathBands(forGlyphRange: glyphRange, width: MarkdownSyntaxStyler.measure(of: self)) {
+            guard case .failure(let failure) = MathStore.shared.display(math.latex) else { continue }
+            let band = math.band.offsetBy(dx: origin.x, dy: origin.y)
+            guard band.intersects(dirtyRect) else { continue }
+            NSAttributedString(string: failure.message, attributes: [
+                .font: Appearance.codeFont(),
+                .foregroundColor: Appearance.mutedInk,
+            ]).draw(at: NSPoint(x: band.minX, y: band.minY + Appearance.mathBandPadding / 2))
         }
     }
 
@@ -637,6 +675,9 @@ final class PaperTextView: NSTextView {
     /// One per code band in the viewport, kept in step by
     /// `syncCodeCopyButtons` (in `CodeCopyButton.swift`).
     var codeCopyButtons: [CodeCopyButton] = []
+    /// One per formula in the viewport, kept in step by
+    /// `syncMathExpandButtons` (in `MathExpandButton.swift`).
+    var mathExpandButtons: [MathExpandButton] = []
 
 
     private func drawCodeBlockBands(in dirtyRect: NSRect) {
@@ -1417,7 +1458,7 @@ final class PaperTextView: NSTextView {
     }
 
     nonisolated static func isCode(_ attributes: [NSAttributedString.Key: Any]) -> Bool {
-        if attributes[.codeBlock] != nil || attributes[.address] != nil { return true }
+        if attributes[.codeBlock] != nil || attributes[.address] != nil || attributes[.mathSource] != nil { return true }
         guard let color = attributes[.backgroundColor] as? NSColor else { return false }
         return MainActor.assumeIsolated { color == Appearance.codeBlockBackground }
     }
