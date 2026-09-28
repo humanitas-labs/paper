@@ -34,63 +34,23 @@ Then check that the `paper` command works by writing a short note to a temporary
 If I am someone who works in the terminal, also tell me that `paper <file>` opens any Markdown file from the shell, and that `paper --set-default` makes Paper the app that opens Markdown files when I double-click them. Ask before running that. If I am not, skip this.
 ```
 
-## Default app for Markdown
+## What it does
 
-`paper --set-default` makes double-clicking a `.md` or `.markdown` file open Paper; so does *Make Default* in Settings (⌘,) under CLI. By hand: select any Markdown file in Finder, press ⌘I (Get Info), choose Paper under *Open with*, and click *Change All*….
-
-## Shortcuts
-
-| Keys | Action |
-| --- | --- |
-| ⌘B / ⌘I / ⌘U / ⌘⇧X / ⌘E | toggle `**bold**`, `*italic*`, `<u>underline</u>`, `~~strikethrough~~`, `` `code` `` around the selection or word |
-| ⌘K | add a link, destination from the clipboard when it holds a URL |
-| ⌘F / ⌘G / ⇧⌘G | find; next and previous match. Return and ⇧Return step from the field, Esc closes |
-| click / ⌘-click | open a link |
-| double-click an image | open it in Quick Look |
-| click the corner icon on a `$$` formula | open it enlarged in Quick Look |
-| paste or drop an image | saved beside the document, inserted as `![](…)` |
-| ⌘+ / ⌘− / ⌘0 | zoom the view in and out, back to actual size; click the badge at the top right to type a percentage; per machine, never written to the config |
-| ⇧⌘E / ⌘P | export the document as a PDF, or print it, as it reads here on Letter or A4 pages |
-| ⌥⌘C | copy the file's path as plain text |
-| ⌘, | settings |
-
-The window has no title bar. Rest the pointer in the top-left corner and a pill shows the file's name, with the full path as its tooltip; click it to copy the path or the name, or to show the file in Finder.
-
-Pasting or dropping an image into an unsaved document asks you to save first. Images go beside the document by default; set `image.paste.directory = assets` to use a relative subfolder instead. Undo removes the inserted Markdown, but keeps the image file.
-
-## Math
-
-LaTeX between dollar signs is typeset in place, the way GitHub reads it. `$E = mc^2$` in a line sits on the text's baseline; a `$$ … $$` block, on one line or several, or a ```` ```math ```` fence, is centred on its own. Click into the paragraph to edit the source; nothing below it moves. Prices and paths stay prose: there is no space just inside either `$` of a formula and no digit after its closer, so `$5 and $10` and `$HOME` read as typed, and `\$` is a literal dollar. Hover a display formula and click the icon in its corner to open it enlarged. Math exports and prints as vector type.
-
-Typesetting is [SwiftMath](https://github.com/mgriebling/SwiftMath), which covers most of the LaTeX math people write day to day (fractions, roots, sums and integrals, matrices, `cases`, Greek, accents, `\text`); a command it lacks, like `\operatorname`, shows its source with the error. `math.font` picks the typeface, `math.scale` the size, `color.math` the ink, and `math = off` leaves every dollar as typed. Settings (⌘,) has the same under Math.
+- Markdown renders as you type; the syntax comes back in the paragraph you are editing, and the file stays exactly as typed. [Writing](docs/guide.md#writing)
+- Images alone on a line draw in the page; paste or drop one to save it beside the document. [Images](docs/guide.md#images)
+- LaTeX math, inline `$…$` and display `$$ … $$`, typeset in place. [Math](docs/guide.md#math)
+- Find, zoom, and export or print as a PDF that reads like the page. [Shortcuts](docs/guide.md#shortcuts)
+- Pinned documents in the menu bar. [Menu bar and pins](docs/guide.md#menu-bar-and-pins)
+- Built-in themes in light and dark, your own colours, and presets. [Themes and presets](docs/guide.md#themes-and-presets)
+- Opens Markdown by default if you want it to. [Default app](docs/guide.md#default-app-for-markdown)
 
 ## Configuration
 
-Settings live in `$XDG_CONFIG_HOME/paper/config` when set, otherwise `~/.config/paper/config`. The file is written as a commented template on first launch and applied live to open windows whenever it is saved. Selected defaults are shown below; the generated template documents every key.
-
-```ini
-font.family = New York
-font.size = 15
-line.height = 1.2
-paragraph.spacing = 11
-letter.spacing = -0.02
-font.smoothing = off
-spelling = on
-grammar = off
-measure = 640
-list.indent = 0.8
-theme = enso
-window.width = 1400
-window.height = 876
-print.font.size = 10
-print.margin = 64
-math = on
-math.font = latin-modern
-math.scale = 1
-```
+Everything lives in one plain-text file, `~/.config/paper/config`, applied live whenever it is saved; Settings (⌘,) edits the same file, and the file documents every key. See [Configuration](docs/guide.md#configuration).
 
 ## More
 
+- [User guide](docs/guide.md)
 - [Add Paper to ChatGPT’s Open menu](docs/chatgpt.md)
 - [Build and test](docs/build.md)
 - [Architecture](docs/architecture.md)

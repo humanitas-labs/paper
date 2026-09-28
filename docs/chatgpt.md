@@ -63,4 +63,4 @@ These steps assume Paper is installed at `/Applications/Paper.app` and the deskt
 - **The file does not open:** check the Paper application path in `args`. The handler is for local files; it does not support SSH paths.
 - **Remove the entry:** remove only the `[desktop.custom_file_handlers.paper]` table and its fields, leaving the surrounding configuration intact. Reopen the menu or restart the app.
 
-To make Paper open Markdown files throughout macOS, follow [Default app for Markdown](../README.md#default-app-for-markdown).
+To make Paper open Markdown files throughout macOS, follow [Default app for Markdown](guide.md#default-app-for-markdown).
