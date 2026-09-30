@@ -18,13 +18,16 @@ final class MarkdownSyntaxStyler {
     /// before the doubles, which would otherwise take the inner pair and
     /// leave the outer delimiters plain.
     private static let strongEmphasisPattern = try! NSRegularExpression(
-        pattern: #"\*\*\*([^*\n]+)\*\*\*|(?<!\w)___(?=\S)([^_\n]+?)(?<=\S)___(?!\w)"#
+        pattern: #"\*\*\*(?=[^\s*])([^*\n]+?)(?<=\S)\*\*\*|(?<!\w)___(?=\S)([^_\n]+?)(?<=\S)___(?!\w)"#
     )
+    /// Following CommonMark, an asterisk run opens only before something
+    /// visible and closes only after it, so the marker in `* *Label:* text`
+    /// stays a bullet and `2 * 3 * 4` stays literal.
     private static let strongPattern = try! NSRegularExpression(
-        pattern: #"\*\*([^*\n]+)\*\*"#
+        pattern: #"\*\*(?=[^\s*])([^*\n]+?)(?<=\S)\*\*"#
     )
     private static let emphasisPattern = try! NSRegularExpression(
-        pattern: #"(?<!\*)\*([^*\n]+)\*(?!\*)"#
+        pattern: #"(?<!\*)\*(?=[^\s*])([^*\n]+?)(?<=\S)\*(?!\*)"#
     )
     /// The underscore spellings, `__strong__` and `_emphasis_`. Following
     /// CommonMark, an underscore run is a delimiter only at a word boundary

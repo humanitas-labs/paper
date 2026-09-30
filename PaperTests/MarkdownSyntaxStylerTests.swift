@@ -195,6 +195,35 @@ extension MarkdownSyntaxStylerTests {
     }
 
     @Test
+    func asteriskDelimitersNeedVisibleContentAgainstThem() {
+        let textView = PaperTextView()
+        textView.string = "* *Label:* text\n2 * 3 * 4 and ** a ** and *** b ***\n"
+        textView.syntaxStyler.apply(to: textView)
+        let storage = try! #require(textView.textStorage)
+        let text = textView.string as NSString
+        func at(_ needle: String) -> Int { text.range(of: needle).location }
+        func traits(_ index: Int) -> NSFontDescriptor.SymbolicTraits? {
+            (storage.attribute(.font, at: index, effectiveRange: nil) as? NSFont)?.fontDescriptor.symbolicTraits
+        }
+        func concealed(_ index: Int) -> Bool { storage.attribute(.concealable, at: index, effectiveRange: nil) != nil }
+
+        let label = at("*Label:*")
+        #expect(traits(label + 1)?.contains(.italic) == true, "the label after a star bullet is italic")
+        #expect(concealed(label) && concealed(label + 7))
+        #expect(storage.attribute(.listMarker, at: 0, effectiveRange: nil) != nil, "the star stays a bullet")
+        #expect(!concealed(0) && !concealed(1), "the bullet is not taken as an emphasis delimiter")
+        #expect(traits(at(" text"))?.contains(.italic) == false)
+
+        for literal in ["2 * 3 * 4", "** a **", "*** b ***"] {
+            let range = text.range(of: literal)
+            for index in range.location..<NSMaxRange(range) {
+                #expect(traits(index)?.contains(.italic) == false, "\(literal) is literal")
+                #expect(traits(index)?.contains(.bold) == false, "\(literal) is literal")
+            }
+        }
+    }
+
+    @Test
     func strikethroughComposesAndStaysOutOfCodeAndComments() {
         let textView = PaperTextView()
         textView.string = "**~~both~~** `~~code~~` <!-- ~~note~~ --> ~single~ a~~b\n"

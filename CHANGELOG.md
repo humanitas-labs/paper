@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A `*` bullet followed by an italic label, as in `* *Context:* text`, keeps its bullet. The star pattern took the marker and the label's opening `*` as one emphasis pair around the space, hid both, and left the label's closing `*` showing. Asterisk emphasis now follows CommonMark: a run opens only before something visible and closes only after it, so `2 * 3 * 4`, `** a **`, and `*** b ***` also stay literal.
+
 ## 0.9.1 — 2026.09.27
 
 - Math settings (#80). `math.font` sets math in any of the twelve faces SwiftMath bundles (Latin Modern, the default; TeX Gyre Termes, XITS, Libertinus, Garamond, KpMath and KpMath Sans, Asana, Euler, Fira Math, Noto Sans Math, Lete Sans); inline math keeps matching the text's x-height in each. `math.scale` sizes display and inline math together, 0.5 to 2. `color.math` and `color.math.dark` ink it, following the ink when unset. `math = off` leaves `$` and `$$` as typed and turns `math` fences back into code. Settings ▸ Math has a row for each, and the README a Math section.
