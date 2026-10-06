@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.3 — 2026.10.06
 
 - A document opened from the menu bar item comes to the front. Picking a pinned or recent document, New, or Open… while another app was frontmost opened the window behind it, because the activation Paper asked for was declined; the click now brings Paper forward outright.
 
