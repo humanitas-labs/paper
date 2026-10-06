@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A document opened from the menu bar item comes to the front. Picking a pinned or recent document, New, or Open… while another app was frontmost opened the window behind it, because the activation Paper asked for was declined; the click now brings Paper forward outright.
+
 ## 0.9.2 — 2026.09.29
 
 - A `*` bullet followed by an italic label, as in `* *Context:* text`, keeps its bullet. The star pattern took the marker and the label's opening `*` as one emphasis pair around the space, hid both, and left the label's closing `*` showing. Asterisk emphasis now follows CommonMark: a run opens only before something visible and closes only after it, so `2 * 3 * 4`, `** a **`, and `*** b ***` also stay literal.

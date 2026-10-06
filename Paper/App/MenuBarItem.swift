@@ -74,11 +74,11 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             for recent in recents { menu.addItem(documentItem(recent.url, title: recent.name, symbol: "clock")) }
         }
         menu.addItem(.separator())
-        let new = NSMenuItem(title: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "")
-        new.target = NSDocumentController.shared
+        let new = NSMenuItem(title: "New", action: #selector(newDocument(_:)), keyEquivalent: "")
+        new.target = self
         menu.addItem(new)
-        let open = NSMenuItem(title: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "")
-        open.target = NSDocumentController.shared
+        let open = NSMenuItem(title: "Open…", action: #selector(openDocument(_:)), keyEquivalent: "")
+        open.target = self
         menu.addItem(open)
     }
 
@@ -99,7 +99,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     /// comes, so it activates either way.
     @objc private func open(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        NSApp.activate()
+        Self.activate()
         if let document = NSDocumentController.shared.document(for: url) {
             document.showWindows()
             return
@@ -109,6 +109,24 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             return
         }
         NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+    }
+
+    @objc private func newDocument(_ sender: NSMenuItem) {
+        Self.activate()
+        NSDocumentController.shared.newDocument(sender)
+    }
+
+    @objc private func openDocument(_ sender: NSMenuItem) {
+        Self.activate()
+        NSDocumentController.shared.openDocument(sender)
+    }
+
+    /// A status item click does not make Paper active, and the app in front
+    /// has not yielded, so the cooperative `NSApp.activate()` is refused
+    /// and the window opens behind it. The click is the user asking for
+    /// Paper, so it takes the front outright.
+    private static func activate() {
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func missing(_ url: URL) {
