@@ -486,10 +486,44 @@ final class MarkdownSyntaxStyler {
         level += spaces / 2
         guard level > 0 else { return Appearance.listIndent }
         let width = (whitespace as NSString).size(withAttributes: [.font: Appearance.bodyFont()]).width
-        return max(
+        var indent = max(
             Appearance.listIndent,
             Appearance.listIndent + CGFloat(level) * Appearance.listNestIndent - width
         )
+        // Under an ordered parent the marker starts no further left than the
+        // parent's text, so a nested item's text sits right of its parent's
+        // even when the parent's padded marker column is wide (`VIII.`).
+        if let parentText = orderedParentTextStart(before: location, leading: whitespace, in: source) {
+            indent = max(indent, parentText - width)
+        }
+        return indent
+    }
+
+    /// Where the text of the ordered list item that parents the line at
+    /// `location` starts, or nil when the parent is a bullet, a task, or
+    /// missing. The parent is the nearest item above with less leading
+    /// whitespace than `leading`.
+    private static func orderedParentTextStart(before location: Int, leading: String, in source: String) -> CGFloat? {
+        let text = source as NSString
+        let ownWidth = leading.reduce(0) { $0 + ($1 == "\t" ? 2 : 1) }
+        var cursor = text.paragraphRange(for: NSRange(location: location, length: 0)).location
+        while cursor > 0 {
+            let line = text.paragraphRange(for: NSRange(location: cursor - 1, length: 0))
+            cursor = line.location
+            guard let match = listMarkerPattern.firstMatch(in: source, range: line),
+                  match.range.location == line.location else { continue }
+            let markerRange = match.range(at: 1)
+            let lead = text.substring(with: NSRange(location: line.location, length: markerRange.location - line.location))
+            guard lead.allSatisfy({ $0 == " " || $0 == "\t" }) else { return nil }
+            let width = lead.reduce(0) { $0 + ($1 == "\t" ? 2 : 1) }
+            guard width < ownWidth else { continue }
+            let marker = text.substring(with: markerRange)
+            guard renderedListMarker(for: marker) == nil, match.range(at: 3).location == NSNotFound else { return nil }
+            let prefix = text.substring(with: match.range)
+            return nestedIndent(at: line.location, in: source) + Appearance.listMarkerGap + markerColumnPad(for: marker)
+                + (prefix as NSString).size(withAttributes: [.font: Appearance.bodyFont()]).width
+        }
+        return nil
     }
 
     private func applyListMarkers(

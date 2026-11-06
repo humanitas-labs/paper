@@ -289,4 +289,14 @@ struct ListMarkerTests {
         #expect(storage.attribute(.glyphSubstitute, at: 7, effectiveRange: nil) == nil, "mid-line dash")
         #expect(storage.attribute(.glyphSubstitute, at: 13, effectiveRange: nil) as? String == "–", "nested item")
     }
+
+    @Test
+    func nestedItemTextSitsRightOfAWideParentsText() throws {
+        let text = "III. Parent item\n  A. Child item\n"
+        let (textView, _) = makeTextView(text, selectedAt: text.utf16.count)
+        let storage = try #require(textView.textStorage)
+        let parent = try #require(storage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+        let child = try #require(storage.attribute(.paragraphStyle, at: 19, effectiveRange: nil) as? NSParagraphStyle)
+        #expect(child.headIndent > parent.headIndent + 1, "child text \(child.headIndent), parent text \(parent.headIndent)")
+    }
 }
