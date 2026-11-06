@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Roman-numeral lists. `ii.`, `iii)`, `IV.` and the rest up to 39 read as ordered list items, in either case, with the hanging indent and caret handling the other markers have, and Return continues them in Roman (`iii.` → `iv.`). A lone `i.` counts as a numeral unless it follows `h.`; a lone `v.` or `x.` counts as one only after a numeral, so lettered lists keep lettering.
+
 ## 0.9.3 — 2026.10.06
 
 - A document opened from the menu bar item comes to the front. Picking a pinned or recent document, New, or Open… while another app was frontmost opened the window behind it, because the activation Paper asked for was declined; the click now brings Paper forward outright.

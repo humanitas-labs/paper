@@ -53,6 +53,33 @@ struct ListContinuationTests {
     }
 
     @Test
+    func romanNumeralsCountUpInRoman() {
+        let (text, _) = returnPressed(in: "i. first", at: NSRange(location: 8, length: 0))!
+        #expect(text == "i. first\nii. ")
+        let (three, _) = returnPressed(in: "ii. second", at: NSRange(location: 10, length: 0))!
+        #expect(three == "ii. second\niii. ")
+        let (upper, _) = returnPressed(in: "  III) third", at: NSRange(location: 12, length: 0))!
+        #expect(upper == "  III) third\n  IV) ")
+        let (five, _) = returnPressed(in: "iii. c\niv. d", at: NSRange(location: 12, length: 0))!
+        #expect(five == "iii. c\niv. d\nv. ")
+        let (six, _) = returnPressed(in: "iv. d\nv. e", at: NSRange(location: 10, length: 0))!
+        #expect(six == "iv. d\nv. e\nvi. ", "v. after a numeral is a numeral")
+        let (ten, _) = returnPressed(in: "ix. i\nx. j", at: NSRange(location: 10, length: 0))!
+        #expect(ten == "ix. i\nx. j\nxi. ")
+        let (ended, _) = returnPressed(in: "i. first\nii. ", at: NSRange(location: 13, length: 0))!
+        #expect(ended == "i. first\n", "an empty numeral item ends the list")
+    }
+
+    @Test
+    func aLoneNumeralLetterAfterALetterStaysALetter() {
+        let (j, _) = returnPressed(in: "h. eighth\ni. ninth", at: NSRange(location: 18, length: 0))!
+        #expect(j == "h. eighth\ni. ninth\nj. ")
+        let (w, _) = returnPressed(in: "v. alone", at: NSRange(location: 8, length: 0))!
+        #expect(w == "v. alone\nw. ")
+        #expect(returnPressed(in: "iiv. no", at: NSRange(location: 7, length: 0)) == nil, "not a numeral")
+    }
+
+    @Test
     func continuesInsideABlockQuote() {
         let (text, _) = returnPressed(in: "> - quoted item", at: NSRange(location: 15, length: 0))!
         #expect(text == "> - quoted item\n> - ")

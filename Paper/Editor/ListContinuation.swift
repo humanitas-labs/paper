@@ -18,7 +18,7 @@ enum ListContinuation {
     /// A line that is only indent, quote prefix, and marker — an item the
     /// writer left empty before pressing Return.
     private static let emptyItemPattern = try! NSRegularExpression(
-        pattern: #"^([\t ]*(?:>[\t ]?)*)([-+*]|\d+[A-Za-z]?[.)]|[A-Za-z][.)])(?:[\t ]+\[[ xX]\])?[\t ]*$"#
+        pattern: #"^([\t ]*(?:>[\t ]?)*)([-+*]|\d+[A-Za-z]?[.)]|(?=[ivx]{2,}[.)])x{0,3}(?:ix|iv|v?i{0,3})[.)]|(?=[IVX]{2,}[.)])X{0,3}(?:IX|IV|V?I{0,3})[.)]|[A-Za-z][.)])(?:[\t ]+\[[ xX]\])?[\t ]*$"#
     )
 
     /// The edit Return should perform at `selection`, or nil when ordinary
@@ -78,7 +78,7 @@ enum ListContinuation {
                 guard character == 0x20 || character == 0x09 else { break }
                 range.length += 1
             }
-            let replacement = "\n" + prefix + nextMarker(after: marker) + gap
+            let replacement = "\n" + prefix + nextMarker(after: marker, previous: previousMarker(in: text, before: paragraph)) + gap
             return Edit(
                 range: range,
                 replacement: replacement,
@@ -143,16 +143,34 @@ enum ListContinuation {
         )
     }
 
+    /// The marker of the list item on the line before `paragraph`, if that
+    /// line is one; it tells a Roman `i.` from the letter after `h.`.
+    private static func previousMarker(in text: NSString, before paragraph: NSRange) -> String? {
+        guard paragraph.location > 0 else { return nil }
+        let previous = text.paragraphRange(for: NSRange(location: paragraph.location - 1, length: 0))
+        guard let match = MarkdownSyntaxStyler.listMarkerPattern.firstMatch(in: text as String, range: previous),
+              match.range.location == previous.location else { return nil }
+        return text.substring(with: match.range(at: 1))
+    }
+
     /// The marker for the item after one marked `marker`: unordered markers
-    /// repeat, numbers count up, and a letter advances instead, whether it
-    /// suffixes a number (`1a)` → `1b)`) or stands alone (`a.` → `b.`).
-    static func nextMarker(after marker: String) -> String {
+    /// repeat, numbers count up, Roman numerals count up in Roman (`ii.` →
+    /// `iii.`), and a letter advances instead, whether it suffixes a number
+    /// (`1a)` → `1b)`) or stands alone (`a.` → `b.`). A lone `i`, `v`, or
+    /// `x` is a letter or a numeral by its neighbor (`previous`, the marker
+    /// on the line above): `i.` counts as Roman unless it follows `h.`, and
+    /// `v.` or `x.` only when it follows a numeral.
+    static func nextMarker(after marker: String, previous: String? = nil) -> String {
         switch marker {
         case "-", "*", "+":
             return marker
         default:
             let delimiter = String(marker.suffix(1))
             var body = String(marker.dropLast())
+            if let value = romanValue(body, previous: previous.map { String($0.dropLast()) }) {
+                let next = roman(value + 1)
+                return (body.first!.isUppercase ? next.uppercased() : next) + delimiter
+            }
             if let letter = body.last, letter.isLetter {
                 body.removeLast()
                 return body + nextLetter(after: letter) + delimiter
@@ -160,6 +178,53 @@ enum ListContinuation {
             let number = Int(body) ?? 0
             return String(number + 1) + delimiter
         }
+    }
+
+    /// The value of `body` read as a Roman numeral, or nil when it reads as
+    /// a letter or is not a numeral at all.
+    private static func romanValue(_ body: String, previous: String?) -> Int? {
+        guard let value = parseRoman(body) else { return nil }
+        guard body.count == 1 else { return value }
+        switch body.lowercased() {
+        case "i": return previous?.lowercased() == "h" ? nil : value
+        case "v", "x": return previous.flatMap(parseRoman) != nil ? value : nil
+        default: return nil
+        }
+    }
+
+    private static let numerals: [(Int, String)] = [
+        (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"), (100, "c"), (90, "xc"),
+        (50, "l"), (40, "xl"), (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i"),
+    ]
+
+    /// `value` in lowercase Roman numerals.
+    static func roman(_ value: Int) -> String {
+        var rest = value
+        var result = ""
+        for (amount, numeral) in numerals {
+            while rest >= amount {
+                result += numeral
+                rest -= amount
+            }
+        }
+        return result
+    }
+
+    /// The value of a canonical Roman numeral in one case, or nil.
+    static func parseRoman(_ text: String) -> Int? {
+        guard !text.isEmpty, text == text.lowercased() || text == text.uppercased() else { return nil }
+        let lower = text.lowercased()
+        guard lower.allSatisfy({ "ivxlcdm".contains($0) }) else { return nil }
+        var total = 0
+        var rest = Substring(lower)
+        for (amount, numeral) in numerals {
+            while rest.hasPrefix(numeral) {
+                total += amount
+                rest = rest.dropFirst(numeral.count)
+            }
+        }
+        guard rest.isEmpty, roman(total) == lower else { return nil }
+        return total
     }
 
     private static func nextLetter(after letter: Character) -> String {
