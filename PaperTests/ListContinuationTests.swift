@@ -80,6 +80,37 @@ struct ListContinuationTests {
     }
 
     @Test
+    func tabChangesAnOrderedMarkerToTheNextLevelsStyle() {
+        let (roman, _) = tabbed(in: "I. Intro\nII. Hook", at: NSRange(location: 16, length: 0))!
+        #expect(roman == "I. Intro\n  A. Hook")
+        let (number, _) = tabbed(in: "A. one\nB. two", at: NSRange(location: 13, length: 0))!
+        #expect(number == "A. one\n  1. two")
+        let (letter, selection) = tabbed(in: "1. one\n2. two", at: NSRange(location: 13, length: 0))!
+        #expect(letter == "1. one\n  a. two")
+        #expect(selection == NSRange(location: 15, length: 0))
+        let (lowerRoman, _) = tabbed(in: "  a. one\n  b. two", at: NSRange(location: 17, length: 0))!
+        #expect(lowerRoman == "  a. one\n    i. two")
+        let (continued, _) = tabbed(in: "I. x\n  A. y\nII. z", at: NSRange(location: 17, length: 0))!
+        #expect(continued == "I. x\n  A. y\n  B. z", "continues the sibling at the new level")
+    }
+
+    @Test
+    func shiftTabRestoresTheParentLevelsCount() {
+        let (text, _) = tabbed(in: "I. x\n  A. y\n  B. z", at: NSRange(location: 18, length: 0), outdent: true)!
+        #expect(text == "I. x\n  A. y\nII. z")
+        let (dash, _) = tabbed(in: "- one\n- two", at: NSRange(location: 11, length: 0))!
+        #expect(dash == "- one\n  - two", "unordered markers stay as typed")
+    }
+
+    @Test
+    func orderedMarkersPadToOneColumn() {
+        #expect(MarkdownSyntaxStyler.markerColumnPad(for: "II.") > MarkdownSyntaxStyler.markerColumnPad(for: "III."))
+        let width = { (text: String) in (text as NSString).size(withAttributes: [.font: Appearance.bodyFont()]).width }
+        #expect(abs((width("II.") + MarkdownSyntaxStyler.markerColumnPad(for: "II.")) - (width("III.") + MarkdownSyntaxStyler.markerColumnPad(for: "III."))) < 0.01)
+        #expect(MarkdownSyntaxStyler.markerColumnPad(for: "-") == 0)
+    }
+
+    @Test
     func continuesInsideABlockQuote() {
         let (text, _) = returnPressed(in: "> - quoted item", at: NSRange(location: 15, length: 0))!
         #expect(text == "> - quoted item\n> - ")

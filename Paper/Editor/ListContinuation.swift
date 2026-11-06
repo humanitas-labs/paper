@@ -96,7 +96,89 @@ enum ListContinuation {
     /// perform at `selection`: the caret's list item shifts one indent level
     /// as a whole, marker included. Nil outside a list item — a plain tab is
     /// right there — and nil when there is nothing left to outdent.
+    ///
+    /// An ordered item changes its marker with its level, as outlines do:
+    /// it continues the item above it at the new level when there is one,
+    /// and otherwise starts the style that level takes under its parent
+    /// (`I.` → `A.` → `1.` → `a.` → `i.`). Unordered markers stay as typed.
     static func indent(in text: NSString, selection: NSRange, outdent: Bool) -> Edit? {
+        guard let shift = shiftIndent(in: text, selection: selection, outdent: outdent) else { return nil }
+        let paragraph = text.paragraphRange(for: selection)
+        guard let match = MarkdownSyntaxStyler.listMarkerPattern.firstMatch(in: text as String, range: paragraph),
+              match.range.location == paragraph.location else { return shift }
+        let markerRange = match.range(at: 1)
+        let marker = text.substring(with: markerRange)
+        guard !["-", "*", "+"].contains(marker) else { return shift }
+        let head = NSRange(location: paragraph.location, length: markerRange.location - paragraph.location)
+        let shiftedLead = (text.substring(with: head) as NSString).replacingCharacters(
+            in: NSRange(location: shift.range.location - paragraph.location, length: shift.range.length),
+            with: shift.replacement
+        )
+        let level = indentWidth(shiftedLead)
+        let newMarker = levelMarker(atLevel: level, in: text, before: paragraph, delimiter: String(marker.suffix(1)), current: marker)
+        let replacement = shiftedLead + newMarker
+        let delta = newMarker.utf16.count - marker.utf16.count
+        let shiftedMarkerEnd = paragraph.location + shiftedLead.utf16.count + marker.utf16.count
+        var start = shift.selection.location
+        var end = NSMaxRange(shift.selection)
+        if start >= shiftedMarkerEnd { start += delta }
+        if end >= shiftedMarkerEnd { end += delta }
+        return Edit(
+            range: NSRange(location: paragraph.location, length: NSMaxRange(markerRange) - paragraph.location),
+            replacement: replacement,
+            selection: NSRange(location: start, length: end - start)
+        )
+    }
+
+    /// The width of a line's leading whitespace, a tab counting as one
+    /// indent unit; a quote prefix ends it.
+    private static func indentWidth(_ lead: String) -> Int {
+        var width = 0
+        for character in lead {
+            if character == " " { width += 1 } else if character == "\t" { width += indentUnit.count } else { break }
+        }
+        return width
+    }
+
+    /// The marker an ordered item takes at indent `level`: the one after the
+    /// nearest item above at that level, or, with none before the parent,
+    /// the first marker of the style the parent's marker calls for.
+    private static func levelMarker(atLevel level: Int, in text: NSString, before paragraph: NSRange, delimiter: String, current: String) -> String {
+        var location = paragraph.location
+        while location > 0 {
+            let line = text.paragraphRange(for: NSRange(location: location - 1, length: 0))
+            location = line.location
+            guard let match = MarkdownSyntaxStyler.listMarkerPattern.firstMatch(in: text as String, range: line),
+                  match.range.location == line.location else { continue }
+            let width = indentWidth(text.substring(with: NSRange(location: line.location, length: match.range(at: 1).location - line.location)))
+            let found = text.substring(with: match.range(at: 1))
+            if width == level {
+                guard !["-", "*", "+"].contains(found) else { return current }
+                let above = line.location > 0 ? previousMarker(in: text, before: line) : nil
+                return nextMarker(after: found, previous: above)
+            }
+            if width < level {
+                return firstMarker(under: found, delimiter: delimiter)
+            }
+        }
+        return level == 0 ? "1" + delimiter : firstMarker(under: "1.", delimiter: delimiter)
+    }
+
+    /// The first marker of the style nested under `parent`, the outline
+    /// order: upper Roman, upper letter, number, lower letter, lower Roman.
+    private static func firstMarker(under parent: String, delimiter: String) -> String {
+        let body = String(parent.dropLast())
+        if ["-", "*", "+"].contains(parent) { return "1" + delimiter }
+        if body.allSatisfy(\.isNumber) { return "a" + delimiter }
+        let isRoman = body.count > 1 ? parseRoman(body) != nil : ["i", "I"].contains(body)
+        if isRoman { return (body.first!.isUppercase ? "A" : "1") + delimiter }
+        if body.count == 1, let letter = body.first, letter.isLetter {
+            return (letter.isUppercase ? "1" : "i") + delimiter
+        }
+        return "1" + delimiter
+    }
+
+    private static func shiftIndent(in text: NSString, selection: NSRange, outdent: Bool) -> Edit? {
         guard selection.location <= text.length,
               NSMaxRange(selection) <= text.length else { return nil }
         let paragraph = text.paragraphRange(for: selection)

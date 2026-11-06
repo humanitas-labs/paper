@@ -195,7 +195,7 @@ struct ListMarkerTests {
         let storage = try #require(textView.textStorage)
         #expect(storage.attribute(.kern, at: 0, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing)
         #expect(storage.attribute(.kern, at: 1, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing)
-        #expect(storage.attribute(.kern, at: 2, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap)
+        #expect(storage.attribute(.kern, at: 2, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap + MarkdownSyntaxStyler.markerColumnPad(for: "12."))
 
         textView.setFrameSize(NSSize(width: 320, height: 600))
         layoutManager.ensureLayout(for: textView.textContainer!)
@@ -222,7 +222,7 @@ struct ListMarkerTests {
             storage.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle
         }
         #expect(style(4)?.firstLineHeadIndent == Appearance.listIndent, "1a)")
-        #expect(storage.attribute(.kern, at: 2, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap, "gap after `)`")
+        #expect(storage.attribute(.kern, at: 2, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap + MarkdownSyntaxStyler.markerColumnPad(for: "1a)"), "gap after `)`")
         #expect(style(28)?.firstLineHeadIndent == Appearance.listIndent, "1b.")
         #expect(style(45)?.firstLineHeadIndent == Appearance.listIndent, "2A)")
         #expect(style(56)?.firstLineHeadIndent == Appearance.listIndent, "a bare letter is a marker too (#70)")
@@ -246,7 +246,7 @@ struct ListMarkerTests {
         }
         #expect(style("a. no")?.firstLineHeadIndent == Appearance.listIndent, "a.")
         #expect(ink("a. no") == Appearance.mutedInk, "the marker is muted like a number")
-        #expect(storage.attribute(.kern, at: 1, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap, "gap after the period")
+        #expect(storage.attribute(.kern, at: 1, effectiveRange: nil) as? CGFloat == Appearance.letterSpacing + Appearance.listMarkerGap + MarkdownSyntaxStyler.markerColumnPad(for: "a."), "gap after the period")
         #expect(storage.attribute(.glyphSubstitute, at: 0, effectiveRange: nil) == nil, "`a.` keeps its glyphs")
         #expect(storage.attribute(.listMarker, at: 0, effectiveRange: nil) as? Bool == true)
         #expect(style("B) second")?.firstLineHeadIndent == Appearance.listIndent, "B)")

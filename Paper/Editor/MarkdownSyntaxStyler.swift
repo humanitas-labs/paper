@@ -444,6 +444,26 @@ final class MarkdownSyntaxStyler {
         }
     }
 
+    /// The room an ordered `marker` leaves short of the widest common marker
+    /// of its kind (`VIII.`, `viii.`, `10.`, `W.`, `m.`), so siblings' text
+    /// aligns. Wider markers take their own width. Unordered markers and
+    /// task items pad nothing.
+    static func markerColumnPad(for marker: String) -> CGFloat {
+        guard !["-", "*", "+"].contains(marker), let delimiter = marker.last else { return 0 }
+        let body = marker.dropLast()
+        let reference: String
+        if body.first?.isNumber == true {
+            reference = body.last?.isLetter == true ? "10m" : "10"
+        } else if body.count > 1 || ["i", "I"].contains(body) {
+            reference = body.first!.isUppercase ? "VIII" : "viii"
+        } else {
+            reference = body.first!.isUppercase ? "W" : "m"
+        }
+        let font = Appearance.bodyFont()
+        let width = { (text: String) in (text as NSString).size(withAttributes: [.font: font]).width }
+        return max(0, width(reference + String(delimiter)) - width(marker))
+    }
+
     /// The first-line indent for a list item whose match starts at
     /// `location`: the base list indent plus a full nesting step per two
     /// leading spaces (or a tab), less the width those characters already
@@ -487,8 +507,11 @@ final class MarkdownSyntaxStyler {
             // the text without a source change; the hanging indent accounts
             // for it below. Kern is per glyph, so an ordered marker like
             // `1.` gets it only after the period, not between its glyphs.
+            // An ordered marker pads to its kind's column, so the text of
+            // `II.` and `III.` (or `9.` and `10.`) starts at one x.
+            let pad = match.range(at: 3).location == NSNotFound ? Self.markerColumnPad(for: marker) : 0
             storage.addAttribute(
-                .kern, value: Appearance.letterSpacing + Appearance.listMarkerGap,
+                .kern, value: Appearance.letterSpacing + Appearance.listMarkerGap + pad,
                 range: NSRange(location: NSMaxRange(markerRange) - 1, length: 1)
             )
 
@@ -557,7 +580,7 @@ final class MarkdownSyntaxStyler {
                 let itemStyle = Appearance.hangingParagraphStyle(
                     under: String(rendered),
                     indent: Self.nestedIndent(at: match.range.location, in: source),
-                    gap: boxWidth > 0 ? boxWidth : Appearance.listMarkerGap,
+                    gap: boxWidth > 0 ? boxWidth : Appearance.listMarkerGap + pad,
                     spacing: continuations.isEmpty ? nil : 0
                 )
                 storage.addAttribute(.paragraphStyle, value: itemStyle, range: paragraphRange)
