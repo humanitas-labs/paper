@@ -24,12 +24,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UpdateCheck.runIfDue(configuration: ConfigurationStore.shared.current)
         PinStore.shared.start()
         MenuBarItem.shared.start()
+        PaperContext.shared.start()
         let firstLaunch = ConfigurationStore.shared.isFirstLaunch
         if panel != nil, !firstLaunch { WelcomeWindow.show() }
         Task {
             await CommandLineTool.shared.installQuietly()
             if panel != nil, firstLaunch { await WelcomeDocument.open(replacing: true) }
         }
+    }
+
+    /// Quitting takes the ambient context descriptor away with it.
+    func applicationWillTerminate(_ notification: Notification) {
+        PaperContext.shared.stop()
     }
 
     /// A Dock click while no window is open.

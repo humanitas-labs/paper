@@ -521,6 +521,10 @@ final class ContextServer {
         self.listener = listener
         self.token = token
         self.instance = instance
+        // An app that allows sudden termination is killed on quit without
+        // `applicationWillTerminate`, which would leave the descriptor
+        // behind; hold that off for as long as there is one to remove.
+        ProcessInfo.processInfo.disableSuddenTermination()
         listener.start(queue: queue)
     }
 
@@ -542,6 +546,7 @@ final class ContextServer {
 
     /// Closes the listener and removes the descriptor.
     func stop() {
+        let wasRunning = listener != nil
         listener?.cancel()
         listener = nil
         if let descriptorURL { try? FileManager.default.removeItem(at: descriptorURL) }
@@ -549,6 +554,9 @@ final class ContextServer {
         endpoint = nil
         token = nil
         instance = nil
+        // Last: once sudden termination is allowed again, a quit already
+        // under way kills the process at this line.
+        if wasRunning { ProcessInfo.processInfo.enableSuddenTermination() }
     }
 
     /// Random bytes as URL-safe text.
