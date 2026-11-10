@@ -56,6 +56,11 @@ struct Configuration: Equatable, Sendable {
     /// Whether the menu bar carries Paper's item with the pinned documents
     /// (#77). On by default; off takes the item away.
     var menuBar: Bool = true
+    /// Whether Paper answers an agent host on this Mac that asks what is
+    /// open and selected, and where a passage is on screen (the Ambient
+    /// Context Protocol). Off, the default, opens no port and writes no
+    /// descriptor file.
+    var ambientContext: Bool = false
     /// Whether `$…$`, `$$ … $$`, and `math` fences draw as typeset math.
     /// Off leaves them as typed, and a `math` fence is a code block.
     var math: Bool = true
@@ -242,6 +247,14 @@ struct Configuration: Equatable, Sendable {
     # documents (File ▸ Pin Document), the recent ones, New, and Open.
     menu.bar = on
 
+    # Let an agent app on this Mac ask Paper what is open and selected,
+    # and where a passage is on screen, so it can read your selection and
+    # place its window beside it. On, Paper listens on this Mac only and
+    # writes a file in ~/Library/Application Support/AmbientContext that
+    # tells such an app how to reach it; any program running as you can
+    # read that file. Off opens nothing and writes nothing.
+    ambient.context = off
+
     # Math: $…$ in a line, $$ … $$ blocks, and ```math fences draw as
     # typeset formulas; off leaves them as typed. The typeface is one of
     # latin-modern, termes, xits, libertinus, garamond, kpmath,
@@ -348,6 +361,8 @@ struct Configuration: Equatable, Sendable {
             updateCheck = Self.flag(value) ?? updateCheck
         case "menu.bar":
             menuBar = Self.flag(value) ?? menuBar
+        case "ambient.context":
+            ambientContext = Self.flag(value) ?? ambientContext
         case "math":
             math = Self.flag(value) ?? math
         case "math.font":
@@ -388,6 +403,7 @@ struct Configuration: Equatable, Sendable {
             ("print.margin", Self.format(printMargin)),
             ("update.check", updateCheck ? "on" : "off"),
             ("menu.bar", menuBar ? "on" : "off"),
+            ("ambient.context", ambientContext ? "on" : "off"),
             ("math", math ? "on" : "off"),
             ("math.font", mathFont.rawValue),
             ("math.scale", Self.format(mathScale)),

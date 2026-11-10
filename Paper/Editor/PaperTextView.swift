@@ -22,6 +22,10 @@ final class PaperTextView: NSTextView {
         }
     }
 
+    /// Passages an agent host was told about, kept on the same text as
+    /// the document is edited around them; see `PaperContext.swift`.
+    var trackedRanges = TrackedRanges()
+
     // MARK: - File ▸ Copy Path
 
     /// ⌥⌘C: the file's absolute path as plain text. The window hides its
@@ -1545,6 +1549,9 @@ extension PaperTextView: NSTextStorageDelegate {
         guard editedMask.contains(.editedCharacters) else { return }
         // The storage is edited on the main thread only; the protocol is
         // not annotated, so the isolation is asserted here.
-        MainActor.assumeIsolated { syntaxStyler.noteEdit(editedRange, delta: delta) }
+        MainActor.assumeIsolated {
+            syntaxStyler.noteEdit(editedRange, delta: delta)
+            trackedRanges.edited(editedRange, changeInLength: delta)
+        }
     }
 }

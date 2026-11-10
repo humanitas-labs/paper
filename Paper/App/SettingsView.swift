@@ -264,6 +264,13 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Agents") {
+                Toggle("Share what is open and selected with agent apps", isOn: binding(\.ambientContext))
+                Text("Lets an agent app on this Mac ask Paper which documents are open, what you have selected, and where the selection is on screen. Paper listens on this Mac only, and any program running as you can ask. Off opens nothing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("CLI") {
                 CommandLineToolRow()
                 DefaultApplicationRow()
