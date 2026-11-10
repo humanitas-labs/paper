@@ -106,9 +106,11 @@ final class PaperContext: ContextProvider {
             front.trackedRanges.track(selection, as: id)
         }
         let sent = NSRange(location: selection.location, length: min(selection.length, Self.contentLimit))
+        let startLine = Self.line(at: selection.location, in: text)
+        let inside = NSRange(location: selection.location, length: max(selection.length - 1, 0))
         var payload: [String: ContextValue] = ["lines": .object([
-            "start": .integer(Self.line(at: selection.location, in: text)),
-            "end": .integer(Self.line(at: NSMaxRange(selection) - 1, in: text)),
+            "start": .integer(startLine),
+            "end": .integer(startLine + Self.newlines(in: inside, of: text)),
         ])]
         if sent.length < selection.length { payload["truncated"] = .bool(true) }
         answer.items.append(ContextItem(
@@ -198,17 +200,21 @@ final class PaperContext: ContextProvider {
 
     /// The 1-based line holding the UTF-16 unit at `location`.
     static func line(at location: Int, in text: NSString) -> Int {
-        var line = 1
-        var index = 0
-        let end = min(max(location, 0), text.length)
-        while index < end {
-            let found = text.range(of: "\n", options: .literal, range: NSRange(location: index, length: end - index))
-            guard found.location != NSNotFound else { break }
-            line += 1
-            index = NSMaxRange(found)
-        }
-        return line
+        1 + newlines(in: NSRange(location: 0, length: min(max(location, 0), text.length)), of: text)
     }
+
+    /// How many line feeds `range` holds. One native pass over the
+    /// range, so a selection at the end of a long document does not cost
+    /// a search per line.
+    static func newlines(in range: NSRange, of text: NSString) -> Int {
+        let start = min(max(range.location, 0), text.length)
+        let end = min(max(NSMaxRange(range), start), text.length)
+        return lineFeed.numberOfMatches(
+            in: text as String, options: [], range: NSRange(location: start, length: end - start)
+        )
+    }
+
+    private static let lineFeed = try! NSRegularExpression(pattern: "\n", options: [.ignoreMetacharacters])
 }
 
 /// Screen geometry in the protocol's terms.
