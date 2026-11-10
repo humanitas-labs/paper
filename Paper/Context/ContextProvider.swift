@@ -53,6 +53,19 @@ enum ContextValue: Equatable, Sendable, Encodable {
     }
 }
 
+// A payload reads as the JSON it becomes: `["ref": "T-12", "done": false]`.
+extension ContextValue: ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral,
+    ExpressibleByFloatLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
+    init(stringLiteral value: String) { self = .string(value) }
+    init(booleanLiteral value: Bool) { self = .bool(value) }
+    init(integerLiteral value: Int) { self = .integer(value) }
+    init(floatLiteral value: Double) { self = .number(value) }
+    init(arrayLiteral elements: ContextValue...) { self = .array(elements) }
+    init(dictionaryLiteral elements: (String, ContextValue)...) {
+        self = .object(Dictionary(elements, uniquingKeysWith: { _, last in last }))
+    }
+}
+
 /// One thing the user has open or selected.
 struct ContextItem: Equatable, Sendable, Encodable {
     var id: String
