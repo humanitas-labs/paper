@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Applies Mac window behavior that SwiftUI does not expose. The host view
 /// configures its window every time it is attached, so the setup is idempotent
-/// and does not depend on the window existing when the view is created.
+/// and does not depend on the window existing when the view is created. The
+/// first time, it also puts a new document window in its opening place.
 struct WindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> HostView {
         HostView(frame: .zero)
@@ -14,13 +15,21 @@ struct WindowConfigurator: NSViewRepresentable {
     }
 
     final class HostView: NSView {
+        /// Whether this view's window has been put in its opening place.
+        private var placed = false
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             configureWindow()
         }
 
         func configureWindow() {
-            window?.applyPaperChrome(minSize: NSSize(width: 640, height: 520))
+            guard let window else { return }
+            window.applyPaperChrome(minSize: NSSize(width: 640, height: 520))
+            if !placed {
+                placed = true
+                window.placeAsNewDocumentWindow()
+            }
         }
     }
 }

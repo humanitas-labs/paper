@@ -11,6 +11,7 @@
 - Roman-numeral lists. `ii.`, `iii)`, `IV.` and the rest up to 39 read as ordered list items, in either case, with the hanging indent and caret handling the other markers have, and Return continues them in Roman (`iii.` → `iv.`). A lone `i.` counts as a numeral unless it follows `h.`; a lone `v.` or `x.` counts as one only after a numeral, so lettered lists keep lettering.
 - Full screen has no band above the page. The empty toolbar that places the traffic lights is hidden in full screen, where it showed as a strip in the system appearance, and the window's corners square off to the screen.
 - A done task's check reads in dark mode. The check is a bitmap baked in the canvas colour, cached under the theme's dynamic colour, so whichever appearance drew first kept its canvas: after light, dark drew a near-white check on its near-white disc, and the circle looked blank. The check now bakes the canvas as resolved for the appearance drawing it, cached per resolved colour.
+- A new window opens one step down and right of the front window, or in the middle of the screen when there is no room for the step. SwiftUI cascaded every new window from the oldest one still open, so a third window landed exactly on the second, and once the oldest closed the next started over at the screen's top-left, against the menu bar (#83).
 
 ## 0.9.3 — 2026.10.06
 
