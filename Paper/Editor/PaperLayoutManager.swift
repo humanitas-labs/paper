@@ -528,28 +528,46 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     /// sit on every line. A plain paragraph has none and is untouched.
     /// `rects` and the result are in the drawing coordinates TextKit hands
     /// over (`origin` applied).
-    func rectsOnText(_ rects: [NSRect], origin: NSPoint) -> [NSRect] {
+    func rectsOnText(_ rects: [NSRect], forCharacterRange range: NSRange, origin: NSPoint) -> [NSRect] {
         guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return rects }
+        // Only the run's own lines count. A rect can reach a hair past its
+        // line, over the edge of a neighbor the run does not touch: a blank
+        // line above a list's first item has no indent, and its sliver of
+        // the rect ran back across the gutter and over the task circle.
+        let runGlyphs = glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         var result: [NSRect] = []
         for rect in rects {
             let local = rect.offsetBy(dx: -origin.x, dy: -origin.y)
-            let glyphs = glyphRange(forBoundingRect: local, in: container)
-            var pieces: [NSRect] = []
-            var covered: CGFloat = 0
-            enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, fragmentGlyphs, _ in
-                let top = max(local.minY, fragment.minY), bottom = min(local.maxY, fragment.maxY)
-                guard bottom - top > 0.5 else { return }
-                let index = self.characterIndexForGlyph(at: fragmentGlyphs.location)
-                let style = index < storage.length
-                    ? storage.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle : nil
-                let text = fragment.minX + container.lineFragmentPadding + (style?.headIndent ?? 0)
-                let left = max(local.minX, text)
-                covered += bottom - top
-                guard local.maxX - left > 0.5 else { return }
-                pieces.append(NSRect(x: left + origin.x, y: top + origin.y, width: local.maxX - left, height: bottom - top))
+            let glyphs = NSIntersectionRange(glyphRange(forBoundingRect: local, in: container), runGlyphs)
+            // (top, bottom, left) of each line the rect covers.
+            var lines: [(top: CGFloat, bottom: CGFloat, left: CGFloat)] = []
+            if glyphs.length > 0 {
+                enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, fragmentGlyphs, _ in
+                    let top = max(local.minY, fragment.minY), bottom = min(local.maxY, fragment.maxY)
+                    guard bottom - top > 0.5 else { return }
+                    let index = self.characterIndexForGlyph(at: fragmentGlyphs.location)
+                    let style = index < storage.length
+                        ? storage.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle : nil
+                    let text = fragment.minX + container.lineFragmentPadding + (style?.headIndent ?? 0)
+                    lines.append((top, bottom, max(local.minX, text)))
+                }
             }
-            // A rect the fragments do not account for is left as it came.
-            if abs(covered - local.height) > 1 { result.append(rect) } else { result.append(contentsOf: pieces) }
+            // The run's lines take the whole rect between them, so the
+            // hair past the first and last line stays with those lines. A
+            // rect they do not account for is left as it came.
+            let slack: CGFloat = 2
+            guard let first = lines.first, let last = lines.last,
+                  first.top - local.minY <= slack, local.maxY - last.bottom <= slack,
+                  zip(lines, lines.dropFirst()).allSatisfy({ abs($1.top - $0.bottom) <= slack })
+            else {
+                result.append(rect)
+                continue
+            }
+            lines[0].top = local.minY
+            lines[lines.count - 1].bottom = local.maxY
+            for line in lines where local.maxX - line.left > 0.5 {
+                result.append(NSRect(x: line.left + origin.x, y: line.top + origin.y, width: local.maxX - line.left, height: line.bottom - line.top))
+            }
         }
         return result
     }
@@ -572,7 +590,7 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             return (font.ascender - font.descender + 4, Appearance.codeChipCornerRadius)
         }
         guard let chip else {
-            let rects = rectsOnText(Array(UnsafeBufferPointer(start: rectArray, count: rectCount)), origin: backgroundDrawOrigin)
+            let rects = rectsOnText(Array(UnsafeBufferPointer(start: rectArray, count: rectCount)), forCharacterRange: charRange, origin: backgroundDrawOrigin)
             guard !rects.isEmpty else { return }
             rects.withUnsafeBufferPointer { buffer in
                 super.fillBackgroundRectArray(buffer.baseAddress!, count: rects.count, forCharacterRange: charRange, color: color)
