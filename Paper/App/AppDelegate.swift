@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let testing = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         let panel = NSApp.windows.first(where: { $0 is NSOpenPanel }) as? NSOpenPanel
         panel?.cancel(nil)
+        NewWindowPlacement.isEnabled = true
         guard !testing else { return }
         UpdateCheck.runIfDue(configuration: ConfigurationStore.shared.current)
         PinStore.shared.start()
