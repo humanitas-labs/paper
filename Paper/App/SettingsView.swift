@@ -223,6 +223,13 @@ struct SettingsView: View {
                     .font(.caption)
             }
 
+            Section("Tables") {
+                Picker("Header row", selection: binding(\.tableHeader)) {
+                    ForEach(TableHeaderStyle.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Bold or italic typed in a header cell shows in every style.")
+                    .font(.caption)
+            }
 
             Section("Window") {
                 numberRow("Width", binding(\.windowWidth), in: Configuration.windowWidthRange, unit: "pt")

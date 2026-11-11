@@ -69,6 +69,8 @@ struct Configuration: Equatable, Sendable {
     /// Math size as a multiple of its default: display math at 1.25× the
     /// body, inline math at the body's x-height.
     var mathScale: Double = 1
+    /// How a table's header row is set apart from the rows under it.
+    var tableHeader: TableHeaderStyle = .bold
     /// Hex overrides for the theme's colours; nil inherits the theme.
     var colorOverrides = Palette.Overrides()
 
@@ -264,6 +266,11 @@ struct Configuration: Equatable, Sendable {
     math.font = latin-modern
     math.scale = 1
 
+    # A table's header row: bold, italic, or plain. The rule under it is
+    # drawn either way, and bold or italic typed in a header cell still
+    # shows.
+    table.header = bold
+
     # Colour overrides as #RRGGBB. Leave a value empty to use the theme's.
     color.canvas =
     color.ink =
@@ -369,6 +376,8 @@ struct Configuration: Equatable, Sendable {
             mathFont = MathFont(configName: value) ?? mathFont
         case "math.scale":
             mathScale = Self.number(value, in: Self.mathScaleRange) ?? mathScale
+        case "table.header":
+            tableHeader = TableHeaderStyle(rawValue: value.trimmingCharacters(in: .whitespaces).lowercased()) ?? tableHeader
         case "theme":
             let name = Theme.canonicalName(value)
             if !name.isEmpty { theme = name }
@@ -407,6 +416,7 @@ struct Configuration: Equatable, Sendable {
             ("math", math ? "on" : "off"),
             ("math.font", mathFont.rawValue),
             ("math.scale", Self.format(mathScale)),
+            ("table.header", tableHeader.rawValue),
         ] + Self.colorEntries(colorOverrides)
     }
 
@@ -473,6 +483,15 @@ struct Configuration: Equatable, Sendable {
         guard let parsed = Double(value), parsed.isFinite else { return nil }
         return min(max(parsed, range.lowerBound), range.upperBound)
     }
+}
+
+/// How a table's header row is set: a step heavier than the body, in
+/// italic, or the same as the rows under it.
+enum TableHeaderStyle: String, CaseIterable, Sendable, Identifiable {
+    case bold, italic, plain
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
 }
 
 /// The math typefaces SwiftMath bundles, by their config names. Each

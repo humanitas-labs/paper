@@ -156,6 +156,16 @@ struct RenderProbeTests {
             caret = 0
             name = "render-tables-doc"
         }
+        // `PAPER_PROBE_TABLE_HEADER` renders with that `table.header` style.
+        let store = ConfigurationStore.shared
+        let saved = store.current
+        defer { store.apply(saved) }
+        if let style = Self.probeEnvironment("PAPER_PROBE_TABLE_HEADER").flatMap(TableHeaderStyle.init(rawValue:)) {
+            var configuration = saved
+            configuration.tableHeader = style
+            store.apply(configuration)
+            name += "-\(style.rawValue)"
+        }
         let (scrollView, textView) = makeEditor(width: 1120, height: 1400, text: text)
         scrollView.appearance = NSAppearance(named: appearance)
         textView.setSelectedRange(NSRange(location: caret, length: 0))

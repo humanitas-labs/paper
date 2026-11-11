@@ -82,4 +82,5 @@ print.margin = 64
 math = on
 math.font = latin-modern
 math.scale = 1
+table.header = bold
 ```
