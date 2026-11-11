@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Tables. A GitHub-style pipe table (a header row, a `| --- | :---: | ---: |` row, and the rows under it) draws as a grid: columns fitted to the page, cells that wrap inside their column, a heavier header with a rule under it, a hairline between rows, and the delimiter row's colons setting left, center, or right. Cells take bold, italic, strikethrough, code, and links. The row the caret is on shows its source, pipes included, and the rest of the table stays a grid; a click on a cell puts the caret at that place in the source. The file is untouched. Tables export and print as the grid, with page breaks between rows. A table inside a list item or a quote stays as typed, and math in a cell shows its source (#7).
 - A selection that starts at the beginning of a list item, a nested item, or a quote is one clean rectangle. Its first line used to start at the marker while the wrapped lines under it started at the page's edge, leaving a notch at the top left.
 - A nested item's text sits right of its parent's. Under an ordered parent the nested marker starts no further left than the parent's text, so a wide `III.` column no longer lines `A.` items' text up with it.
 - Ordered markers change with their level. Tab on an ordered item takes the next outline style under its parent (`I.` → `A.` → `1.` → `a.` → `i.`), or continues the item above at that level; Shift-Tab counts on from the parent level's last item. Bullets stay as typed.

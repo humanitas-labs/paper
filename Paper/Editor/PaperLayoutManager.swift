@@ -340,6 +340,44 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return NSRect(x: glyphPosition.x, y: glyphPosition.y, width: width, height: proposedRect.height)
     }
 
+    /// Where the table row being laid out began, for the height its last
+    /// line fragment must make up.
+    private var tableRowStart = (location: NSNotFound, top: CGFloat(0))
+
+    /// A table row holds its rendered height (`TableRowMark`). Concealed,
+    /// the row is one empty line and that line takes the height exactly,
+    /// so the delimiter row folds down to its hairline. Revealed, the
+    /// source wraps as it will and the last fragment makes up whatever the
+    /// lines fall short of the rendered height: the caret entering a row
+    /// moves the rows below only when its source needs more room than its
+    /// cells did.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager,
+        shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>,
+        lineFragmentUsedRect: UnsafeMutablePointer<NSRect>,
+        baselineOffset: UnsafeMutablePointer<CGFloat>,
+        in textContainer: NSTextContainer,
+        forGlyphRange glyphRange: NSRange
+    ) -> Bool {
+        guard let storage = textStorage, glyphRange.length > 0 else { return false }
+        let characters = characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        guard characters.location < storage.length,
+              let mark = storage.attribute(.tableRow, at: characters.location, effectiveRange: nil) as? TableRowMark
+        else { return false }
+        let paragraph = (storage.string as NSString).paragraphRange(for: NSRange(location: characters.location, length: 0))
+        if characters.location == paragraph.location {
+            tableRowStart = (paragraph.location, lineFragmentRect.pointee.minY)
+        }
+        guard NSMaxRange(characters) >= NSMaxRange(paragraph) else { return false }
+        let above = tableRowStart.location == paragraph.location ? lineFragmentRect.pointee.minY - tableRowStart.top : 0
+        let active = NSIntersectionRange(paragraph, activeRange).length > 0
+        let natural = lineFragmentRect.pointee.height
+        let height = (active ? max(natural, mark.height - above) : mark.height) + mark.trailing
+        guard height != natural else { return false }
+        lineFragmentRect.pointee.size.height = height
+        return true
+    }
+
     /// The used rect's bottom after the previous complete layout, for the
     /// vacated-area invalidation below.
     private var lastUsedBottom: CGFloat = 0
@@ -405,6 +443,48 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         var glyph: CGGlyph = 0
         guard CTFontGetGlyphsForCharacters(font, units, &glyph, 1), glyph != 0 else { return nil }
         return glyph
+    }
+
+    /// A concealed table row is zero-width glyphs, but a link's underline
+    /// or a strikethrough on them still draws as a speck at the row's
+    /// start. The grid draws the cell's own; these stay quiet until the
+    /// row shows its source.
+    private func isConcealedTableRow(glyphAt glyphIndex: Int) -> Bool {
+        guard let storage = textStorage else { return false }
+        let index = characterIndexForGlyph(at: glyphIndex)
+        guard index < storage.length, storage.attribute(.tableRow, at: index, effectiveRange: nil) != nil else { return false }
+        let paragraph = (storage.string as NSString).paragraphRange(for: NSRange(location: index, length: 0))
+        return NSIntersectionRange(paragraph, activeRange).length == 0
+    }
+
+    override func drawUnderline(
+        forGlyphRange glyphRange: NSRange,
+        underlineType underlineVal: NSUnderlineStyle,
+        baselineOffset: CGFloat,
+        lineFragmentRect lineRect: NSRect,
+        lineFragmentGlyphRange lineGlyphRange: NSRange,
+        containerOrigin: NSPoint
+    ) {
+        guard !isConcealedTableRow(glyphAt: glyphRange.location) else { return }
+        super.drawUnderline(
+            forGlyphRange: glyphRange, underlineType: underlineVal, baselineOffset: baselineOffset,
+            lineFragmentRect: lineRect, lineFragmentGlyphRange: lineGlyphRange, containerOrigin: containerOrigin
+        )
+    }
+
+    override func drawStrikethrough(
+        forGlyphRange glyphRange: NSRange,
+        strikethroughType strikethroughVal: NSUnderlineStyle,
+        baselineOffset: CGFloat,
+        lineFragmentRect lineRect: NSRect,
+        lineFragmentGlyphRange lineGlyphRange: NSRange,
+        containerOrigin: NSPoint
+    ) {
+        guard !isConcealedTableRow(glyphAt: glyphRange.location) else { return }
+        super.drawStrikethrough(
+            forGlyphRange: glyphRange, strikethroughType: strikethroughVal, baselineOffset: baselineOffset,
+            lineFragmentRect: lineRect, lineFragmentGlyphRange: lineGlyphRange, containerOrigin: containerOrigin
+        )
     }
 
     /// The origin `drawBackground(forGlyphRange:at:)` was last given, so the
@@ -718,6 +798,31 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             rects.append(self.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil))
         }
         return rects
+    }
+
+    /// Each table row that intersects `glyphRange`: its mark, its
+    /// paragraph, the top of its first line fragment and the bottom of its
+    /// last (less the spacing after the table), in text-container
+    /// coordinates, and whether it is showing its source.
+    @MainActor
+    func tableRows(
+        forGlyphRange glyphRange: NSRange
+    ) -> [(mark: TableRowMark, range: NSRange, top: CGFloat, bottom: CGFloat, active: Bool)] {
+        guard let storage = textStorage, storage.length > 0 else { return [] }
+        let text = storage.string as NSString
+        let characters = text.paragraphRange(for: characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil))
+        var rows: [(mark: TableRowMark, range: NSRange, top: CGFloat, bottom: CGFloat, active: Bool)] = []
+        storage.enumerateAttribute(.tableRow, in: characters) { value, run, _ in
+            guard let mark = value as? TableRowMark else { return }
+            let paragraph = text.paragraphRange(for: NSRange(location: run.location, length: 0))
+            let glyphs = self.glyphRange(forCharacterRange: paragraph, actualCharacterRange: nil)
+            guard glyphs.length > 0 else { return }
+            let first = self.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+            let last = self.lineFragmentRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil)
+            let active = NSIntersectionRange(paragraph, self.activeRange).length > 0
+            rows.append((mark, paragraph, first.minY, last.maxY - mark.trailing, active))
+        }
+        return rows
     }
 
     /// Rects (in text-container coordinates) covering each contiguous run of

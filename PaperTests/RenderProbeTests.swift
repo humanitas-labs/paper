@@ -113,6 +113,73 @@ struct RenderProbeTests {
         try png.write(to: dir.appendingPathComponent("render-math-\(appearance == .aqua ? "light" : "dark").png"))
     }
 
+    /// Tables as a grid: one that fits, one whose cells wrap, alignment,
+    /// inline styling, and a row showing its source under the caret (#7).
+    /// `PAPER_PROBE_DOC`, when set, renders that document's tables instead.
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func renderTables(appearance: NSAppearance.Name) throws {
+        guard let dir = Self.probeDirectory else { return }
+        var text = """
+        ## Tables
+
+        A table that fits takes only the room it needs:
+
+        | Key | Action | Count |
+        | :--- | :---: | ---: |
+        | ⌘F | Find | 12 |
+        | ⌘+ | Zoom in | 3 |
+        | ⌘P | Print or export | 1,204 |
+
+        One wider than the measure wraps its cells:
+
+        | Trigger | Read before acting |
+        |---|---|
+        | Consequential decision or recommendation | [`doctrine/decisions/INDEX.md`](doctrine/decisions/INDEX.md) |
+        | Writing or substantial revision | Relevant [`kernel/conventions/`](kernel/conventions/) file |
+        | Procedure-backed task | [`kernel/SOP/_INDEX.md`](kernel/SOP/_INDEX.md), then the applicable SOP |
+        | Code work | [`kernel/SOP/code.md`](kernel/SOP/code.md) and repository-local instructions |
+
+        Four columns, with **bold**, *italic* and ~~struck~~ cells, and the caret on the second row:
+
+        | Option | What changes | Cost | My view |
+        |---|---|---|---|
+        | A | Nothing beyond the fix above | None | Fine if the blue label is enough for you |
+        | B | When the branch on screen is behind main, the header says so | **Half a day**, mostly tests | *Recommended.* Main moving under a branch is exactly how this went unnoticed |
+        | C | Remove branches from the header | ~~A day~~ Two days | No |
+
+        Last paragraph.
+        """
+        var caret = (text as NSString).range(of: "| B |").location + 2
+        var name = "render-tables"
+        if let path = Self.probeEnvironment("PAPER_PROBE_DOC") {
+            text = try String(contentsOfFile: path, encoding: .utf8)
+            caret = 0
+            name = "render-tables-doc"
+        }
+        let (scrollView, textView) = makeEditor(width: 1120, height: 1400, text: text)
+        scrollView.appearance = NSAppearance(named: appearance)
+        textView.setSelectedRange(NSRange(location: caret, length: 0))
+        scrollView.layoutSubtreeIfNeeded()
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        if name == "render-tables-doc", let storage = textView.textStorage {
+            // Start at the first table.
+            var first: Int?
+            storage.enumerateAttribute(.tableRow, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
+                guard value != nil else { return }
+                first = range.location
+                stop.pointee = true
+            }
+            if let first, let layoutManager = textView.layoutManager {
+                let rect = layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: first), effectiveRange: nil)
+                textView.scroll(NSPoint(x: 0, y: max(rect.minY - 40, 0)))
+            }
+        }
+        let rep = try #require(scrollView.bitmapImageRepForCachingDisplay(in: scrollView.bounds))
+        scrollView.cacheDisplay(in: scrollView.bounds, to: rep)
+        let png = try #require(rep.representation(using: .png, properties: [:]))
+        try png.write(to: dir.appendingPathComponent("\(name)-\(appearance == .aqua ? "light" : "dark").png"))
+    }
+
     /// A selection over wrapped list items, a nested item, a quote and a
     /// plain paragraph: each block's highlight is one clean rectangle.
     @Test
