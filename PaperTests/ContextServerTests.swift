@@ -9,22 +9,27 @@ struct ContextServerTests {
 
     private static let token = "test-token"
 
-    private static let selection = ContextItem(
-        id: "sel-23", type: "selection", title: "Selection in draft.md",
+    private static let selection = ContextElement(
+        id: "sel-23", role: .text,
         content: [.text("The command line lasted thirty years.")],
-        parent: "doc-1", locatable: true,
-        payload: ["lines": .object(["start": .integer(3), "end": .integer(3)])]
+        selected: true,
+        attributes: ["lines": .object(["start": .integer(3), "end": .integer(3)])]
     )
-    private static let document = ContextItem(
-        id: "doc-1", type: "document", title: "draft.md", url: "file:///Users/ada/essays/draft.md"
-    )
+    private static let root = ContextElement(id: "app", role: .application, title: "Editor", children: [
+        ContextElement(id: "win-1", role: .window, focused: true, children: [
+            ContextElement(
+                id: "doc-1", role: .document, subrole: "markdown", title: "draft.md",
+                url: "file:///Users/ada/essays/draft.md", focused: true, children: [selection]
+            ),
+        ]),
+    ])
 
     private var responder: ContextResponder {
         ContextResponder(
             app: .init(id: "org.example.editor", name: "Editor", version: "2.3.0"),
             instance: "k3f9x2",
             token: Self.token,
-            current: { ContextCurrent(focus: ["sel-23"], items: [Self.document, Self.selection]) },
+            current: { Self.root },
             locate: { id in
                 switch id {
                 case "sel-23":
@@ -158,7 +163,7 @@ struct ContextServerTests {
         let capabilities = try #require(result["capabilities"] as? [String: Any])
         #expect(capabilities["resources"] is [String: Any])
         let extensions = try #require(capabilities["extensions"] as? [String: [String: String]])
-        #expect(extensions["org.humanitas/ambient-context"] == ["version": "0.1"])
+        #expect(extensions["org.humanitas/ambient-context"] == ["version": "0.2.0"])
         let meta = try #require(result["_meta"] as? [String: [String: String]])
         #expect(meta["io.modelcontextprotocol/serverInfo"] == ["name": "Editor", "version": "2.3.0"])
     }
@@ -176,26 +181,34 @@ struct ContextServerTests {
     }
 
     @Test
-    func currentReturnsTheAppTheInstanceAndTheItems() async throws {
+    func currentReturnsTheVersionTheInstanceAndTheTree() async throws {
         let uri = "ambient://current"
         let current = try document(await responder.respond(to: request("resources/read", params: ["uri": uri])), uri: uri)
-        #expect(current["app"] as? [String: String] == ["id": "org.example.editor", "name": "Editor"])
+        #expect(Set(current.keys) == ["protocol", "instance", "root"])
+        #expect(current["protocol"] as? String == "0.2.0")
         #expect(current["instance"] as? String == "k3f9x2")
-        #expect(current["focus"] as? [String] == ["sel-23"])
 
-        let items = try #require(current["items"] as? [[String: Any]])
-        #expect(items.count == 2)
-        #expect(items[0]["id"] as? String == "doc-1")
-        #expect(items[0]["url"] as? String == "file:///Users/ada/essays/draft.md")
-        // Fields an item does not have are left out, not sent as null.
-        #expect(Set(items[0].keys) == ["id", "type", "title", "url"])
+        let root = try #require(current["root"] as? [String: Any])
+        #expect(root["role"] as? String == "Application")
+        #expect(root["title"] as? String == "Editor")
+        // States that are false, and fields an element does not have,
+        // are left out, not sent as false or null.
+        #expect(Set(root.keys) == ["id", "role", "title", "children"])
+        let window = try #require((root["children"] as? [[String: Any]])?.first)
+        #expect(Set(window.keys) == ["id", "role", "focused", "children"])
+        let file = try #require((window["children"] as? [[String: Any]])?.first)
+        #expect(file["role"] as? String == "Document")
+        #expect(file["subrole"] as? String == "markdown")
+        #expect(file["url"] as? String == "file:///Users/ada/essays/draft.md")
+        #expect(file["focused"] as? Bool == true)
 
-        #expect(items[1]["parent"] as? String == "doc-1")
-        #expect(items[1]["locatable"] as? Bool == true)
-        let content = try #require(items[1]["content"] as? [[String: String]])
+        let selection = try #require((file["children"] as? [[String: Any]])?.first)
+        #expect(Set(selection.keys) == ["id", "role", "content", "selected", "attributes"])
+        #expect(selection["selected"] as? Bool == true)
+        let content = try #require(selection["content"] as? [[String: String]])
         #expect(content == [["type": "text", "text": "The command line lasted thirty years."]])
-        let payload = try #require(items[1]["payload"] as? [String: [String: Int]])
-        #expect(payload == ["lines": ["start": 3, "end": 3]])
+        let attributes = try #require(selection["attributes"] as? [String: [String: Int]])
+        #expect(attributes == ["lines": ["start": 3, "end": 3]])
     }
 
     @Test
@@ -433,7 +446,7 @@ struct ContextServerTests {
 
     private func descriptor(pid: Int32) -> ContextDescriptor {
         ContextDescriptor(
-            protocol: "0.1", app: .init(id: "org.example.editor", name: "Editor", version: "2.3.0"),
+            protocol: "0.2.0", app: .init(id: "org.example.editor", name: "Editor", version: "2.3.0"),
             pid: pid, instance: "k3f9x2", endpoint: "http://127.0.0.1:53124/mcp", token: "secret",
             started: "2026-11-09T21:14:03Z"
         )
@@ -454,7 +467,7 @@ struct ContextServerTests {
 
         let written = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(written.keys) == ["protocol", "app", "pid", "instance", "endpoint", "token", "started"])
-        #expect(written["protocol"] as? String == "0.1")
+        #expect(written["protocol"] as? String == "0.2.0")
         #expect(written["pid"] as? Int == 48211)
         #expect(written["endpoint"] as? String == "http://127.0.0.1:53124/mcp")
         #expect(written["app"] as? [String: String] == ["id": "org.example.editor", "name": "Editor", "version": "2.3.0"])

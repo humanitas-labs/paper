@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-// A provider for the Ambient Context Protocol, draft 0.1: a small MCP
+// A provider for the Ambient Context Protocol, version 0.2.0: a small MCP
 // server on the loopback interface that answers `current` and `locate`
 // as two resources, and the descriptor file that tells a host where it
 // is. It is handed a `ContextProvider` and knows nothing else about the
@@ -125,7 +125,7 @@ struct ContextResponder: Sendable {
         var version: String
     }
 
-    static let protocolVersion = "0.1"
+    static let protocolVersion = "0.2.0"
     static let extensionID = "org.humanitas/ambient-context"
     static let endpointPath = "/mcp"
     static let currentURI = "ambient://current"
@@ -143,7 +143,7 @@ struct ContextResponder: Sendable {
     var app: App
     var instance: String
     var token: String
-    var current: @Sendable () async -> ContextCurrent
+    var current: @Sendable () async -> ContextElement
     var locate: @Sendable (String) async -> ContextLocation?
 
     func respond(to request: ContextHTTPRequest) async -> ContextHTTPResponse {
@@ -294,13 +294,7 @@ struct ContextResponder: Sendable {
     /// resource.
     private func read(_ uri: String) async -> String? {
         if uri == Self.currentURI {
-            let answer = await current()
-            return Self.json(CurrentResult(
-                app: .init(id: app.id, name: app.name),
-                instance: instance,
-                focus: answer.focus,
-                items: answer.items
-            ))
+            return Self.json(CurrentResult(protocol: Self.protocolVersion, instance: instance, root: await current()))
         }
         guard uri.hasPrefix(Self.locationPrefix),
               let id = String(uri.dropFirst(Self.locationPrefix.count)).removingPercentEncoding,
@@ -309,15 +303,12 @@ struct ContextResponder: Sendable {
         return Self.json(location)
     }
 
+    /// Exactly these three: the app's name is the root's title and its
+    /// identifier is in the descriptor.
     private struct CurrentResult: Encodable {
-        struct App: Encodable {
-            var id: String
-            var name: String
-        }
-        var app: App
+        var `protocol`: String
         var instance: String
-        var focus: [String]
-        var items: [ContextItem]
+        var root: ContextElement
     }
 
     /// Letters, digits, hyphens and underscores, as the protocol allows.

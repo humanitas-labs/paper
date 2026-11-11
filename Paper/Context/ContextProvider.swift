@@ -1,11 +1,11 @@
 import Foundation
 
-// The Ambient Context Protocol's types, draft 0.1, and the interface an
+// The Ambient Context Protocol's types, version 0.2.0, and the interface an
 // app implements to answer its two questions. Nothing in this file or in
 // `ContextServer.swift` knows about Paper, so both can be lifted into
 // another app unchanged.
 
-/// One block of an item's content, in MCP's `ContentBlock` form.
+/// One block of an element's content, in MCP's `ContentBlock` form.
 enum ContextContent: Equatable, Sendable, Encodable {
     case text(String)
     case image(data: Data, mimeType: String)
@@ -31,7 +31,7 @@ enum ContextContent: Equatable, Sendable, Encodable {
     }
 }
 
-/// A free-form value for an item's `payload`.
+/// A free-form value for an element's `attributes`.
 enum ContextValue: Equatable, Sendable, Encodable {
     case string(String)
     case number(Double)
@@ -53,7 +53,7 @@ enum ContextValue: Equatable, Sendable, Encodable {
     }
 }
 
-// A payload reads as the JSON it becomes: `["ref": "T-12", "done": false]`.
+// An attribute reads as the JSON it becomes: `["ref": "T-12", "done": false]`.
 extension ContextValue: ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral,
     ExpressibleByFloatLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
     init(stringLiteral value: String) { self = .string(value) }
@@ -66,23 +66,69 @@ extension ContextValue: ExpressibleByStringLiteral, ExpressibleByBooleanLiteral,
     }
 }
 
-/// One thing the user has open or selected.
-struct ContextItem: Equatable, Sendable, Encodable {
-    var id: String
-    var type: String
-    var title: String
-    var content: [ContextContent]?
-    var url: String?
-    var parent: String?
-    var locatable: Bool?
-    var payload: [String: ContextValue]?
+/// How an element is shown: the protocol's thirteen roles.
+enum ContextRole: String, Equatable, Sendable, Encodable {
+    case application = "Application"
+    case window = "Window"
+    case group = "Group"
+    case list = "List"
+    case table = "Table"
+    case row = "Row"
+    case cell = "Cell"
+    case text = "Text"
+    case heading = "Heading"
+    case link = "Link"
+    case image = "Image"
+    case page = "Page"
+    case document = "Document"
 }
 
-/// The provider's answer to `current`, before the server adds the app
-/// and the instance.
-struct ContextCurrent: Equatable, Sendable {
-    var focus: [String] = []
-    var items: [ContextItem] = []
+/// One thing the app shows: the app, a window, a document, selected
+/// text. The provider's answer to `current` is one of these, the app,
+/// with the rest inside it.
+struct ContextElement: Equatable, Sendable, Encodable {
+    var id: String
+    var role: ContextRole
+    /// What the thing is, in the app's own word.
+    var subrole: String?
+    var title: String?
+    var content: [ContextContent]?
+    var url: String?
+    var selected = false
+    /// The keyboard is here or inside here. Set along the whole path
+    /// from a window down to where the user is.
+    var focused = false
+    /// Drawn on screen now. Nil follows the parent.
+    var visible: Bool?
+    /// The pointer is over this now. At most one element in an answer.
+    var hovered = false
+    var children: [ContextElement] = []
+    var attributes: [String: ContextValue]?
+
+    private enum Key: String, CodingKey {
+        case id, role, subrole, title, content, url, selected, focused, visible, hovered, children, attributes
+    }
+
+    /// The three states that default to false are sent only when true,
+    /// and an empty list of children is not sent.
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: Key.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(role, forKey: .role)
+        try values.encodeIfPresent(subrole, forKey: .subrole)
+        try values.encodeIfPresent(title, forKey: .title)
+        try values.encodeIfPresent(content, forKey: .content)
+        try values.encodeIfPresent(url, forKey: .url)
+        if selected { try values.encode(true, forKey: .selected) }
+        if focused { try values.encode(true, forKey: .focused) }
+        try values.encodeIfPresent(visible, forKey: .visible)
+        if hovered { try values.encode(true, forKey: .hovered) }
+        if !children.isEmpty { try values.encode(children, forKey: .children) }
+        try values.encodeIfPresent(attributes, forKey: .attributes)
+    }
+
+    /// This element and everything inside it, parents first.
+    var all: [ContextElement] { [self] + children.flatMap(\.all) }
 }
 
 /// A rectangle in global display coordinates: points, origin at the top
@@ -94,7 +140,7 @@ struct ContextRect: Equatable, Sendable, Encodable {
     var h: Double
 }
 
-/// Where an item is on screen, at one moment.
+/// Where an element is on screen, at one moment.
 struct ContextLocation: Equatable, Sendable, Encodable {
     enum State: String, Sendable, Encodable { case visible, offscreen, gone }
     enum Edge: String, Sendable, Encodable { case left, right, top, bottom }
@@ -114,10 +160,11 @@ struct ContextLocation: Equatable, Sendable, Encodable {
 /// What an app implements to be a provider.
 @MainActor
 protocol ContextProvider: AnyObject, Sendable {
-    /// What the user has open and in focus, from state already in memory.
-    func current() -> ContextCurrent
-    /// Where the item is, or nil for an id this run never issued. An item
-    /// that was issued and no longer exists is a location whose state is
-    /// `gone`.
+    /// What the app shows, as one tree rooted at the app, from state
+    /// already in memory.
+    func current() -> ContextElement
+    /// Where the element is, or nil for an id this run never issued. An
+    /// element that was issued and no longer exists is a location whose
+    /// state is `gone`.
     func locate(_ id: String) -> ContextLocation?
 }
