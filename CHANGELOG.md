@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A selection that starts at the beginning of a list item, a nested item, or a quote is one clean rectangle. Its first line used to start at the marker while the wrapped lines under it started at the page's edge, leaving a notch at the top left.
 - A nested item's text sits right of its parent's. Under an ordered parent the nested marker starts no further left than the parent's text, so a wide `III.` column no longer lines `A.` items' text up with it.
 - Ordered markers change with their level. Tab on an ordered item takes the next outline style under its parent (`I.` → `A.` → `1.` → `a.` → `i.`), or continues the item above at that level; Shift-Tab counts on from the parent level's last item. Bullets stay as typed.
 - Sibling items' text aligns. An ordered marker pads to the width of a wide marker of its kind (`VIII.`, `10.`, `W.`), so `II.` and `III.`, or `9.` and `10.`, start their text at one x.
