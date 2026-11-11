@@ -388,4 +388,81 @@ struct TaskListTests {
         #expect(PaperTextView.isNestedTask(prefixAt: text.range(of: "- [ ] tabbed").location, in: text))
         #expect(!PaperTextView.isNestedTask(prefixAt: text.range(of: "- [ ] top again").location, in: text))
     }
+
+    /// A done item is a disc in the ink with a check in the canvas colour;
+    /// an open one is a ring around the canvas. Both hold in light and dark
+    /// whichever appearance draws first: the rasterised check was once
+    /// cached under the dynamic canvas colour, so the first appearance's
+    /// canvas stuck, and in dark a near-white check sat on a near-white disc.
+    @Test
+    func theCheckContrastsWithItsDiscInEitherAppearance() throws {
+        let text = "- [x] done\n- [ ] open\n\nplain\n"
+        let (textView, layoutManager) = makeTextView(text, selectedAt: text.utf16.count)
+        textView.drawsBackground = true
+        textView.backgroundColor = Appearance.canvas
+
+        func center(ofCircleAt index: Int) -> NSPoint {
+            let glyph = layoutManager.glyphIndexForCharacter(at: index)
+            let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let location = layoutManager.location(forGlyphAt: glyph)
+            let origin = textView.textContainerOrigin
+            return NSPoint(
+                x: origin.x + fragment.minX + location.x + Appearance.taskBoxSize / 2,
+                y: origin.y + fragment.minY + location.y - Appearance.bodyFont().capHeight / 2
+            )
+        }
+        let done = center(ofCircleAt: 2)
+        let open = center(ofCircleAt: (text as NSString).range(of: "- [ ]").location + 2)
+
+        func rgb(_ color: NSColor) -> [CGFloat] {
+            let c = color.usingColorSpace(.sRGB)!
+            return [c.redComponent, c.greenComponent, c.blueComponent]
+        }
+        func distance(_ a: [CGFloat], _ b: [CGFloat]) -> CGFloat {
+            zip(a, b).map { abs($0 - $1) }.max()!
+        }
+
+        // Light first, then dark, then light again: each order has to
+        // come out right, not just the one the cache saw first.
+        for name in [NSAppearance.Name.aqua, .darkAqua, .aqua] {
+            let appearance = try #require(NSAppearance(named: name))
+            textView.appearance = appearance
+            var ink: [CGFloat] = [], canvas: [CGFloat] = []
+            appearance.performAsCurrentDrawingAppearance {
+                ink = rgb(Appearance.ink)
+                canvas = rgb(Appearance.canvas)
+            }
+            let rep = try #require(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
+            textView.cacheDisplay(in: textView.bounds, to: rep)
+            let scale = CGFloat(rep.pixelsWide) / textView.bounds.width
+
+            /// The pixels of the square of side `side` around `point`.
+            func pixels(around point: NSPoint, side: CGFloat) -> [[CGFloat]] {
+                let half = side / 2
+                var out: [[CGFloat]] = []
+                var y = point.y - half
+                while y <= point.y + half {
+                    var x = point.x - half
+                    while x <= point.x + half {
+                        if let color = rep.colorAt(x: Int(x * scale), y: Int(y * scale)) { out.append(rgb(color)) }
+                        x += 0.5
+                    }
+                    y += 0.5
+                }
+                return out
+            }
+            let label = name == .aqua ? "light" : "dark"
+
+            // Inside the done disc: mostly ink, and a check in the canvas.
+            let disc = pixels(around: done, side: Appearance.taskBoxSize * 0.6)
+            let inkShare = Double(disc.filter { distance($0, ink) < 0.12 }.count) / Double(disc.count)
+            let checkShare = Double(disc.filter { distance($0, canvas) < 0.12 }.count) / Double(disc.count)
+            #expect(inkShare > 0.4, "\(label): the done disc fills with the ink (\(inkShare))")
+            #expect(checkShare > 0.03, "\(label): the check reads in the canvas colour (\(checkShare))")
+
+            // Inside the open ring: only canvas, no fill.
+            let ring = pixels(around: open, side: Appearance.taskBoxSize * 0.5)
+            #expect(ring.allSatisfy { distance($0, canvas) < 0.06 }, "\(label): an open item is an empty ring")
+        }
+    }
 }
