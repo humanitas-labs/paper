@@ -46,7 +46,28 @@ extension NSWindow {
         toolbarStyle = .unified
         isMovableByWindowBackground = true
         self.minSize = minSize
-        applyCorners()
+        observeFullScreen()
+        applyFullScreenState(styleMask.contains(.fullScreen))
+    }
+
+    /// The empty toolbar only places the traffic lights, which full screen
+    /// hides. Left visible there it showed as a band above the page, drawn
+    /// in the system appearance, so it is hidden in full screen and the
+    /// corners square off to the screen.
+    fileprivate func applyFullScreenState(_ full: Bool) {
+        toolbar?.isVisible = !full
+        applyCorners(radius: full ? 0 : Appearance.windowCornerRadius)
+    }
+
+    private func observeFullScreen() {
+        guard FullScreenObservers.windows.insert(ObjectIdentifier(self)).inserted else { return }
+        let center = NotificationCenter.default
+        center.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: self, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyFullScreenState(true) }
+        }
+        center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: self, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyFullScreenState(false) }
+        }
     }
 
     /// Places the window in the exact middle of its screen's visible area,
@@ -65,15 +86,21 @@ extension NSWindow {
     /// The window rounds more than the system default: the content view
     /// is masked with a continuous corner and the window itself is
     /// clear, so the shadow follows the mask.
-    private func applyCorners() {
+    private func applyCorners(radius: CGFloat) {
         guard let content = contentView else { return }
         backgroundColor = .clear
         isOpaque = false
         content.wantsLayer = true
         content.layer?.backgroundColor = Appearance.canvas.cgColor
-        content.layer?.cornerRadius = Appearance.windowCornerRadius
+        content.layer?.cornerRadius = radius
         content.layer?.cornerCurve = .continuous
         content.layer?.masksToBounds = true
         invalidateShadow()
     }
+}
+
+/// Windows already observed for full-screen changes, so configuring a window
+/// again does not add a second pair of observers.
+@MainActor private enum FullScreenObservers {
+    static var windows: Set<ObjectIdentifier> = []
 }
