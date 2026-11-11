@@ -52,7 +52,7 @@ struct SelectionRectTests {
         _ = textView
 
         // As TextKit hands them over: full-width bands from the edge.
-        let onText = layoutManager.rectsOnText(lines, origin: .zero)
+        let onText = layoutManager.rectsOnText(lines, forCharacterRange: range, origin: .zero)
         #expect(onText.count == lines.count)
         for (rect, line) in zip(onText, lines) {
             #expect(abs(rect.minX - start) < 0.5)
@@ -61,7 +61,7 @@ struct SelectionRectTests {
         }
         // One tall rect over all the lines is cut to the same pieces.
         let tall = lines.dropFirst().reduce(lines[0]) { $0.union($1) }
-        let cut = layoutManager.rectsOnText([tall], origin: .zero)
+        let cut = layoutManager.rectsOnText([tall], forCharacterRange: range, origin: .zero)
         #expect(cut.count == onText.count)
         #expect(zip(cut, onText).allSatisfy { abs($0.minX - $1.minX) < 0.01 && abs($0.minY - $1.minY) < 0.01 && abs($0.height - $1.height) < 0.01 })
     }
@@ -70,8 +70,9 @@ struct SelectionRectTests {
     func theTaskCircleLiesOutsideTheHighlight() throws {
         let text = Self.item
         let (textView, layoutManager) = editor(text)
-        let lines = fragments(layoutManager, for: NSRange(location: 0, length: text.utf16.count))
-        let onText = layoutManager.rectsOnText(lines, origin: .zero)
+        let range = NSRange(location: 0, length: text.utf16.count)
+        let lines = fragments(layoutManager, for: range)
+        let onText = layoutManager.rectsOnText(lines, forCharacterRange: range, origin: .zero)
         let start = textStart(text, textView, layoutManager)
         #expect(onText.allSatisfy { $0.minX >= start - 0.5 })
         #expect(start - lines[0].minX >= Appearance.taskBoxSize - 0.5)
@@ -82,13 +83,37 @@ struct SelectionRectTests {
         let text = "A plain paragraph that runs long enough to wrap onto a second line of the measure, and then some more words to be sure of it.\n\n" + Self.item
         let (_, layoutManager) = editor(text)
         let plain = fragments(layoutManager, for: NSRange(location: 0, length: 20))
-        #expect(layoutManager.rectsOnText(plain, origin: .zero) == plain)
+        #expect(layoutManager.rectsOnText(plain, forCharacterRange: NSRange(location: 0, length: 20), origin: .zero) == plain)
 
         let item = fragments(layoutManager, for: (text as NSString).range(of: Self.item))
         var mid = item
         mid[0].origin.x += 200
         mid[0].size.width -= 200
-        let onText = layoutManager.rectsOnText(mid, origin: .zero)
+        let onText = layoutManager.rectsOnText(mid, forCharacterRange: (text as NSString).range(of: Self.item), origin: .zero)
         #expect(onText[0] == mid[0])
+    }
+
+    /// The first item under a heading: TextKit's rect for its first line
+    /// can reach a hair above the line, into the blank line over it, which
+    /// has no indent. No piece of the highlight may lie left of the text
+    /// (PAP-0019).
+    @Test
+    func theFirstItemUnderAHeadingHasNoSliverInTheGutter() throws {
+        let text = "# Attention\n\n### Needs your go\n\n" + Self.item + "\n" + Self.item.replacingOccurrences(of: "An item", with: "Another") + "\n\nAfter."
+        let (textView, layoutManager) = editor(text)
+        let range = (text as NSString).range(of: Self.item)
+        let start = textStart(text, textView, layoutManager)
+        var count = 0
+        let pointer = try #require(layoutManager.rectArray(forCharacterRange: range, withinSelectedCharacterRange: range, in: textView.textContainer!, rectCount: &count))
+        var rects = Array(UnsafeBufferPointer(start: pointer, count: count))
+        try #require(rects.count > 1)
+        // As drawn: the first line's rect reaches a point over the line.
+        rects[0].origin.y -= 0.8
+        rects[0].size.height += 0.8
+        let cut = layoutManager.rectsOnText(rects, forCharacterRange: range, origin: .zero)
+        #expect(cut.count == rects.count)
+        #expect(cut.allSatisfy { $0.minX >= start - 0.5 })
+        #expect(abs(cut[0].minY - rects[0].minY) < 0.01, "the hair stays with the first line")
+        #expect(abs(cut[cut.count - 1].maxY - rects[rects.count - 1].maxY) < 0.01)
     }
 }
