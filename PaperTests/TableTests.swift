@@ -188,6 +188,39 @@ struct TableTests {
         #expect(textView.tableSourceIndex(at: NSPoint(x: origin.x + padding + 4, y: origin.y + revealed.midY)) == nil)
     }
 
+    /// `table.header` sets the header row bold, italic, or plain; bold
+    /// typed in a header cell holds in each, and an unknown value keeps
+    /// the default.
+    @Test
+    func theHeaderRowFollowsItsSetting() throws {
+        #expect(Configuration().tableHeader == .bold)
+        #expect(Configuration.parse("table.header = Italic").tableHeader == .italic)
+        #expect(Configuration.parse("table.header = plain").tableHeader == .plain)
+        #expect(Configuration.parse("table.header = loud").tableHeader == .bold)
+        var italic = Configuration()
+        italic.tableHeader = .italic
+        #expect(Configuration.parse(italic.merged(into: Configuration.template)) == italic)
+
+        let store = ConfigurationStore.shared
+        let saved = store.current
+        defer { store.apply(saved) }
+        let text = "| Head | **Bold** |\n| --- | --- |\n| a | b |\n"
+        for style in TableHeaderStyle.allCases {
+            var configuration = Configuration()
+            configuration.tableHeader = style
+            store.apply(configuration)
+            let (textView, _) = styledView(text + "\nafter", selectedAt: (text as NSString).length + 2)
+            let storage = try #require(textView.textStorage)
+            let mark = try #require(storage.attribute(.tableRow, at: 0, effectiveRange: nil) as? TableRowMark)
+            let head = try #require(mark.layout.rows[0][0].text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+            let bold = try #require(mark.layout.rows[0][1].text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+            let body = try #require(mark.layout.rows[1][0].text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+            #expect(head.fontDescriptor.symbolicTraits.contains(.italic) == (style == .italic), "\(style)")
+            #expect((head == body) == (style == .plain), "\(style)")
+            #expect(bold.fontDescriptor.symbolicTraits.contains(.bold), "\(style)")
+        }
+    }
+
     @Test
     func cellsDropTheirSyntaxAndTheHeaderIsHeavier() throws {
         let text = "| **Bold** head | b |\n| --- | --- |\n| a `code` \\| pipe | [link](https://example.com/a/long/path) |\n"

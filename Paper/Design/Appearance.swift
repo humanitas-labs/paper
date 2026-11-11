@@ -240,10 +240,16 @@ enum Appearance {
         font(size: size, weight: headingWeight, italic: false)
     }
 
-    /// A table's header row: two hundred above the body weight, under
-    /// bold's three hundred, so a bold header cell still reads bolder.
+    /// A table's header row, by the `table.header` setting. Bold is two
+    /// hundred above the body weight, under bold's three hundred, so a
+    /// bold header cell still reads bolder; italic and plain keep the
+    /// body weight. A cell's own italic holds in every style.
     static func tableHeaderFont(size: CGFloat = bodySize, italic: Bool = false) -> NSFont {
-        font(size: size, weight: bodyWeight + 200, italic: italic)
+        switch configuration.tableHeader {
+        case .bold: font(size: size, weight: bodyWeight + 200, italic: italic)
+        case .italic: font(size: size, weight: bodyWeight, italic: true)
+        case .plain: font(size: size, weight: bodyWeight, italic: italic)
+        }
     }
 
     /// The blank between a table's columns.

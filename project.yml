@@ -110,6 +110,9 @@ schemes:
         - variable: PAPER_PROBE_DOC
           value: $(PAPER_PROBE_DOC)
           isEnabled: true
+        - variable: PAPER_PROBE_TABLE_HEADER
+          value: $(PAPER_PROBE_TABLE_HEADER)
+          isEnabled: true
       gatherCoverageData: true
       targets:
         - PaperTests
