@@ -31,19 +31,28 @@ struct PaperContextTests {
         let context = PaperContext(textViews: { [front, back] })
 
         let current = context.current()
-        #expect(current.items.map(\.type) == ["document", "document"])
-        #expect(current.items.map(\.title) == ["draft.md", "notes.md"])
-        #expect(current.items[0].url == "file:///tmp/essays/draft.md")
-        #expect(current.items[0].content == nil, "a document's text is not sent")
-        #expect(current.focus == [current.items[0].id])
+        #expect(current.role == .application)
+        #expect(current.title == "Paper")
+        #expect(current.children.map(\.role) == [.window, .window])
+        let documents = current.children.flatMap(\.children)
+        #expect(documents.map(\.role) == [.document, .document])
+        #expect(documents.map(\.subrole) == ["markdown", "markdown"])
+        #expect(documents.map(\.title) == ["draft.md", "notes.md"])
+        #expect(documents[0].url == "file:///tmp/essays/draft.md")
+        #expect(documents[0].content == nil, "a document's text is not sent")
+        // The front window and its document are the focus path.
+        let focused = current.all.filter { $0.focused }.map { $0.id }
+        #expect(focused == [current.children[0].id, documents[0].id])
+        let ids = current.all.map { $0.id }
+        #expect(Set(ids).count == ids.count)
         // Asking again changes nothing.
         #expect(context.current() == current)
     }
 
     @Test
-    func anUnsavedDocumentHasATitleAndNoAddress() {
+    func anUnsavedDocumentHasATitleAndNoAddress() throws {
         let context = PaperContext(textViews: { [makeTextView("unsaved")] })
-        let item = context.current().items[0]
+        let item = try #require(context.current().all.first { $0.role == .document })
         #expect(item.title == "Untitled")
         #expect(item.url == nil)
     }
@@ -51,26 +60,28 @@ struct PaperContextTests {
     @Test
     func withNothingOpenThereIsNothingToReport() {
         let context = PaperContext(textViews: { [] })
-        #expect(context.current() == ContextCurrent())
+        #expect(context.current() == ContextElement(id: "app", role: .application, title: "Paper"))
     }
 
     @Test
-    func aSelectionIsAnItemInsideItsDocument() throws {
+    func aSelectionIsATextElementInsideItsDocument() throws {
         let front = makeTextView(essay, file: "draft.md")
         let sentence = (essay as NSString).range(of: "The command line lasted thirty years.")
         front.setSelectedRange(sentence)
         let context = PaperContext(textViews: { [front] })
 
         let current = context.current()
-        #expect(current.items.count == 2)
-        let selection = try #require(current.items.last)
-        #expect(selection.type == "selection")
-        #expect(selection.title == "Selection in draft.md")
-        #expect(selection.parent == current.items[0].id)
+        #expect(current.all.map(\.role) == [.application, .window, .document, .text])
+        let document = try #require(current.all.first { $0.role == .document })
+        let selection = try #require(document.children.first)
+        #expect(document.children.count == 1)
+        #expect(selection.selected)
         #expect(selection.content == [.text("The command line lasted thirty years.")])
-        #expect(selection.locatable == true)
-        #expect(selection.payload == ["lines": .object(["start": .integer(3), "end": .integer(3)])])
-        #expect(current.focus == [selection.id])
+        #expect(selection.attributes == ["lines": .object(["start": .integer(3), "end": .integer(3)])])
+        let selected = current.all.filter { $0.selected }.map { $0.id }
+        #expect(selected == [selection.id])
+        let hovered = current.all.filter { $0.hovered }
+        #expect(hovered.isEmpty)
         #expect(ContextResponder.isItemID(selection.id))
     }
 
@@ -81,15 +92,15 @@ struct PaperContextTests {
         let context = PaperContext(textViews: { [front] })
 
         front.setSelectedRange(text.range(of: "thirty years"))
-        let first = try #require(context.current().focus.first)
-        #expect(context.current().focus == [first])
+        let first = try #require(context.current().selectedID)
+        #expect(context.current().selectedID == first)
 
         front.setSelectedRange(text.range(of: "the mouse"))
-        let second = try #require(context.current().focus.first)
+        let second = try #require(context.current().selectedID)
         #expect(second != first)
 
         front.setSelectedRange(text.range(of: "thirty years"))
-        #expect(context.current().focus == [first], "the earlier passage is still tracked under its id")
+        #expect(context.current().selectedID == first, "the earlier passage is still tracked under its id")
     }
 
     @Test
@@ -97,7 +108,7 @@ struct PaperContextTests {
         let front = makeTextView(essay)
         front.setSelectedRange((essay as NSString).range(of: "thirty years"))
         let context = PaperContext(textViews: { [front] })
-        let id = try #require(context.current().focus.first)
+        let id = try #require(context.current().selectedID)
 
         type("A new opening paragraph.\n\n", at: 0, in: front)
         guard case .live(let range) = front.trackedRanges.state(of: id) else {
@@ -115,7 +126,7 @@ struct PaperContextTests {
         undo.attach(to: front)
         front.setSelectedRange((essay as NSString).range(of: "thirty years"))
         let context = PaperContext(textViews: { [front] })
-        let id = try #require(context.current().focus.first)
+        let id = try #require(context.current().selectedID)
 
         front.setSelectedRange(NSRange(location: 0, length: 0))
         front.insertText("Opening. ", replacementRange: NSRange(location: 0, length: 0))
@@ -134,7 +145,7 @@ struct PaperContextTests {
         let passage = (essay as NSString).range(of: "thirty years")
         front.setSelectedRange(passage)
         let context = PaperContext(textViews: { [front] })
-        let id = try #require(context.current().focus.first)
+        let id = try #require(context.current().selectedID)
 
         front.textStorage?.replaceCharacters(in: passage, with: "")
         #expect(front.trackedRanges.state(of: id) == .gone)
@@ -142,7 +153,7 @@ struct PaperContextTests {
 
         // A reload from disk replaces the whole text.
         front.setSelectedRange((front.string as NSString).range(of: "the mouse"))
-        let second = try #require(context.current().focus.first)
+        let second = try #require(context.current().selectedID)
         front.string = essay
         #expect(front.trackedRanges.state(of: second) == .gone)
     }
@@ -168,13 +179,13 @@ struct PaperContextTests {
             view.setSelectedRange((essay as NSString).range(of: "thirty years"))
             holder.view = view
             let current = context.current()
-            return (current.items[0].id, try #require(current.focus.first))
+            return (try #require(current.all.first { $0.role == .document }).id, try #require(current.selectedID))
         }
 
         holder.view = nil
         #expect(context.locate(document) == .gone(document))
         #expect(context.locate(selection) == .gone(selection))
-        #expect(context.current().items.isEmpty)
+        #expect(context.current().children.isEmpty)
     }
 
     @Test
@@ -183,13 +194,13 @@ struct PaperContextTests {
         let front = makeTextView(long)
         front.setSelectedRange(NSRange(location: 0, length: (long as NSString).length))
         let context = PaperContext(textViews: { [front] })
-        let selection = try #require(context.current().items.last)
+        let selection = try #require(context.current().all.last)
         guard case .text(let sent)? = selection.content?.first else {
             Issue.record("no text block")
             return
         }
         #expect((sent as NSString).length == PaperContext.contentLimit)
-        #expect(selection.payload?["truncated"] == .bool(true))
+        #expect(selection.attributes?["truncated"] == .bool(true))
     }
 
     @Test
@@ -240,8 +251,10 @@ struct PaperContextTests {
     // MARK: - Server
 
     private final class FixedProvider: ContextProvider {
-        func current() -> ContextCurrent {
-            ContextCurrent(focus: ["doc-1"], items: [ContextItem(id: "doc-1", type: "document", title: "draft.md")])
+        func current() -> ContextElement {
+            ContextElement(id: "app", role: .application, title: "Editor", children: [
+                ContextElement(id: "doc-1", role: .document, title: "draft.md", focused: true),
+            ])
         }
         func locate(_ id: String) -> ContextLocation? { nil }
     }
@@ -299,4 +312,9 @@ struct PaperContextTests {
         request.timeoutInterval = 2
         await #expect(throws: (any Error).self) { _ = try await session.data(for: request) }
     }
+}
+
+extension ContextElement {
+    /// The id of the selected text, when there is one.
+    var selectedID: String? { all.first(where: \.selected)?.id }
 }
