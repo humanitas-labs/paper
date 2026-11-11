@@ -452,7 +452,7 @@ final class MarkdownSyntaxStyler {
     }
 
     /// The room an ordered `marker` leaves short of the widest common marker
-    /// of its kind (`VIII.`, `viii.`, `10.`, `W.`, `m.`), so siblings' text
+    /// of its kind (`III.`, `iii.`, `9.`, `D.`, `d.`), so siblings' text
     /// aligns. Wider markers take their own width. Unordered markers and
     /// task items pad nothing.
     static func markerColumnPad(for marker: String) -> CGFloat {
@@ -460,11 +460,11 @@ final class MarkdownSyntaxStyler {
         let body = marker.dropLast()
         let reference: String
         if body.first?.isNumber == true {
-            reference = body.last?.isLetter == true ? "10m" : "10"
+            reference = body.last?.isLetter == true ? "9b" : "9"
         } else if body.count > 1 || ["i", "I"].contains(body) {
-            reference = body.first!.isUppercase ? "VIII" : "viii"
+            reference = body.first!.isUppercase ? "III" : "iii"
         } else {
-            reference = body.first!.isUppercase ? "W" : "m"
+            reference = body.first!.isUppercase ? "D" : "d"
         }
         let font = Appearance.bodyFont()
         let width = { (text: String) in (text as NSString).size(withAttributes: [.font: font]).width }
@@ -497,11 +497,17 @@ final class MarkdownSyntaxStyler {
             Appearance.listIndent,
             Appearance.listIndent + CGFloat(level) * Appearance.listNestIndent - width
         )
-        // Under an ordered parent the marker starts no further left than the
-        // parent's text, so a nested item's text sits right of its parent's
-        // even when the parent's padded marker column is wide (`VIII.`).
-        if let parentText = orderedParentTextStart(before: location, leading: whitespace, in: source) {
-            indent = max(indent, parentText - width)
+        // Under an ordered parent a nested item's text sits at least a
+        // marker gap right of the parent's text, so nesting reads even when
+        // the parent's marker column is wide; otherwise the plain step holds.
+        if let parentText = orderedParentTextStart(before: location, leading: whitespace, in: source),
+           let match = listMarkerPattern.firstMatch(in: source, range: text.paragraphRange(for: NSRange(location: location, length: 0))),
+           match.range.location == location, match.range(at: 3).location == NSNotFound {
+            let marker = text.substring(with: match.range(at: 1))
+            let pad = markerColumnPad(for: marker)
+            let ownText = Appearance.listMarkerGap + pad
+                + (text.substring(with: match.range) as NSString).size(withAttributes: [.font: Appearance.bodyFont()]).width
+            indent = max(indent, parentText + Appearance.listMarkerGap - ownText)
         }
         return indent
     }

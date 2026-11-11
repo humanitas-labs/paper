@@ -1282,6 +1282,10 @@ final class PaperTextView: NSTextView {
         let containerRect = dirtyRect.offsetBy(dx: -origin.x, dy: -origin.y)
         let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: container)
         let characters = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        // The check bakes its colour into a bitmap, so it takes the canvas
+        // resolved for the appearance drawing now, the one the disc's ink
+        // resolves for when it is set below.
+        let checkmark = Self.checkmark(in: Appearance.canvas.usingColorSpace(.sRGB) ?? .white)
         storage.enumerateAttribute(.taskBox, in: characters) { value, run, _ in
             guard let box = value as? String, let rect = taskCircleRect(forPrefix: run) else { return }
             let circle = rect.offsetBy(dx: origin.x, dy: origin.y)
@@ -1313,7 +1317,7 @@ final class PaperTextView: NSTextView {
             let disc = circle.insetBy(dx: inset, dy: inset)
             Appearance.ink.setFill()
             shape(disc).fill()
-            if let check = Self.checkmark {
+            if let check = checkmark {
                 // The symbol sits a little below centre optically; nudge it
                 // up by a hair and scale it with the disc.
                 let side = disc.width * 0.56
@@ -1338,10 +1342,13 @@ final class PaperTextView: NSTextView {
     /// The symbol rasterised once per canvas colour: a symbol image draws
     /// nothing into a PDF context (the print pass), a bitmap draws
     /// anywhere, and at 256 px it is crisp at any disc the text can set.
+    /// `canvas` must be resolved, not the dynamic theme colour: a bitmap
+    /// keeps whichever appearance it was drawn under, so a cache keyed by
+    /// the dynamic colour served light's check to dark (and back), a
+    /// near-white check on dark's near-white disc.
     private static var checkmarks: [NSColor: NSImage] = [:]
 
-    private static var checkmark: NSImage? {
-        let canvas = Appearance.canvas
+    private static func checkmark(in canvas: NSColor) -> NSImage? {
         if let cached = checkmarks[canvas] { return cached }
         let configuration = NSImage.SymbolConfiguration(pointSize: 64, weight: .bold)
             .applying(.init(paletteColors: [canvas]))
