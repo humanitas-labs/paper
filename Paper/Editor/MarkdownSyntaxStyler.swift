@@ -319,6 +319,13 @@ final class MarkdownSyntaxStyler {
         applyCodeBlocks(to: storage, source: source, range: range, fenced: fenced)
         applyDisplayMath(displayMath, to: storage, source: source, range: range, width: Self.measure(of: textView))
         applyComments(to: storage, source: source, range: range, comments: comments)
+        // Tables go last: a cell draws with the styling the passes above
+        // gave its source.
+        applyTables(
+            to: storage, source: source, range: range,
+            excluding: fenced + comments + displayMath.map(\.range),
+            width: Self.measure(of: textView)
+        )
         // Concealed characters stay in the layout as zero-advance control
         // glyphs; a kern (the letter spacing) on them would still widen the
         // line off the active paragraph, so they carry none.
@@ -1069,6 +1076,140 @@ final class MarkdownSyntaxStyler {
             // `[` and `](destination)` hide off the active paragraph.
             dimDelimiters(around: textRange, in: match.range, storage: storage)
         }
+    }
+
+    /// A pipe table draws as a grid without touching the source. Each row
+    /// stays its own paragraph. Off the active paragraph the whole row
+    /// conceals to an empty line, the layout manager gives that line the
+    /// height the wrapped cells need (`TableRowMark`), and the text view
+    /// draws the cells there. On the active paragraph the row shows its
+    /// source, pipes included, and keeps at least the same height, so the
+    /// rows above never move. The delimiter row collapses to the hairline
+    /// under the header. A table in a list item stays as source.
+    private func applyTables(
+        to storage: NSTextStorage,
+        source: String,
+        range: NSRange,
+        excluding: [NSRange],
+        width: CGFloat
+    ) {
+        let text = source as NSString
+        for table in MarkdownTable.tables(in: source, range: range, excluding: excluding) {
+            guard Self.listMarkerPattern.firstMatch(in: source, range: table.header.line) == nil else { continue }
+            let columns = table.columnCount
+            let cells = table.rows.enumerated().map { index, row in
+                row.cells.prefix(columns).enumerated().map { column, cell in
+                    Self.tableCell(cell, in: storage, text: text, alignment: table.alignments[column], header: index == 0)
+                }
+            }
+            let layout = TableLayout(rows: cells, columnCount: columns, available: width)
+
+            let lines = [table.header, table.delimiter] + table.body
+            for (index, row) in lines.enumerated() {
+                let paragraph = text.paragraphRange(for: row.line)
+                let trailing = index == lines.count - 1 ? Appearance.paragraphSpacing : 0
+                let mark: TableRowMark
+                switch index {
+                case 0:
+                    mark = TableRowMark(layout: layout, kind: .header, row: 0, height: layout.rowHeights[0], trailing: trailing)
+                case 1:
+                    mark = TableRowMark(
+                        layout: layout, kind: .delimiter, row: 0,
+                        height: Appearance.thematicBreakThickness, trailing: trailing
+                    )
+                default:
+                    mark = TableRowMark(
+                        layout: layout, kind: .body, row: index - 1,
+                        height: layout.rowHeights[index - 1], trailing: trailing
+                    )
+                }
+                // The source, when it shows, starts where the cells' text
+                // did: under the row's padding.
+                let style = NSMutableParagraphStyle()
+                style.lineHeightMultiple = Appearance.lineHeightMultiple
+                style.paragraphSpacingBefore = index == 1 ? 0 : layout.padding
+                storage.addAttribute(.paragraphStyle, value: style, range: paragraph)
+                storage.addAttribute(.tableRow, value: mark, range: paragraph)
+                // The grid draws the cells; nothing else draws over the
+                // concealed line.
+                storage.removeAttribute(.inlineMath, range: paragraph)
+                storage.removeAttribute(.reservedWidth, range: paragraph)
+                if index == 1 {
+                    storage.addAttribute(.foregroundColor, value: Appearance.mutedInk, range: row.line)
+                } else {
+                    for pipe in row.pipes {
+                        storage.addAttribute(
+                            .foregroundColor, value: Appearance.mutedInk,
+                            range: NSRange(location: pipe.pipe, length: 1)
+                        )
+                    }
+                }
+                // As with a fence, the first character draws as an
+                // invisible space so the row keeps its own fragment.
+                storage.addAttribute(.glyphSubstitute, value: " ", range: NSRange(location: row.line.location, length: 1))
+                if row.line.length > 1 {
+                    storage.addAttribute(
+                        .concealable, value: true,
+                        range: NSRange(location: row.line.location + 1, length: row.line.length - 1)
+                    )
+                }
+            }
+        }
+    }
+
+    /// The cell as the grid draws it: the styled source without the
+    /// characters that conceal, a substituted glyph in place of its source
+    /// character, `\|` as a bare pipe, and the header a step heavier.
+    /// Inline math keeps its source.
+    private static func tableCell(
+        _ range: NSRange,
+        in storage: NSTextStorage,
+        text: NSString,
+        alignment: MarkdownTable.Alignment,
+        header: Bool
+    ) -> TableCell {
+        guard range.length > 0 else { return TableCell(text: NSAttributedString(), sourceOffsets: [range.location]) }
+        let style = NSMutableParagraphStyle()
+        style.minimumLineHeight = Appearance.tableLineHeight
+        style.maximumLineHeight = Appearance.tableLineHeight
+        style.lineBreakMode = .byWordWrapping
+        switch alignment {
+        case .left: style.alignment = .left
+        case .center: style.alignment = .center
+        case .right: style.alignment = .right
+        }
+        let codeFont = Appearance.codeFont()
+        let rendered = NSMutableAttributedString()
+        var offsets: [Int] = []
+        let carried: [NSAttributedString.Key] = [
+            .font, .foregroundColor, .underlineStyle, .underlineColor, .strikethroughStyle, .kern, .linkDestination,
+        ]
+        storage.enumerateAttributes(in: range) { attributes, run, _ in
+            guard attributes[.concealable] == nil || attributes[.inlineMath] != nil else { return }
+            var kept: [NSAttributedString.Key: Any] = [.paragraphStyle: style]
+            for key in carried {
+                if let value = attributes[key] { kept[key] = value }
+            }
+            if header, let font = kept[.font] as? NSFont, font != codeFont {
+                let traits = font.fontDescriptor.symbolicTraits
+                if !traits.contains(.bold) {
+                    kept[.font] = Appearance.tableHeaderFont(size: font.pointSize, italic: traits.contains(.italic))
+                }
+            }
+            let substitute = (attributes[.glyphSubstitute] as? String).map { Array($0.utf16) }
+            var units: [unichar] = []
+            for index in run.location..<NSMaxRange(run) {
+                let character = text.character(at: index)
+                if character == 0x5C, index + 1 < NSMaxRange(range), text.character(at: index + 1) == 0x7C { continue }
+                for unit in substitute ?? [character] {
+                    units.append(unit)
+                    offsets.append(index)
+                }
+            }
+            rendered.append(NSAttributedString(string: String(utf16CodeUnits: units, count: units.count), attributes: kept))
+        }
+        offsets.append(NSMaxRange(range))
+        return TableCell(text: rendered, sourceOffsets: offsets)
     }
 
     /// The width a block image may take: the text container's, less its

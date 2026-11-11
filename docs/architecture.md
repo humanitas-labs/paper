@@ -1,6 +1,6 @@
 # Paper — Architecture
 
-Last updated: `2026.09.27`
+Last updated: `2026.11.10`
 
 > Paper is a native macOS editor for ordinary UTF-8 Markdown files. The file is the only persistent document state. Rendering, configuration, and window state remain outside it.
 
@@ -15,6 +15,7 @@ Last updated: `2026.09.27`
 | `MarkdownSyntaxStyler` | Add temporary presentation attributes to the source |
 | `PaperLayoutManager` | Conceal or substitute glyphs without changing storage |
 | `MathStore` | Typeset and cache LaTeX formulas through SwiftMath |
+| `MarkdownTable`, `TableLayout` | Read pipe tables off the source and fit their columns and wrapped cells to the measure |
 | `ConfigurationStore` | Load, write, and watch user settings and presets |
 | `Appearance` | Resolve configuration into fonts, spacing, and colours |
 
@@ -41,6 +42,8 @@ Block images use paragraph spacing to reserve a stable drawing band below the so
 Display math (`$$ … $$` and `math` fences) follows the same pattern: the closing line's spacing reserves a band as tall as `MathStore` typesets the formula, whether the source is shown or not. Off the active paragraph the source conceals and the formula centres on the block and band together; on it the source shows and the formula previews in the band. The caret on any row reveals the whole block. Source that does not parse stays visible with the error in its band.
 
 Inline math (`$…$`) is found right after code spans and set in the code font, so emphasis and the other inline passes skip it. Once lists and quotes have set the paragraph styles, each formula is typeset at the size that matches the x-height of the text beside it; off the active paragraph its first `$` reserves the formula's width (`.reservedWidth`, laid out as whitespace) and the rest conceals, and the text view draws the formula there on the baseline. A paragraph whose formula is taller than its lines gets a `minimumLineHeight` large enough for it in both states. `math.font`, `math.scale`, and `color.math` reach math through `Appearance` (`mathFont`, `mathSize`, `inlineMathSize`, `mathInk`); `MathStore` keys its cache and preview files by face, and `math = off` empties both math passes, so a `math` fence falls through to the code pass.
+
+A pipe table keeps one source paragraph per row. `MarkdownTable` reads the rows off the string; the styler builds each cell's drawn text from the attributes the earlier passes set, with concealed syntax removed and a map back to source offsets, and `TableLayout` fits the columns to the measure and measures each wrapped row. Every row paragraph carries a `TableRowMark`. Off the active paragraph the whole row conceals to one empty line; the layout manager's line-fragment delegate gives that line the row's rendered height (the delimiter row folds to the header's hairline), and the text view draws the cells and rules there. On the active paragraph the row shows its source and the delegate pads its last line fragment up to the rendered height, so entering a row moves the page only when the source needs more lines than the cells did. `characterIndexForInsertion(at:)` maps a point on a drawn cell to its source character. Table rows are the one case where a concealed line's height is set by the delegate instead of by paragraph spacing.
 
 `PDFExporter` paginates the same pipeline: an offscreen `PaperTextView` marked as a print surface, styled at zoom 1 with a measure derived from the page (a 10 pt body between 64 pt margins), every image band pinned and decoded, no active paragraph, handed to an `NSPrintOperation` whose print info scales the column onto the paper. Export writes with a save job to a staging file moved into place; Print shows the panel over the same surface. Page breaks are AppKit's, between line fragments; the view's background pass draws each page's bands, rules, and images.
 

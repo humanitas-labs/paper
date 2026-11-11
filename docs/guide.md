@@ -41,6 +41,12 @@ LaTeX between dollar signs is typeset in place, the way GitHub reads it. `$E = m
 
 Typesetting is [SwiftMath](https://github.com/mgriebling/SwiftMath), which covers most of the LaTeX math people write day to day (fractions, roots, sums and integrals, matrices, `cases`, Greek, accents, `\text`); a command it lacks, like `\operatorname`, shows its source with the error. `math.font` picks the typeface, `math.scale` the size, `color.math` the ink, and `math = off` leaves every dollar as typed. Settings (⌘,) has the same under Math.
 
+## Tables
+
+A pipe table, the kind GitHub reads, draws as a grid: a header row, a row of dashes under it (`| --- | :---: | ---: |`, the colons setting left, center, or right), and the rows that follow. Columns are fitted to the page and cells wrap inside them, so a table with sentences in it stays a table. Outer pipes are optional and `\|` is a literal pipe.
+
+Click a cell and that row shows its source, pipes and all, with the caret where you clicked; the rest of the table stays a grid. Editing is plain text: there is no Tab between cells and nothing re-pads the pipes in the file. A table inside a list item or a quote stays as typed, and math inside a cell shows its source.
+
 ## Menu bar and pins
 
 Paper keeps an item in the menu bar, beside the clock, listing your pinned documents, then the recent ones, then New and Open. Pin the front document with File ▸ Pin Document… (⇧⌘P) or from the file pill's menu; it asks for a name, the file name by default. Settings ▸ Menu bar renames, reorders, and unpins them, and `menu.bar = off` takes the item away.

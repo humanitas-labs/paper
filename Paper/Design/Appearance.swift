@@ -240,6 +240,26 @@ enum Appearance {
         font(size: size, weight: headingWeight, italic: false)
     }
 
+    /// A table's header row: two hundred above the body weight, under
+    /// bold's three hundred, so a bold header cell still reads bolder.
+    static func tableHeaderFont(size: CGFloat = bodySize, italic: Bool = false) -> NSFont {
+        font(size: size, weight: bodyWeight + 200, italic: italic)
+    }
+
+    /// The blank between a table's columns.
+    static var tableGutter: CGFloat { (bodySize * 1.25).rounded() }
+    /// The blank above and below the text of a table row.
+    static var tableRowPadding: CGFloat { (bodySize * 0.4).rounded() }
+    /// The rule under a table's header, a step stronger than the hairlines
+    /// between its body rows.
+    static var tableHeaderRuleInk: NSColor { mutedInk }
+    static var tableRowRuleInk: NSColor { thematicBreakInk }
+    /// One line of a table cell. Fixed, so a cell set in the code font and
+    /// the body text beside it sit on the same baseline.
+    static var tableLineHeight: CGFloat {
+        (NSLayoutManager().defaultLineHeight(for: bodyFont()) * lineHeightMultiple).rounded(.up)
+    }
+
     /// A face at `weight` on the CSS scale. The system serif takes the
     /// weight through `NSFont.Weight`, which is continuous. An installed
     /// family with a variable weight axis takes the exact value on that

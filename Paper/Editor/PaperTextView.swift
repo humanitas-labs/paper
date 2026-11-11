@@ -209,7 +209,7 @@ final class PaperTextView: NSTextView {
         // narrower than the measure plus its margins shrinks the container,
         // so the bands are sized again.
         let measure = MarkdownSyntaxStyler.measure(of: self)
-        if measure != styledMeasure, hasBlockImages {
+        if measure != styledMeasure, hasBlockImages || hasTables {
             syntaxStyler.apply(to: self)
         }
         styledMeasure = measure
@@ -244,6 +244,19 @@ final class PaperTextView: NSTextView {
                 self.setFrameSize(self.frame.size)
             }
         }
+    }
+
+    /// A table's columns are fitted to the measure when styled, as a
+    /// block image is.
+    private var hasTables: Bool {
+        guard let storage = textStorage, storage.length > 0 else { return false }
+        var found = false
+        storage.enumerateAttribute(.tableRow, in: NSRange(location: 0, length: storage.length)) { value, _, stop in
+            guard value != nil else { return }
+            found = true
+            stop.pointee = true
+        }
+        return found
     }
 
     private var hasBlockImages: Bool {
@@ -503,6 +516,7 @@ final class PaperTextView: NSTextView {
         syncCodeCopyButtons()
         drawQuoteRules(in: rect)
         drawThematicBreaks(in: rect)
+        drawTables(in: rect)
         drawTaskCircles(in: rect)
         drawImages(in: rect)
         drawMath(in: rect)
@@ -510,6 +524,81 @@ final class PaperTextView: NSTextView {
         syncMathExpandButtons()
         drawImageSelection(in: rect)
         drawPlaceholder()
+    }
+
+    /// A table row off the active paragraph draws its cells in the height
+    /// its concealed line holds, each wrapped to its column. The header's
+    /// hairline draws on the folded delimiter row, and a fainter one
+    /// between body rows, as wide as the table. A row showing its source
+    /// draws no cells; its rule below still does.
+    private func drawTables(in dirtyRect: NSRect) {
+        guard let layoutManager = layoutManager as? PaperLayoutManager,
+              let container = textContainer else { return }
+        let origin = textContainerOrigin
+        let containerRect = dirtyRect.offsetBy(dx: -origin.x, dy: -origin.y)
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: containerRect, in: container)
+        let left = origin.x + container.lineFragmentPadding
+        for row in layoutManager.tableRows(forGlyphRange: glyphRange) {
+            let layout = row.mark.layout
+            let top = origin.y + row.top
+            let bottom = origin.y + row.bottom
+            switch row.mark.kind {
+            case .delimiter:
+                guard !row.active else { continue }
+                Appearance.tableHeaderRuleInk.setFill()
+                NSRect(x: left, y: top, width: layout.width, height: Appearance.thematicBreakThickness).fill()
+            case .header, .body:
+                if row.mark.kind == .body, row.mark.row < layout.rows.count - 1 {
+                    Appearance.tableRowRuleInk.setFill()
+                    NSRect(
+                        x: left, y: bottom - Appearance.thematicBreakThickness,
+                        width: layout.width, height: Appearance.thematicBreakThickness
+                    ).fill()
+                }
+                guard !row.active, row.mark.row < layout.rows.count else { continue }
+                for (index, cell) in layout.rows[row.mark.row].enumerated() where index < layout.columns.count {
+                    let column = layout.columns[index]
+                    TableMeasure.draw(cell.text, in: NSRect(
+                        x: left + column.x, y: top + layout.padding,
+                        width: column.width, height: max(bottom - top - layout.padding, 0)
+                    ))
+                }
+            }
+        }
+    }
+
+    /// A click on a drawn table cell lands on the source character under
+    /// it: the row is one concealed line, so the text system itself would
+    /// put every click at the row's start. Every mouse path asks here.
+    override func characterIndexForInsertion(at point: NSPoint) -> Int {
+        tableSourceIndex(at: point) ?? super.characterIndexForInsertion(at: point)
+    }
+
+    /// The source index for a point (in view coordinates) on a drawn
+    /// table row, or nil anywhere else, a row showing its source included.
+    func tableSourceIndex(at point: NSPoint) -> Int? {
+        guard let layoutManager = layoutManager as? PaperLayoutManager,
+              let container = textContainer, let storage = textStorage, storage.length > 0 else { return nil }
+        let origin = textContainerOrigin
+        let local = NSPoint(x: point.x - origin.x, y: point.y - origin.y)
+        let glyph = layoutManager.glyphIndex(for: local, in: container)
+        let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        guard local.y >= fragment.minY, local.y < fragment.maxY else { return nil }
+        let rows = layoutManager.tableRows(forGlyphRange: NSRange(location: glyph, length: 1))
+        guard let row = rows.first, !row.active, row.mark.kind != .delimiter,
+              local.y < row.bottom, row.mark.row < row.mark.layout.rows.count else { return nil }
+        let layout = row.mark.layout
+        let cells = layout.rows[row.mark.row]
+        let x = local.x - container.lineFragmentPadding
+        guard let index = layout.column(at: x) else { return nil }
+        guard index < cells.count else { return cells.last?.sourceOffsets.last }
+        let cell = cells[index]
+        let column = layout.columns[index]
+        let offset = TableMeasure.offset(
+            in: cell.text, width: column.width,
+            at: NSPoint(x: x - column.x, y: local.y - row.top - layout.padding)
+        )
+        return cell.sourceOffsets[min(offset, cell.sourceOffsets.count - 1)]
     }
 
     /// Block images draw in the band their paragraph spacing reserves,

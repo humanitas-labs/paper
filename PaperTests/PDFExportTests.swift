@@ -77,6 +77,25 @@ struct PDFExportTests {
     }
 
     @Test
+    func aTableExportsAsItsGrid() throws {
+        makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let rows = (1...60).map { "| Row \($0) | A cell with enough words in it to wrap inside its column on the page | **Done** |" }
+        let text = "Before.\n\n| Name | Meaning | State |\n| --- | --- | :---: |\n" + rows.joined(separator: "\n") + "\n\nAfter."
+        let output = folder.appendingPathComponent("table.pdf")
+        try PDFExporter.export(text: text, documentURL: nil, to: output)
+        let document = try #require(PDFDocument(url: output))
+        #expect(document.pageCount > 1)
+        let extracted = try #require(document.string)
+        for word in ["Name", "Meaning", "State", "Row 1", "Row 60", "Done", "After."] {
+            #expect(extracted.contains(word), Comment(rawValue: word))
+        }
+        #expect(!extracted.contains("|"))
+        #expect(!extracted.contains("---"))
+        #expect(!extracted.contains("**"))
+    }
+
+    @Test
     func extractedTextHidesMarkersAndKeepsWords() throws {
         makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
