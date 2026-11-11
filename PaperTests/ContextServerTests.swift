@@ -163,7 +163,7 @@ struct ContextServerTests {
         let capabilities = try #require(result["capabilities"] as? [String: Any])
         #expect(capabilities["resources"] is [String: Any])
         let extensions = try #require(capabilities["extensions"] as? [String: [String: String]])
-        #expect(extensions["org.humanitas/ambient-context"] == ["version": "0.2.0"])
+        #expect(extensions["io.github.ambientcontextprotocol/context"] == ["version": "0.2.0"])
         let meta = try #require(result["_meta"] as? [String: [String: String]])
         #expect(meta["io.modelcontextprotocol/serverInfo"] == ["name": "Editor", "version": "2.3.0"])
     }
