@@ -517,6 +517,41 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return rects
     }
 
+    /// TextKit starts a background run's first rect at its first glyph and
+    /// every later line's at the fragment's leading edge. A selection that
+    /// begins at the start of an indented paragraph (a list item, a nested
+    /// one, a quote) so drew its first line short of the lines under it,
+    /// a notch at the top left. When nothing but indent, quote marks, and a
+    /// list prefix lies before the run on its line, the first rect reaches
+    /// back to the leading edge like the rest. `rects` and the result are
+    /// in the drawing coordinates TextKit hands over (`origin` applied).
+    func squaredToLeadingEdge(_ rects: [NSRect], forCharacterRange charRange: NSRange, origin: NSPoint) -> [NSRect] {
+        guard let storage = textStorage, let container = textContainers.first,
+              charRange.location < storage.length, !rects.isEmpty else { return rects }
+        let text = storage.string as NSString
+        let paragraph = text.paragraphRange(for: NSRange(location: charRange.location, length: 0))
+        var lead = NSRange(location: paragraph.location, length: charRange.location - paragraph.location)
+        if let unit = ListPrefix.unit(in: text, at: charRange.location), NSMaxRange(unit) == charRange.location {
+            lead.length = unit.location - paragraph.location
+        }
+        for index in lead.location..<NSMaxRange(lead) {
+            let character = text.character(at: index)
+            guard character == 0x20 || character == 0x09 || character == 0x3E else { return rects }
+        }
+        let fragment = lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: charRange.location), effectiveRange: nil)
+        let leading = origin.x + fragment.minX + container.lineFragmentPadding
+        // The run's rect on that line: the leftmost one within the fragment.
+        var first: Int?
+        for (index, rect) in rects.enumerated() where rect.midY > origin.y + fragment.minY && rect.midY < origin.y + fragment.maxY {
+            if first == nil || rect.minX < rects[first!].minX { first = index }
+        }
+        guard let first, rects[first].minX > leading else { return rects }
+        var squared = rects
+        squared[first].size.width += squared[first].minX - leading
+        squared[first].origin.x = leading
+        return squared
+    }
+
     /// Inline `code` spans carry the band colour as a background attribute;
     /// those fills are drawn as rounded chips hugging the glyph box instead
     /// of full-height rectangles. Every other background (selection included)
@@ -535,7 +570,13 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             return (font.ascender - font.descender + 4, Appearance.codeChipCornerRadius)
         }
         guard let chip else {
-            super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
+            let rects = squaredToLeadingEdge(
+                Array(UnsafeBufferPointer(start: rectArray, count: rectCount)),
+                forCharacterRange: charRange, origin: backgroundDrawOrigin
+            )
+            rects.withUnsafeBufferPointer { buffer in
+                super.fillBackgroundRectArray(buffer.baseAddress!, count: rectCount, forCharacterRange: charRange, color: color)
+            }
             return
         }
         let height = chip.height

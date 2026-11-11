@@ -22,6 +22,7 @@ final class PaperContext: ContextProvider {
     /// editor has closed is gone; an id not here was never issued.
     private var issued: [String: Editor] = [:]
     private var documents: [(id: String, editor: Editor)] = []
+    private var windows: [(id: String, editor: Editor)] = []
     private var server: ContextServer?
 
     private final class Editor {
@@ -76,54 +77,60 @@ final class PaperContext: ContextProvider {
 
     // MARK: - current
 
-    func current() -> ContextCurrent {
+    /// The app, a window for each open editor front to back, the
+    /// document in it, and the selected text in the front one:
+    ///
+    ///     Application → Window → Document [markdown] → Text, selected
+    ///
+    /// The front window and its document are the focus path. A window
+    /// that is minimized or behind another tab is marked not visible.
+    func current() -> ContextElement {
         let views = textViews()
         documents.removeAll { $0.editor.view == nil }
+        windows.removeAll { $0.editor.view == nil }
 
-        var answer = ContextCurrent()
-        for view in views {
-            answer.items.append(ContextItem(
-                id: documentID(for: view),
-                type: "document",
-                title: Self.title(of: view),
-                url: view.documentURL?.absoluteString,
-                locatable: true
-            ))
+        var root = ContextElement(id: "app", role: .application, title: "Paper")
+        for (index, view) in views.enumerated() {
+            let front = index == 0
+            var document = ContextElement(
+                id: documentID(for: view), role: .document, subrole: "markdown", title: Self.title(of: view),
+                url: view.documentURL?.absoluteString, focused: front
+            )
+            if front, let selection = selection(in: view) { document.children = [selection] }
+            var window = ContextElement(id: windowID(for: view), role: .window, focused: front, children: [document])
+            if let shown = view.window, !shown.isVisible || shown.isMiniaturized { window.visible = false }
+            root.children.append(window)
         }
-        guard let front = views.first else { return answer }
-        let document = documentID(for: front)
-        answer.focus = [document]
+        return root
+    }
 
-        let selection = front.selectedRange()
-        let text = front.string as NSString
-        guard selection.length > 0, NSMaxRange(selection) <= text.length else { return answer }
+    /// The selected text in `view` as an element, or nil when nothing is
+    /// selected. A passage keeps the id it was first given.
+    private func selection(in view: PaperTextView) -> ContextElement? {
+        let selection = view.selectedRange()
+        let text = view.string as NSString
+        guard selection.length > 0, NSMaxRange(selection) <= text.length else { return nil }
 
         let id: String
-        if let known = front.trackedRanges.id(for: selection) {
+        if let known = view.trackedRanges.id(for: selection) {
             id = known
         } else {
-            id = mint("sel", for: front)
-            front.trackedRanges.track(selection, as: id)
+            id = mint("sel", for: view)
+            view.trackedRanges.track(selection, as: id)
         }
         let sent = NSRange(location: selection.location, length: min(selection.length, Self.contentLimit))
         let startLine = Self.line(at: selection.location, in: text)
         let inside = NSRange(location: selection.location, length: max(selection.length - 1, 0))
-        var payload: [String: ContextValue] = ["lines": .object([
+        var attributes: [String: ContextValue] = ["lines": .object([
             "start": .integer(startLine),
             "end": .integer(startLine + Self.newlines(in: inside, of: text)),
         ])]
-        if sent.length < selection.length { payload["truncated"] = .bool(true) }
-        answer.items.append(ContextItem(
-            id: id,
-            type: "selection",
-            title: "Selection in \(Self.title(of: front))",
+        if sent.length < selection.length { attributes["truncated"] = .bool(true) }
+        return ContextElement(
+            id: id, role: .text,
             content: [.text(text.substring(with: text.rangeOfComposedCharacterSequences(for: sent)))],
-            parent: document,
-            locatable: true,
-            payload: payload
-        ))
-        answer.focus = [id]
-        return answer
+            selected: true, attributes: attributes
+        )
     }
 
     // MARK: - locate
@@ -133,7 +140,7 @@ final class PaperContext: ContextProvider {
         guard let view = editor.view, let window = view.window else { return .gone(id) }
         let onScreen = window.isVisible && !window.isMiniaturized
 
-        if id.hasPrefix("doc-") {
+        if id.hasPrefix("doc-") || id.hasPrefix("win-") {
             guard onScreen else { return ContextLocation(id: id, state: .offscreen, window: window.windowNumber) }
             return ContextLocation(
                 id: id, state: .visible,
@@ -166,6 +173,13 @@ final class PaperContext: ContextProvider {
         if let known = documents.first(where: { $0.editor.view === view }) { return known.id }
         let id = mint("doc", for: view)
         if let editor = issued[id] { documents.append((id, editor)) }
+        return id
+    }
+
+    private func windowID(for view: PaperTextView) -> String {
+        if let known = windows.first(where: { $0.editor.view === view }) { return known.id }
+        let id = mint("win", for: view)
+        if let editor = issued[id] { windows.append((id, editor)) }
         return id
     }
 
