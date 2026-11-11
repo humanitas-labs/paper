@@ -126,7 +126,7 @@ struct ContextResponder: Sendable {
     }
 
     static let protocolVersion = "0.2.0"
-    static let extensionID = "org.humanitas/ambient-context"
+    static let extensionID = "io.github.ambientcontextprotocol/context"
     static let endpointPath = "/mcp"
     static let currentURI = "ambient://current"
     static let locationPrefix = "ambient://location/"
