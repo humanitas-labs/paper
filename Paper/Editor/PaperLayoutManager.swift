@@ -517,39 +517,41 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return rects
     }
 
-    /// TextKit starts a background run's first rect at its first glyph and
-    /// every later line's at the fragment's leading edge. A selection that
-    /// begins at the start of an indented paragraph (a list item, a nested
-    /// one, a quote) so drew its first line short of the lines under it,
-    /// a notch at the top left. When nothing but indent, quote marks, and a
-    /// list prefix lies before the run on its line, the first rect reaches
-    /// back to the leading edge like the rest. `rects` and the result are
-    /// in the drawing coordinates TextKit hands over (`origin` applied).
-    func squaredToLeadingEdge(_ rects: [NSRect], forCharacterRange charRange: NSRange, origin: NSPoint) -> [NSRect] {
-        guard let storage = textStorage, let container = textContainers.first,
-              charRange.location < storage.length, !rects.isEmpty else { return rects }
-        let text = storage.string as NSString
-        let paragraph = text.paragraphRange(for: NSRange(location: charRange.location, length: 0))
-        var lead = NSRange(location: paragraph.location, length: charRange.location - paragraph.location)
-        if let unit = ListPrefix.unit(in: text, at: charRange.location), NSMaxRange(unit) == charRange.location {
-            lead.length = unit.location - paragraph.location
+    /// A background run (the selection, a find match) covers text, not the
+    /// gutter beside it. TextKit starts a run's first rect at its first
+    /// glyph and every later line's at the fragment's leading edge, so a
+    /// selected list item was a band from the page's edge that covered its
+    /// marker's column and hid the task circle drawn there, with a notch
+    /// where the first line began at the marker. Each rect is cut to its
+    /// line fragments and starts no further left than that line's text:
+    /// the paragraph's head indent, where an item's text and a quote's
+    /// sit on every line. A plain paragraph has none and is untouched.
+    /// `rects` and the result are in the drawing coordinates TextKit hands
+    /// over (`origin` applied).
+    func rectsOnText(_ rects: [NSRect], origin: NSPoint) -> [NSRect] {
+        guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return rects }
+        var result: [NSRect] = []
+        for rect in rects {
+            let local = rect.offsetBy(dx: -origin.x, dy: -origin.y)
+            let glyphs = glyphRange(forBoundingRect: local, in: container)
+            var pieces: [NSRect] = []
+            var covered: CGFloat = 0
+            enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, fragmentGlyphs, _ in
+                let top = max(local.minY, fragment.minY), bottom = min(local.maxY, fragment.maxY)
+                guard bottom - top > 0.5 else { return }
+                let index = self.characterIndexForGlyph(at: fragmentGlyphs.location)
+                let style = index < storage.length
+                    ? storage.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle : nil
+                let text = fragment.minX + container.lineFragmentPadding + (style?.headIndent ?? 0)
+                let left = max(local.minX, text)
+                covered += bottom - top
+                guard local.maxX - left > 0.5 else { return }
+                pieces.append(NSRect(x: left + origin.x, y: top + origin.y, width: local.maxX - left, height: bottom - top))
+            }
+            // A rect the fragments do not account for is left as it came.
+            if abs(covered - local.height) > 1 { result.append(rect) } else { result.append(contentsOf: pieces) }
         }
-        for index in lead.location..<NSMaxRange(lead) {
-            let character = text.character(at: index)
-            guard character == 0x20 || character == 0x09 || character == 0x3E else { return rects }
-        }
-        let fragment = lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: charRange.location), effectiveRange: nil)
-        let leading = origin.x + fragment.minX + container.lineFragmentPadding
-        // The run's rect on that line: the leftmost one within the fragment.
-        var first: Int?
-        for (index, rect) in rects.enumerated() where rect.midY > origin.y + fragment.minY && rect.midY < origin.y + fragment.maxY {
-            if first == nil || rect.minX < rects[first!].minX { first = index }
-        }
-        guard let first, rects[first].minX > leading else { return rects }
-        var squared = rects
-        squared[first].size.width += squared[first].minX - leading
-        squared[first].origin.x = leading
-        return squared
+        return result
     }
 
     /// Inline `code` spans carry the band colour as a background attribute;
@@ -570,12 +572,10 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             return (font.ascender - font.descender + 4, Appearance.codeChipCornerRadius)
         }
         guard let chip else {
-            let rects = squaredToLeadingEdge(
-                Array(UnsafeBufferPointer(start: rectArray, count: rectCount)),
-                forCharacterRange: charRange, origin: backgroundDrawOrigin
-            )
+            let rects = rectsOnText(Array(UnsafeBufferPointer(start: rectArray, count: rectCount)), origin: backgroundDrawOrigin)
+            guard !rects.isEmpty else { return }
             rects.withUnsafeBufferPointer { buffer in
-                super.fillBackgroundRectArray(buffer.baseAddress!, count: rectCount, forCharacterRange: charRange, color: color)
+                super.fillBackgroundRectArray(buffer.baseAddress!, count: rects.count, forCharacterRange: charRange, color: color)
             }
             return
         }

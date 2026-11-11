@@ -199,6 +199,7 @@ struct RenderProbeTests {
         Last paragraph.
         """
         let (scrollView, textView) = makeEditor(width: 1120, height: 900, text: text)
+        scrollView.appearance = NSAppearance(named: .aqua)
         let start = (text as NSString).range(of: "- [ ] 261").location
         let end = (text as NSString).range(of: "Last paragraph").location
         textView.setSelectedRange(NSRange(location: start, length: end - start))

@@ -2,8 +2,9 @@ import AppKit
 import Testing
 @testable import Paper
 
-/// A selection that starts at an indented paragraph's start draws its
-/// first line from the leading edge, like the wrapped lines under it.
+/// A selection's highlight covers text, not the gutter beside it: on a
+/// list item every line starts at the item's text, so the marker's column
+/// and the task circle in it stay clear (PAP-0017, PAP-0018).
 @MainActor
 struct SelectionRectTests {
     private static let item = "- [ ] An item that runs long enough to wrap onto a second line of the measure, and then some more words to be sure of it"
@@ -18,49 +19,76 @@ struct SelectionRectTests {
         return (textView, layoutManager)
     }
 
-    private func lines(_ layoutManager: PaperLayoutManager, for range: NSRange) -> [NSRect] {
+    private func fragments(_ layoutManager: PaperLayoutManager, for range: NSRange) -> [NSRect] {
         var rects: [NSRect] = []
         let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in rects.append(rect) }
+        // As TextKit hands a full line over: the fragment less its padding.
+        let padding = layoutManager.textContainers[0].lineFragmentPadding
+        layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in
+            rects.append(rect.insetBy(dx: padding, dy: 0))
+        }
         return rects
     }
 
-    @Test(arguments: [0, 6])
-    func theFirstLineOfAnItemReachesTheLeadingEdge(start: Int) throws {
-        let text = "Before.\n\n" + Self.item + "\n\nAfter."
-        let (textView, layoutManager) = editor(text)
-        let location = (text as NSString).range(of: "- [ ]").location + start
-        let range = NSRange(location: location, length: (text as NSString).range(of: "\n\nAfter").location - location)
-        let fragments = lines(layoutManager, for: range)
-        try #require(fragments.count > 1)
-        let padding = textView.textContainer!.lineFragmentPadding
-        let first = layoutManager.boundingRect(
-            forGlyphRange: layoutManager.glyphRange(forCharacterRange: NSRange(location: location, length: 1), actualCharacterRange: nil),
+    /// Where the item's text starts on its first line, in container
+    /// coordinates.
+    private func textStart(_ text: String, _ textView: PaperTextView, _ layoutManager: PaperLayoutManager) -> CGFloat {
+        let first = (text as NSString).range(of: "An item")
+        return layoutManager.boundingRect(
+            forGlyphRange: layoutManager.glyphRange(forCharacterRange: NSRange(location: first.location, length: 1), actualCharacterRange: nil),
             in: textView.textContainer!
-        )
-        // What TextKit hands over: the first line from its first glyph,
-        // the rest from the fragment's edge.
-        var rects = fragments.map { NSRect(x: $0.minX + padding, y: $0.minY, width: $0.width - 2 * padding, height: $0.height) }
-        rects[0].origin.x = first.minX
-        rects[0].size.width -= first.minX - (fragments[0].minX + padding)
-        try #require(rects[0].minX > rects[1].minX)
-
-        let squared = layoutManager.squaredToLeadingEdge(rects, forCharacterRange: range, origin: .zero)
-        #expect(squared[0].minX == squared[1].minX)
-        #expect(squared[0].maxX == rects[0].maxX)
-        #expect(Array(squared.dropFirst()) == Array(rects.dropFirst()))
+        ).minX
     }
 
     @Test
-    func aSelectionFromMidLineIsLeftAlone() {
+    func everyLineOfASelectedItemStartsAtItsText() throws {
+        let text = "Before.\n\n" + Self.item + "\n\nAfter."
+        let (textView, layoutManager) = editor(text)
+        let range = (text as NSString).range(of: Self.item)
+        let lines = fragments(layoutManager, for: range)
+        try #require(lines.count > 1)
+        let start = textStart(text, textView, layoutManager)
+        try #require(start > lines[0].minX + 10)
+        _ = textView
+
+        // As TextKit hands them over: full-width bands from the edge.
+        let onText = layoutManager.rectsOnText(lines, origin: .zero)
+        #expect(onText.count == lines.count)
+        for (rect, line) in zip(onText, lines) {
+            #expect(abs(rect.minX - start) < 0.5)
+            #expect(rect.maxX == line.maxX)
+            #expect(abs(rect.minY - line.minY) < 0.01 && abs(rect.height - line.height) < 0.01)
+        }
+        // One tall rect over all the lines is cut to the same pieces.
+        let tall = lines.dropFirst().reduce(lines[0]) { $0.union($1) }
+        let cut = layoutManager.rectsOnText([tall], origin: .zero)
+        #expect(cut.count == onText.count)
+        #expect(zip(cut, onText).allSatisfy { abs($0.minX - $1.minX) < 0.01 && abs($0.minY - $1.minY) < 0.01 && abs($0.height - $1.height) < 0.01 })
+    }
+
+    @Test
+    func theTaskCircleLiesOutsideTheHighlight() throws {
         let text = Self.item
+        let (textView, layoutManager) = editor(text)
+        let lines = fragments(layoutManager, for: NSRange(location: 0, length: text.utf16.count))
+        let onText = layoutManager.rectsOnText(lines, origin: .zero)
+        let start = textStart(text, textView, layoutManager)
+        #expect(onText.allSatisfy { $0.minX >= start - 0.5 })
+        #expect(start - lines[0].minX >= Appearance.taskBoxSize - 0.5)
+    }
+
+    @Test
+    func aPlainParagraphAndAMidLineSelectionAreLeftAlone() {
+        let text = "A plain paragraph that runs long enough to wrap onto a second line of the measure, and then some more words to be sure of it.\n\n" + Self.item
         let (_, layoutManager) = editor(text)
-        let location = (text as NSString).range(of: "item").location
-        let range = NSRange(location: location, length: text.utf16.count - location)
-        let fragments = lines(layoutManager, for: range)
-        var rects = fragments
-        rects[0].origin.x += 80
-        rects[0].size.width -= 80
-        #expect(layoutManager.squaredToLeadingEdge(rects, forCharacterRange: range, origin: .zero) == rects)
+        let plain = fragments(layoutManager, for: NSRange(location: 0, length: 20))
+        #expect(layoutManager.rectsOnText(plain, origin: .zero) == plain)
+
+        let item = fragments(layoutManager, for: (text as NSString).range(of: Self.item))
+        var mid = item
+        mid[0].origin.x += 200
+        mid[0].size.width -= 200
+        let onText = layoutManager.rectsOnText(mid, origin: .zero)
+        #expect(onText[0] == mid[0])
     }
 }
