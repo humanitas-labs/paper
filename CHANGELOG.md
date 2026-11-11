@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.4 — 2026.11.10
 
 - Tables. A GitHub-style pipe table (a header row, a `| --- | :---: | ---: |` row, and the rows under it) draws as a grid: columns fitted to the page, cells that wrap inside their column, a heavier header with a rule under it, a hairline between rows, and the delimiter row's colons setting left, center, or right. Cells take bold, italic, strikethrough, code, and links. The row the caret is on shows its source, pipes included, and the rest of the table stays a grid; a click on a cell puts the caret at that place in the source. The file is untouched. Tables export and print as the grid, with page breaks between rows. A table inside a list item or a quote stays as typed, and math in a cell shows its source (#7).
 - A table's header row can be bold, italic, or plain: `table.header` in the config file, or Settings ▸ Tables ▸ Header row. Bold stays the default. The rule under the header is drawn in each, and bold or italic typed in a header cell still shows.
@@ -12,6 +12,7 @@
 - Full screen has no band above the page. The empty toolbar that places the traffic lights is hidden in full screen, where it showed as a strip in the system appearance, and the window's corners square off to the screen.
 - A done task's check reads in dark mode. The check is a bitmap baked in the canvas colour, cached under the theme's dynamic colour, so whichever appearance drew first kept its canvas: after light, dark drew a near-white check on its near-white disc, and the circle looked blank. The check now bakes the canvas as resolved for the appearance drawing it, cached per resolved colour.
 - A new window opens one step down and right of the front window, or in the middle of the screen when there is no room for the step. SwiftUI cascaded every new window from the oldest one still open, so a third window landed exactly on the second, and once the oldest closed the next started over at the screen's top-left, against the menu bar (#83).
+- Agent apps can ask Paper what is open. With Settings ▸ Agents ▸ "Share what is open and selected with agent apps" on, or `ambient.context = on` in the config file, an agent app on this Mac can ask which documents are open, what is selected, and where the selection sits on screen, through the Ambient Context Protocol 0.2.0. Paper listens on this Mac only. Off, the default, opens no port and writes no file.
 
 ## 0.9.3 — 2026.10.06
 
