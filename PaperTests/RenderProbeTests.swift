@@ -113,6 +113,36 @@ struct RenderProbeTests {
         try png.write(to: dir.appendingPathComponent("render-math-\(appearance == .aqua ? "light" : "dark").png"))
     }
 
+    /// A selection over wrapped list items, a nested item, a quote and a
+    /// plain paragraph: each block's highlight is one clean rectangle.
+    @Test
+    func renderSelection() throws {
+        guard let dir = Self.probeDirectory else { return }
+        let text = """
+        A plain paragraph that runs long enough to wrap onto a second line of the measure, so its selection has two rows to compare.
+
+        - [ ] 261 · Sirius reads 0.2.0, merged (4e4e30d): run `scripts/dev-install.sh`; Paper 0.2.0 on `ambient-0-2` awaits your merge; two tidy-up questions (C054); five choices (C048)
+        - [ ] 249 · Asides removal: parked by you for now; approve the plan and six decisions before anything else moves on it
+
+        1. An ordered item that also runs long enough to wrap onto a second line of the measure, to be sure
+            - A nested bullet that runs long enough to wrap onto a second line of the measure as well, like so
+
+        > A quote that runs long enough to wrap onto a second line of the measure, and then a little further.
+
+        Last paragraph.
+        """
+        let (scrollView, textView) = makeEditor(width: 1120, height: 900, text: text)
+        let start = (text as NSString).range(of: "- [ ] 261").location
+        let end = (text as NSString).range(of: "Last paragraph").location
+        textView.setSelectedRange(NSRange(location: start, length: end - start))
+        scrollView.layoutSubtreeIfNeeded()
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        let rep = try #require(scrollView.bitmapImageRepForCachingDisplay(in: scrollView.bounds))
+        scrollView.cacheDisplay(in: scrollView.bounds, to: rep)
+        let png = try #require(rep.representation(using: .png, properties: [:]))
+        try png.write(to: dir.appendingPathComponent("render-selection.png"))
+    }
+
     @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
     func renderInlineMath(appearance: NSAppearance.Name) throws {
         guard let dir = Self.probeDirectory else { return }
