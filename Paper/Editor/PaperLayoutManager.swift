@@ -19,6 +19,9 @@ extension NSAttributedString.Key {
     /// source character is untouched.
     static let glyphSubstitute = NSAttributedString.Key("paper.glyphSubstitute")
     static let thematicBreak = NSAttributedString.Key("paper.thematicBreak")
+    /// Marks a `<!-- pagebreak -->` line: on the print surface the page
+    /// ends there. On screen it is a comment like any other.
+    static let pageBreak = NSAttributedString.Key("paper.pageBreak")
     /// The destination of a Markdown link, as its source string, on the
     /// link's text. Opened with ⌘-click; a plain click places the caret.
     static let linkDestination = NSAttributedString.Key("paper.linkDestination")

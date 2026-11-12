@@ -177,6 +177,76 @@ struct PDFExportTests {
         #expect(a.string == b.string)
     }
 
+    /// The text of each page.
+    private func pages(of text: String, named name: String) throws -> [String] {
+        makeFolder()
+        let output = folder.appendingPathComponent(name)
+        try PDFExporter.export(text: text, documentURL: nil, to: output, paper: .letter)
+        let document = try #require(PDFDocument(url: output))
+        return (0..<document.pageCount).map { document.page(at: $0)?.string ?? "" }
+    }
+
+    @Test
+    func aPageBreakCommentStartsTheNextPage() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let text = "# One\n\nAlpha.\n\n<!-- pagebreak -->\n\n## Two\n\nBravo.\n\n<!--PAGEBREAK-->\n## Three\n\nCharlie."
+        let pages = try pages(of: text, named: "breaks.pdf")
+        try #require(pages.count == 3)
+        #expect(pages[0].contains("Alpha") && !pages[0].contains("Two"))
+        #expect(pages[1].contains("Two") && pages[1].contains("Bravo") && !pages[1].contains("Three"))
+        #expect(pages[2].contains("Three") && pages[2].contains("Charlie"))
+        #expect(!pages.joined().lowercased().contains("pagebreak"), "the marker itself is not printed")
+    }
+
+    @Test
+    func aPageBreakInALongDocumentKeepsTheBreaksBeforeIt() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let plain = try pages(of: long + "\n\nZulu.", named: "plain.pdf")
+        let broken = try pages(of: long + "\n\n<!-- pagebreak -->\n\nZulu.", named: "broken.pdf")
+        #expect(plain.count >= 3)
+        // Zulu shared the last page; now it has one to itself.
+        #expect(broken.count == plain.count + 1)
+        #expect(broken.last?.trimmingCharacters(in: .whitespacesAndNewlines) == "Zulu.")
+        #expect(Array(broken.dropLast(2)) == Array(plain.dropLast()))
+    }
+
+    @Test
+    func onlyACommentAloneOnItsLineBreaksThePage() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let text = [
+            "Inline `<!-- pagebreak -->` code and a <!-- pagebreak --> comment in a line.",
+            "```\n<!-- pagebreak -->\n```",
+            "<!-- pagebreak: not the marker -->",
+            "Last.",
+            "<!-- pagebreak -->\n",
+        ].joined(separator: "\n\n")
+        let pages = try pages(of: text, named: "literal.pdf")
+        #expect(pages.count == 1, "nothing here breaks, and a marker with nothing after it adds no blank page")
+    }
+
+    @Test
+    func onScreenAPageBreakIsAnOrdinaryComment() {
+        let textView = PaperTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        textView.string = "Alpha.\n\n<!-- pagebreak -->\n\nBravo."
+        textView.syntaxStyler.apply(to: textView)
+        let storage = textView.textStorage!
+        let marker = (storage.string as NSString).range(of: "<!-- pagebreak -->")
+        #expect(storage.attribute(.pageBreak, at: marker.location, effectiveRange: nil) != nil)
+        #expect(storage.attribute(.concealable, at: marker.location, effectiveRange: nil) == nil, "it stays in view while writing")
+    }
+
+    @Test
+    func aMissingFolderFailsBeforeThePrintOperation() throws {
+        makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // A save job that cannot open its file goes to the default printer;
+        // the exporter must refuse first.
+        #expect(throws: PDFExporter.Failure.self) {
+            try PDFExporter.export(text: "# Title", documentURL: nil, to: folder.appendingPathComponent("absent/out.pdf"))
+        }
+    }
+
     @Test
     func aFailedWriteLeavesTheDestination() throws {
         makeFolder()

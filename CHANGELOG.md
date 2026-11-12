@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `paper export notes.md` writes the PDF from the terminal: the pages File ▸ Export as PDF… makes, saved as `notes.pdf` beside the file, or wherever `-o` says, with `--paper letter` or `--paper a4` to pick the page. It prints the PDF's path and opens no window, so an agent can hand you the PDF; it works whether Paper is running or not, and exports the file as saved on disk. A file named `export` now opens as `paper ./export`.
+- Page breaks. `<!-- pagebreak -->` alone on a line ends the page in Print and Export as PDF, and what follows starts the next one. It is an HTML comment, so GitHub and other Markdown readers show nothing; in Paper it stays in view, muted, like any comment.
+- An export that cannot write its file no longer reaches the printer. The PDF was staged in the destination's folder, and when that folder was missing or read-only the save job fell through to the default printer. The PDF is now staged in a temporary folder and moved into place, and a missing destination folder fails before any page is made.
+
 ## 0.9.4 — 2026.11.10
 
 - Tables. A GitHub-style pipe table (a header row, a `| --- | :---: | ---: |` row, and the rows under it) draws as a grid: columns fitted to the page, cells that wrap inside their column, a heavier header with a rule under it, a hairline between rows, and the delimiter row's colons setting left, center, or right. Cells take bold, italic, strikethrough, code, and links. The row the caret is on shows its source, pipes included, and the rest of the table stays a grid; a click on a cell puts the caret at that place in the source. The file is untouched. Tables export and print as the grid, with page breaks between rows. A table inside a list item or a quote stays as typed, and math in a cell shows its source (#7).

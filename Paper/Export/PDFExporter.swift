@@ -45,12 +45,27 @@ enum PDFExporter {
 
     /// Writes `text` as a PDF at `destination`. `documentURL` resolves
     /// relative image and link paths, as it does on screen. The file is
-    /// produced beside the destination and moved into place, so a failure
+    /// produced in a temporary folder and moved into place, so a failure
     /// leaves whatever was there.
+    ///
+    /// The print operation must never be handed a path it cannot write: a
+    /// save job that fails to open its file goes to the default printer
+    /// instead. So the destination's folder is checked first, and the
+    /// operation only ever writes into a folder made here.
     static func export(text: String, documentURL: URL?, to destination: URL, paper: Paper = .default) throws {
-        let staging = destination.deletingLastPathComponent()
-            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: staging) }
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: destination.deletingLastPathComponent().path, isDirectory: &isFolder),
+              isFolder.boolValue else {
+            throw Failure.write(destination)
+        }
+        let stagingFolder: URL
+        do {
+            stagingFolder = try makeStagingFolder(for: destination)
+        } catch {
+            throw Failure.write(destination)
+        }
+        defer { try? FileManager.default.removeItem(at: stagingFolder) }
+        let staging = stagingFolder.appendingPathComponent("export.pdf")
         try Zoom.withScale(1) {
             let textView = makeSurface(text: text, documentURL: documentURL, paper: paper)
             let owner = ObjectIdentifier(textView)
@@ -76,6 +91,21 @@ enum PDFExporter {
         } catch {
             throw Failure.write(destination)
         }
+    }
+
+    /// A new, empty folder for the print operation's file: on the
+    /// destination's volume when the system has one to give, so the move
+    /// into place is a rename, in the temporary directory otherwise.
+    private static func makeStagingFolder(for destination: URL) throws -> URL {
+        if let folder = try? FileManager.default.url(
+            for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: destination, create: true
+        ) {
+            return folder
+        }
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("paper-export-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
     }
 
     /// The body type on the page, whatever size it reads at on screen,
