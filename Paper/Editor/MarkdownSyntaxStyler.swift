@@ -319,6 +319,10 @@ final class MarkdownSyntaxStyler {
         applyCodeBlocks(to: storage, source: source, range: range, fenced: fenced)
         applyDisplayMath(displayMath, to: storage, source: source, range: range, width: Self.measure(of: textView))
         applyComments(to: storage, source: source, range: range, comments: comments)
+        applyPageBreaks(
+            to: storage, source: source, range: range, comments: comments,
+            printing: paperView?.isPrintSurface == true
+        )
         // Tables go last: a cell draws with the styling the passes above
         // gave its source.
         applyTables(
@@ -1336,6 +1340,38 @@ final class MarkdownSyntaxStyler {
             }
             storage.addAttribute(.font, value: Appearance.bodyFont(), range: comment)
             storage.addAttribute(.foregroundColor, value: Appearance.mutedInk, range: comment)
+        }
+    }
+
+    /// `<!-- pagebreak -->`, in either case, as the whole of a comment.
+    private static let pageBreakPattern = try! NSRegularExpression(
+        pattern: #"\A<!--\s*pagebreak\s*-->\z"#, options: .caseInsensitive
+    )
+
+    /// A `<!-- pagebreak -->` comment alone on its line ends the page in
+    /// Print and Export as PDF: what follows starts the next one. It is a
+    /// comment, so other Markdown readers show nothing, and on screen it
+    /// stays in view in the muted ink like any comment. On the print
+    /// surface the marker conceals, leaving an empty line at the foot of
+    /// the page it ends.
+    private func applyPageBreaks(
+        to storage: NSTextStorage,
+        source: String,
+        range: NSRange,
+        comments: [NSRange],
+        printing: Bool
+    ) {
+        let text = source as NSString
+        for comment in comments where Self.touches(comment, range) {
+            guard !Self.isCode(at: comment.location, in: storage) else { continue }
+            let body = text.substring(with: comment)
+            guard Self.pageBreakPattern.firstMatch(in: body, range: NSRange(location: 0, length: (body as NSString).length)) != nil,
+                  text.substring(with: text.lineRange(for: comment)).trimmingCharacters(in: .whitespacesAndNewlines) == body
+            else { continue }
+            storage.addAttribute(.pageBreak, value: true, range: comment)
+            if printing {
+                storage.addAttribute(.concealable, value: true, range: comment)
+            }
         }
     }
 

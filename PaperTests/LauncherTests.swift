@@ -140,6 +140,31 @@ struct LauncherTests {
     }
 
     @Test
+    func exportRunsTheAppExecutableWithItsArguments() throws {
+        let h = try Harness()
+        defer { h.remove() }
+        let missing = try h.run(["export", "a.md"])
+        #expect(missing.status == 1)
+        #expect(missing.stderr.contains("no app at"))
+
+        let macOS = h.root.appendingPathComponent("Fake.app/Contents/MacOS")
+        try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+        let stub = macOS.appendingPathComponent("Paper")
+        try "#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$@\"\n".write(to: stub, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
+        let result = try h.run(["export", "a b.md", "-o", "out dir/x.pdf", "--paper", "a4"])
+        #expect(result.status == 0)
+        #expect(result.stdout == [h.cwd.path, "--export", "a b.md", "-o", "out dir/x.pdf", "--paper", "a4"].joined(separator: "\n") + "\n")
+        #expect(result.opened.isEmpty)
+        // Nothing is created: the source must exist, and the app says so.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: h.cwd.path).isEmpty)
+
+        // A file of that name still opens, by path.
+        let opened = try h.run(["./export"])
+        #expect(opened.opened == ["-a", h.app, h.cwd.path + "/./export"])
+    }
+
+    @Test
     func setDefaultWithoutTheExecutableFails() throws {
         let h = try Harness()
         defer { h.remove() }

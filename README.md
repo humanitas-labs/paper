@@ -20,7 +20,7 @@ Lastly, it is free and open. We will continue our campaign to make delightful so
 
 > Meant to be used as a companion to agents. Let them open the files for you while you work.
 
-`paper notes.md` opens a document from the terminal, creating it first when it doesn't exist yet; `paper` alone opens the app. Paper installs it on first launch when a directory you own is on your shell's PATH, such as `/opt/homebrew/bin` or `~/.local/bin`, and repairs the link when the app moves. When only `/usr/local/bin` is available, install it from Settings (⌘,) under CLI, which asks for your password; the same section shows where the command lives and removes it. The launcher itself is at `Paper.app/Contents/Resources/paper`.
+`paper notes.md` opens a document from the terminal, creating it first when it doesn't exist yet; `paper` alone opens the app. `paper export notes.md` writes `notes.pdf` beside it, the same pages as Export as PDF, without opening a window. Paper installs it on first launch when a directory you own is on your shell's PATH, such as `/opt/homebrew/bin` or `~/.local/bin`, and repairs the link when the app moves. When only `/usr/local/bin` is available, install it from Settings (⌘,) under CLI, which asks for your password; the same section shows where the command lives and removes it. The launcher itself is at `Paper.app/Contents/Resources/paper`.
 
 Give this prompt to your agent of choice:
 
@@ -39,7 +39,7 @@ If I am someone who works in the terminal, also tell me that `paper <file>` open
 - Markdown renders as you type; the syntax comes back in the paragraph you are editing, and the file stays exactly as typed. [Writing](docs/guide.md#writing)
 - Images alone on a line draw in the page; paste or drop one to save it beside the document. [Images](docs/guide.md#images)
 - LaTeX math, inline `$…$` and display `$$ … $$`, typeset in place. [Math](docs/guide.md#math)
-- Find, zoom, and export or print as a PDF that reads like the page. [Shortcuts](docs/guide.md#shortcuts)
+- Find, zoom, and export or print as a PDF that reads like the page, from the menu or with `paper export`. [PDF and print](docs/guide.md#pdf-and-print)
 - Pinned documents in the menu bar. [Menu bar and pins](docs/guide.md#menu-bar-and-pins)
 - Built-in themes in light and dark, your own colours, and presets. [Themes and presets](docs/guide.md#themes-and-presets)
 - Opens Markdown by default if you want it to. [Default app](docs/guide.md#default-app-for-markdown)

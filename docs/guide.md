@@ -47,6 +47,14 @@ A pipe table, the kind GitHub reads, draws as a grid: a header row, a row of das
 
 Click a cell and that row shows its source, pipes and all, with the caret where you clicked; the rest of the table stays a grid. Editing is plain text: there is no Tab between cells and nothing re-pads the pipes in the file. A table inside a list item or a quote stays as typed, and math inside a cell shows its source.
 
+## PDF and print
+
+Export as PDF (⇧⌘E) and Print (⌘P) make the same pages: the document as it reads on screen, on Letter or A4, at the size and margin set by `print.font.size` and `print.margin`.
+
+To start a new page, put `<!-- pagebreak -->` alone on a line. Whatever follows opens the next page. It is an HTML comment, so GitHub and other Markdown readers show nothing; in Paper it stays in view in the muted ink, like any comment, and is left off the printed page.
+
+From the terminal, `paper export notes.md` writes `notes.pdf` beside the file and prints its path. `-o out.pdf` names another place, and `--paper letter` or `--paper a4` picks the page; without it the system's paper is used. No window opens and Paper does not need to be running, so an agent can make the PDF for you. It exports the file as saved on disk, not unsaved edits in an open window. The command exits 0 on success, 1 when the export failed, and 2 when the arguments were wrong.
+
 ## Menu bar and pins
 
 Paper keeps an item in the menu bar, beside the clock, listing your pinned documents, then the recent ones, then New and Open. Pin the front document with File ▸ Pin Document… (⇧⌘P) or from the file pill's menu; it asks for a name, the file name by default. Settings ▸ Menu bar renames, reorders, and unpins them, and `menu.bar = off` takes the item away.

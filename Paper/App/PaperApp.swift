@@ -7,8 +7,11 @@ struct PaperApp: App {
     @ObservedObject private var store = ConfigurationStore.shared
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     init() {
-        // `paper --set-default` runs this executable directly; answer and
-        // exit before the application, and any window, comes up.
+        // `paper export` and `paper --set-default` run this executable
+        // directly; answer and exit before the application, and any
+        // window, comes up. Export first: its arguments are file names,
+        // and one may spell the other's flag.
+        if ExportCommand.requestedOnCommandLine { ExportCommand.runFromCommandLine() }
         if DefaultApplication.requestedOnCommandLine { DefaultApplication.runFromCommandLine() }
         ConfigurationStore.shared.start()
     }

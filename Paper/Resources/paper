@@ -4,6 +4,8 @@
 # Usage:
 #   paper                open Paper
 #   paper file.md …      open files, creating any that do not exist yet
+#   paper export file.md write file.pdf beside it, as Export as PDF does
+#                        [-o out.pdf] [--paper letter|a4]
 #   paper --help         this text
 #   paper --version      the version of the app the command belongs to
 #   paper --set-default  make Paper the app that opens Markdown files
@@ -16,11 +18,14 @@
 usage() {
   cat <<'EOF'
 usage: paper [file ...]
+       paper export <file> [-o <out.pdf>] [--paper letter|a4]
        paper --help | --version | --set-default
 
 Opens files in Paper, creating any that do not exist yet. With no
-arguments, opens the app. --set-default makes Paper the app that
-opens Markdown files.
+arguments, opens the app. export writes the file as a PDF, beside it
+unless -o names another place, and prints the PDF's path; no window
+opens. --set-default makes Paper the app that opens Markdown files.
+A file named export opens as ./export.
 EOF
 }
 
@@ -46,6 +51,14 @@ case "$1" in
     exe="$app/Contents/MacOS/Paper"
     [ -x "$exe" ] || { echo "paper: no app at $app" >&2; exit 1; }
     exec "$exe" --set-default ;;
+  export)
+    # The app paginates and writes the PDF itself, the same way: no
+    # window, and it works beside a running copy. Relative paths resolve
+    # there, against the directory this was run from.
+    shift
+    exe="$app/Contents/MacOS/Paper"
+    [ -x "$exe" ] || { echo "paper: no app at $app" >&2; exit 1; }
+    exec "$exe" --export "$@" ;;
   --)
     shift ;;
 esac

@@ -58,6 +58,56 @@ final class PaperTextView: NSTextView {
         printPages(sender)
     }
 
+    /// Where a `<!-- pagebreak -->` line ends a page that runs from `top`
+    /// to `bottom`, in the view's coordinates: the foot of the marker's
+    /// line, or of the blank lines under it, so the next page opens on
+    /// text. Nil when no marker falls on the page. A marker that is
+    /// already the first thing on its page breaks nothing; the page
+    /// before it ended on its own.
+    func pageBreak(between top: CGFloat, and bottom: CGFloat) -> CGFloat? {
+        guard let layoutManager, let storage = textStorage, storage.length > 0 else { return nil }
+        let text = storage.string as NSString
+        let origin = textContainerOrigin.y
+        var found: CGFloat?
+        storage.enumerateAttribute(.pageBreak, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
+            guard value != nil else { return }
+            func lineRect(at index: Int) -> NSRect {
+                layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: index), effectiveRange: nil)
+            }
+            let marker = lineRect(at: range.location)
+            guard marker.minY + origin > top + 0.5 else { return }
+            var foot = marker.maxY
+            var next = NSMaxRange(text.paragraphRange(for: range))
+            while next < text.length {
+                let paragraph = text.paragraphRange(for: NSRange(location: next, length: 0))
+                guard text.substring(with: paragraph).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { break }
+                foot = lineRect(at: next).maxY
+                next = NSMaxRange(paragraph)
+            }
+            // Nothing after the marker but blank lines: no page to start.
+            guard next < text.length else { return }
+            let y = foot + origin
+            if y > top + 0.5, y < bottom - 0.5 {
+                found = y
+                stop.pointee = true
+            } else if y >= bottom {
+                stop.pointee = true
+            }
+        }
+        return found
+    }
+
+    /// AppKit proposes each page's foot and the text view pulls it up to
+    /// a line boundary; a page-break marker on the page pulls it up
+    /// further, to the marker.
+    override func adjustPageHeightNew(
+        _ newBottom: UnsafeMutablePointer<CGFloat>, top: CGFloat, bottom proposedBottom: CGFloat, limit: CGFloat
+    ) {
+        super.adjustPageHeightNew(newBottom, top: top, bottom: proposedBottom, limit: limit)
+        guard isPrintSurface, let y = pageBreak(between: top, and: newBottom.pointee) else { return }
+        newBottom.pointee = y
+    }
+
     /// The PDF's title and the print job's name.
     override var printJobTitle: String {
         documentURL?.deletingPathExtension().lastPathComponent ?? Self.placeholderTitle
