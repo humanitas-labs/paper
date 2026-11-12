@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.5 — 2026.11.12
 
 - `paper export notes.md` writes the PDF from the terminal: the pages File ▸ Export as PDF… makes, saved as `notes.pdf` beside the file, or wherever `-o` says, with `--paper letter` or `--paper a4` to pick the page. It prints the PDF's path and opens no window, so an agent can hand you the PDF; it works whether Paper is running or not, and exports the file as saved on disk. A file named `export` now opens as `paper ./export`.
 - Page breaks. `<!-- pagebreak -->` alone on a line ends the page in Print and Export as PDF, and what follows starts the next one. It is an HTML comment, so GitHub and other Markdown readers show nothing; in Paper it stays in view, muted, like any comment.
