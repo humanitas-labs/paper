@@ -1,11 +1,16 @@
 import AppKit
 
 /// What the outline column shows for one window, and the bridge back into
-/// its editor: the document's headings, the section in view, where the
-/// page sits, and the jump a click makes. Each document window owns one;
-/// it holds the editor's views weakly and does nothing while inactive.
+/// its editor: whether the outline is shown, the document's headings, the
+/// section in view, where the page sits, and the jump a click makes. Each
+/// document window owns one. Whether it shows is this window's own state,
+/// seeded from the `outline` setting when the window opens and flipped by
+/// ⌥Tab; nothing persists it. It holds the editor's views weakly and does
+/// nothing while hidden.
 @MainActor
 final class OutlineModel: ObservableObject {
+    /// Whether this window shows the outline.
+    @Published private(set) var isVisible = false
     @Published private(set) var headings: [OutlineHeading] = []
     /// Index into `headings` of the section in view; nil above the first.
     @Published private(set) var current: Int?
@@ -46,6 +51,24 @@ final class OutlineModel: ObservableObject {
 
     var isActive: Bool { active }
 
+    /// A window's outline, shown or not as `visible` says; for a new
+    /// window, the configured default. It scans once attached.
+    init(visible: Bool = false) {
+        active = visible
+        isVisible = visible
+    }
+
+    /// The model a newly opened window starts with: shown when the
+    /// configuration says new documents open with the outline.
+    static func forNewWindow(_ configuration: Configuration) -> OutlineModel {
+        OutlineModel(visible: configuration.outline)
+    }
+
+    /// ⌥Tab and View ▸ Show/Hide Outline: this window only.
+    func toggle() {
+        setActive(!active)
+    }
+
     func attach(textView: PaperTextView, scrollView: NSScrollView) {
         detach()
         self.textView = textView
@@ -64,6 +87,8 @@ final class OutlineModel: ObservableObject {
         })
         // Width, zoom, measure, the title band, and full screen all land
         // in the text view's frame and inset, which it reports here.
+        // ⌥Tab reaching the text view toggles this window's outline.
+        textView.toggleOutline = { [weak self] in self?.toggle() }
         textView.geometryDidChange = { [weak self] in
             self?.updateGeometry()
             self?.updateCurrent()
@@ -78,17 +103,19 @@ final class OutlineModel: ObservableObject {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
         textView?.geometryDidChange = nil
+        textView?.toggleOutline = nil
     }
 
     deinit {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
     }
 
-    /// The setting, as this window follows it. Off cancels any pending
+    /// Shows or hides this window's outline. Hidden cancels any pending
     /// scan and forgets the headings.
     func setActive(_ on: Bool) {
         guard on != active else { return }
         active = on
+        isVisible = on
         if on {
             updateGeometry()
             scanNow()

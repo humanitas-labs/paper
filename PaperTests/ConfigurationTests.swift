@@ -349,27 +349,6 @@ struct ConfigurationStoreTests {
         #expect(Configuration.parse(text) == config)
     }
 
-    /// View ▸ Show/Hide Outline flips the setting and saves it in place.
-    @Test
-    func toggleOutlineFlipsAndSaves() throws {
-        let url = temporaryFile()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        let store = ConfigurationStore(fileURL: url)
-        defer { ConfigurationStore.forgetActivePreset(for: url) }
-        store.start()
-        #expect(store.current.outline == false)
-
-        store.toggleOutline()
-        #expect(store.current.outline == true)
-        let on = try String(contentsOf: url, encoding: .utf8)
-        #expect(on.contains("\noutline = on\n"))
-        #expect(on.hasPrefix("# Paper configuration."), "comments survive")
-
-        store.toggleOutline()
-        #expect(store.current.outline == false)
-        #expect(try String(contentsOf: url, encoding: .utf8) == Configuration.template)
-    }
-
     @Test
     func presetsSaveApplyAndDelete() throws {
         let url = temporaryFile()

@@ -22,7 +22,7 @@ Spelling is checked as you type, and grammar can be (`spelling`, `grammar`); cod
 | ⌘+ / ⌘− / ⌘0 | zoom the view in and out, back to actual size; click the badge at the top right to type a percentage; per machine, never written to the config |
 | ⇧⌘E / ⌘P | export the document as a PDF, or print it, as it reads here on Letter or A4 pages |
 | ⇧⌘P | pin the document to the menu bar, or unpin it |
-| ⌥Tab | show or hide the outline of headings at the right |
+| ⌥Tab | show or hide the outline of headings beside the page, in the front window |
 | ⌥⌘C | copy the file's path as plain text |
 | ⌘, | settings |
 
@@ -32,7 +32,7 @@ The window has no title bar. Rest the pointer in the top-left corner and a pill 
 
 ## Outline
 
-View ▸ Show Outline (⌥Tab), Settings ▸ Window ▸ Show outline, or `outline = on` in the config file lists the document's headings under the word Outline, in a column just right of the page, indented by level. It stays put while the text scrolls; click a heading to go to it, with the caret at its start. The outline is set in the system sans in soft tones of the text's ink; the heading of the section you are reading is a shade darker. Headings in code blocks and comments are left out. The setting is the same for every window, and the column hides while a window is too narrow to fit it beside the text, so the text never moves. With the outline taking ⌥Tab, that key no longer types a literal tab.
+View ▸ Show Outline (⌥Tab) lists the document's headings under the word Outline, in a column just right of the page, indented by level. It stays put while the text scrolls; click a heading to go to it, with the caret at its start. The outline is set in the system sans in soft tones of the text's ink; the heading of the section you are reading is a shade darker. Headings in code blocks and comments are left out. ⌥Tab shows or hides it in the front window only, and nothing is saved. Whether new documents open with it shown is a setting: `outline = on` in the config file, or Settings ▸ Window ▸ Show outline in new documents; changing it leaves open windows as they are. The column hides while a window is too narrow to fit it beside the text, so the text never moves. With the outline taking ⌥Tab, that key no longer types a literal tab.
 
 ## Images
 

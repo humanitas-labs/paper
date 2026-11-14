@@ -222,16 +222,56 @@ struct OutlineModelTests {
     }
 
     /// Should ⌥Tab reach the text view, its standard binding
-    /// (`insertTabIgnoringFieldEditor:`) toggles the outline and types
-    /// nothing.
+    /// (`insertTabIgnoringFieldEditor:`) toggles that window's outline and
+    /// types nothing; another window's stays as it was.
     @Test
-    func optionTabInTheTextViewTogglesInsteadOfTyping() throws {
-        let (_, textView) = makeEditor("- item\n")
-        var toggles = 0
-        textView.toggleOutline = { toggles += 1 }
-        textView.setSelectedRange(NSRange(location: 6, length: 0))
-        textView.interpretKeyEvents([try optionTab()])
-        #expect(toggles == 1)
-        #expect(textView.string == "- item\n")
+    func optionTabTogglesItsOwnWindow() throws {
+        let (scrollA, textA) = makeEditor("- item\n\n# A\n")
+        let (scrollB, textB) = makeEditor("# B\n")
+        let modelA = OutlineModel(visible: true)
+        let modelB = OutlineModel(visible: true)
+        modelA.attach(textView: textA, scrollView: scrollA)
+        modelB.attach(textView: textB, scrollView: scrollB)
+        textA.setSelectedRange(NSRange(location: 6, length: 0))
+        textA.interpretKeyEvents([try optionTab()])
+        #expect(modelA.isVisible == false)
+        #expect(modelB.isVisible == true)
+        #expect(textA.string == "- item\n\n# A\n")
+        textA.interpretKeyEvents([try optionTab()])
+        #expect(modelA.isVisible == true)
+        #expect(modelA.headings.map(\.title) == ["A"], "shown again, it scans")
+    }
+
+    /// Toggling is one window's view state: the other window, the live
+    /// configuration, and the config file are untouched.
+    @Test
+    func toggleFlipsOneWindowAndNeverTheSetting() throws {
+        let store = ConfigurationStore.shared
+        let before = store.current
+        let fileBefore = try? String(contentsOf: store.fileURL, encoding: .utf8)
+        let (scrollA, textA) = makeEditor(document(sections: 2))
+        let (scrollB, textB) = makeEditor(document(sections: 2))
+        let modelA = OutlineModel(visible: false)
+        let modelB = OutlineModel(visible: false)
+        modelA.attach(textView: textA, scrollView: scrollA)
+        modelB.attach(textView: textB, scrollView: scrollB)
+
+        modelA.toggle()
+        #expect(modelA.isVisible && !modelB.isVisible)
+        #expect(modelA.headings.count == 2)
+        #expect(modelB.headings.isEmpty, "a hidden outline does not scan")
+        modelA.toggle()
+        #expect(!modelA.isVisible)
+        #expect(modelA.headings.isEmpty)
+        #expect(store.current == before)
+        #expect((try? String(contentsOf: store.fileURL, encoding: .utf8)) == fileBefore)
+    }
+
+    /// A new window starts as the setting says.
+    @Test
+    func newWindowSeedsFromTheDefault() {
+        #expect(OutlineModel.forNewWindow(Configuration.parse("outline = on")).isVisible)
+        #expect(!OutlineModel.forNewWindow(Configuration.parse("outline = off")).isVisible)
+        #expect(!OutlineModel.forNewWindow(Configuration()).isVisible, "off by default")
     }
 }

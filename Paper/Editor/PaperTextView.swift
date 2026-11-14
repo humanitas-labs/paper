@@ -929,15 +929,15 @@ final class PaperTextView: NSTextView {
 
     /// ⌥Tab is View ▸ Show/Hide Outline. The menu item normally takes the
     /// key first; if it ever reaches the text view instead, the standard
-    /// binding sends it here, and it toggles the outline rather than
-    /// typing a literal tab.
+    /// binding sends it here, and it toggles this window's outline rather
+    /// than typing a literal tab.
     override func insertTabIgnoringFieldEditor(_ sender: Any?) {
-        toggleOutline()
+        toggleOutline?()
     }
 
-    /// What ⌥Tab does when it reaches the text view; tests replace it so
-    /// they never write the user's config.
-    var toggleOutline: () -> Void = { ConfigurationStore.shared.toggleOutline() }
+    /// What ⌥Tab does when it reaches the text view: the window's outline
+    /// model sets it to toggle that window's outline.
+    var toggleOutline: (() -> Void)?
 
     private func applyListIndent(outdent: Bool) -> Bool {
         guard isEditable, !hasMarkedText(),

@@ -71,9 +71,10 @@ struct Configuration: Equatable, Sendable {
     var mathScale: Double = 1
     /// How a table's header row is set apart from the rows under it.
     var tableHeader: TableHeaderStyle = .bold
-    /// Whether each document window lists the document's headings in a
-    /// column at its right edge. Off by default; View ▸ Show Outline
-    /// (⌥Tab) flips it.
+    /// Whether a newly opened document window shows the outline of its
+    /// headings. Off by default. View ▸ Show Outline (⌥Tab) shows or hides
+    /// it in one window without touching this; changing it leaves open
+    /// windows as they are.
     var outline: Bool = false
     /// Hex overrides for the theme's colours; nil inherits the theme.
     var colorOverrides = Palette.Overrides()
@@ -275,10 +276,12 @@ struct Configuration: Equatable, Sendable {
     # shows.
     table.header = bold
 
-    # An outline of the document's headings in a column at the right of
-    # each window; click a heading to go to it. View ▸ Show Outline (⌥Tab)
-    # turns it on and off. It hides while the window is too narrow to fit
-    # it beside the text.
+    # Whether new documents open with the outline: their headings in a
+    # column beside the page; click a heading to go to it. View ▸ Show
+    # Outline (⌥Tab) shows or hides it in the front window only, and is
+    # not saved. Changing this applies to documents opened afterward, not
+    # to open windows. The outline hides while a window is too narrow to
+    # fit it beside the text.
     outline = off
 
     # Colour overrides as #RRGGBB. Leave a value empty to use the theme's.
