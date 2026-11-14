@@ -32,6 +32,23 @@ final class OutlineModel: ObservableObject {
     private var generation = 0
     private var scanPending = false
     private var jumping = false
+    /// The eased scroll a click started, until it lands or is cut short:
+    /// the heading it is going to, and a serial so a landing that belongs
+    /// to an earlier click is ignored.
+    private var flight: Flight?
+    private var flights = 0
+    private var ticker: FrameTicker?
+
+    private struct Flight {
+        let index: Int
+        let serial: Int
+        /// The clip's distance below the text view's top, at the start
+        /// and at the end.
+        let from: CGFloat
+        let to: CGFloat
+        let start: CFTimeInterval
+        let duration: TimeInterval
+    }
     /// The heading a jump marked and the clip origin it left. Near the
     /// end of a document a heading cannot reach the reading line, so the
     /// mark stays on the clicked heading until the view scrolls away.
@@ -51,6 +68,29 @@ final class OutlineModel: ObservableObject {
     /// at the document's end on the next tile) before the mark follows
     /// the scroll again.
     static let pinTolerance: CGFloat = 8
+
+    /// The eased scroll to a clicked heading: a quarter of a second for
+    /// a short hop, a little longer for a long one, never more than
+    /// `maximumScrollDuration`.
+    nonisolated static let scrollDurations: ClosedRange<TimeInterval> = 0.25...0.35
+    nonisolated static let maximumScrollDuration: TimeInterval = 0.4
+
+    /// How long the scroll over `distance` takes in a viewport `viewport`
+    /// tall: the short duration within one viewport, the long one from
+    /// five viewports on.
+    nonisolated static func scrollDuration(distance: CGFloat, viewport: CGFloat) -> TimeInterval {
+        let viewports = viewport > 0 ? Double(abs(distance) / viewport) : 0
+        let fraction = min(max((viewports - 1) / 4, 0), 1)
+        let duration = scrollDurations.lowerBound + (scrollDurations.upperBound - scrollDurations.lowerBound) * fraction
+        return min(duration, maximumScrollDuration)
+    }
+
+    /// Whether a click jumps instead of easing: the system's Reduce
+    /// Motion setting. Replaced in tests.
+    var reducesMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    /// True while an eased scroll to a clicked heading is under way.
+    var isScrolling: Bool { flight != nil }
 
     var isActive: Bool { active }
 
@@ -94,6 +134,14 @@ final class OutlineModel: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateCurrent() }
         })
+        // A scroll of the reader's own takes the page back from an eased
+        // jump. A trackpad or a dragged knob brackets its scrolling; a
+        // wheel only reports each step.
+        for name in [NSScrollView.willStartLiveScrollNotification, NSScrollView.didLiveScrollNotification] {
+            observers.append(center.addObserver(forName: name, object: scrollView, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.userDidScroll() }
+            })
+        }
         // Width, zoom, measure, fonts, the title band, and full screen all
         // land in the text view's frame, inset, or styling, which it
         // reports here.
@@ -120,6 +168,49 @@ final class OutlineModel: ObservableObject {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
     }
 
+    /// Calls `tick` once a frame until stopped: on the display's refresh
+    /// while the window is on screen, on a timer where no display drives
+    /// it (a window not yet shown, the tests). One more call comes at the
+    /// deadline whatever happens, so a display link paused with its
+    /// window still lets the scroll land.
+    @MainActor
+    private final class FrameTicker: NSObject {
+        private var link: CADisplayLink?
+        private var timers: [Timer] = []
+        private let tick: @MainActor () -> Void
+
+        init(view: NSView, deadline: TimeInterval, tick: @escaping @MainActor () -> Void) {
+            self.tick = tick
+            super.init()
+            if let window = view.window, window.isVisible, window.occlusionState.contains(.visible) {
+                let link = view.displayLink(target: self, selector: #selector(step))
+                link.add(to: .main, forMode: .common)
+                self.link = link
+            } else {
+                schedule(Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.tick() }
+                })
+            }
+            schedule(Timer(timeInterval: deadline + 0.05, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick() }
+            })
+        }
+
+        private func schedule(_ timer: Timer) {
+            RunLoop.main.add(timer, forMode: .common)
+            timers.append(timer)
+        }
+
+        @objc private func step(_ link: CADisplayLink) { tick() }
+
+        func stop() {
+            link?.invalidate()
+            link = nil
+            for timer in timers { timer.invalidate() }
+            timers = []
+        }
+    }
+
     /// Shows or hides this window's outline. Hidden cancels any pending
     /// scan and forgets the headings.
     func setActive(_ on: Bool) {
@@ -130,6 +221,7 @@ final class OutlineModel: ObservableObject {
             updateGeometry()
             scanNow()
         } else {
+            cancelFlight()
             scan?.cancel()
             generation += 1
             scanPending = false
@@ -171,8 +263,13 @@ final class OutlineModel: ObservableObject {
 
     private func publish(_ fresh: [OutlineHeading]) {
         scanPending = false
-        if fresh != headings { pinned = nil }
-        if fresh != headings { headings = fresh }
+        if fresh != headings {
+            // The index a pin or an eased jump holds is stale: the page
+            // stays where it is and the mark follows it.
+            pinned = nil
+            cancelFlight()
+            headings = fresh
+        }
         // An edit to the first line can change its font and so its
         // baseline.
         updateGeometry()
@@ -217,7 +314,9 @@ final class OutlineModel: ObservableObject {
     /// The section whose heading last crossed the reading line, the place
     /// a jump lands a heading.
     func updateCurrent() {
-        guard active, !jumping else { return }
+        // An eased jump holds the mark on the clicked heading while the
+        // headings between pass the reading line.
+        guard active, !jumping, flight == nil else { return }
         if let pinned, let clip = scrollView?.contentView,
            abs(clip.bounds.minY - pinned.origin) < Self.pinTolerance, headings.indices.contains(pinned.index) {
             if current != pinned.index { current = pinned.index }
@@ -247,8 +346,10 @@ final class OutlineModel: ObservableObject {
 
     /// Scrolls the heading's line to where the page's first line sits at
     /// the top of the document, puts the caret at the start of its text,
-    /// and gives the text view the keys.
-    func jump(to heading: OutlineHeading) {
+    /// and gives the text view the keys. In a window the scroll eases to
+    /// its end; under Reduce Motion, or with `animated` false, it jumps.
+    /// The mark goes to the heading at once and stays there on the way.
+    func jump(to heading: OutlineHeading, animated: Bool = true) {
         if scanPending { scanNow() }
         guard let index = headings.firstIndex(where: { $0.id == heading.id }),
               let textView, let scrollView,
@@ -256,6 +357,9 @@ final class OutlineModel: ObservableObject {
         let target = headings[index]
         let length = (textView.string as NSString).length
         guard target.range.location < length || length == 0 else { return }
+
+        // A second click takes over from wherever the first has got to.
+        cancelFlight()
 
         // The caret first: moving it reveals this heading's syntax and
         // conceals the paragraph it leaves, and either can change line
@@ -265,7 +369,8 @@ final class OutlineModel: ObservableObject {
 
         // Lay out through the heading, and a viewport past it so the
         // scroll is not clamped short of a frame still growing behind
-        // the layout.
+        // the layout. All of it before the scroll starts: an eased scroll
+        // must not find its end point moving under it.
         let clip = scrollView.contentView
         layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(NSMaxRange(target.range), length)))
         let glyph = layoutManager.glyphIndexForCharacter(at: min(target.range.location, max(0, length - 1)))
@@ -290,12 +395,81 @@ final class OutlineModel: ObservableObject {
         )
         let origin = clip.constrainBoundsRect(NSRect(origin: NSPoint(x: clip.bounds.minX, y: landing.y), size: clip.bounds.size)).origin
 
+        current = index
+        pinned = nil
+        textView.window?.makeFirstResponder(textView)
+
+        let distance = abs(origin.y - clip.bounds.minY)
+        guard animated, textView.window != nil, distance >= 1, !reducesMotion() else {
+            land(at: origin.y - textView.frame.minY, index: index)
+            return
+        }
+        // Both ends as distances below the text view's top, which hold if
+        // its frame moves in the clip while the scroll runs.
+        flights += 1
+        let flight = Flight(
+            index: index,
+            serial: flights,
+            from: clip.bounds.minY - textView.frame.minY,
+            to: origin.y - textView.frame.minY,
+            start: CACurrentMediaTime(),
+            duration: Self.scrollDuration(distance: distance, viewport: clip.bounds.height)
+        )
+        self.flight = flight
+        ticker = FrameTicker(view: textView, deadline: flight.duration) { [weak self] in
+            self?.advance(flight.serial)
+        }
+    }
+
+    /// One frame of the eased scroll: where the clock says the page is by
+    /// now, and the landing once the time is up.
+    private func advance(_ serial: Int) {
+        guard let flight, flight.serial == serial, let textView, let scrollView else { return }
+        let progress = (CACurrentMediaTime() - flight.start) / flight.duration
+        guard progress < 1 else {
+            cancelFlight()
+            land(at: flight.to, index: flight.index)
+            return
+        }
+        let clip = scrollView.contentView
+        let offset = flight.from + (flight.to - flight.from) * Self.eased(progress)
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: textView.frame.minY + offset))
+        scrollView.reflectScrolledClipView(clip)
+    }
+
+    /// Ease in and out, a cubic each way: no overshoot, no bounce.
+    nonisolated static func eased(_ progress: Double) -> Double {
+        let t = min(max(progress, 0), 1)
+        return t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+    }
+
+    /// Puts the clip `offset` below the text view's top, as far as the
+    /// document allows, and pins the mark there.
+    private func land(at offset: CGFloat, index: Int) {
+        guard let textView, let scrollView else { return }
+        let clip = scrollView.contentView
+        let origin = NSPoint(x: clip.bounds.minX, y: textView.frame.minY + offset)
         jumping = true
-        clip.scroll(to: origin)
+        clip.scroll(to: clip.constrainBoundsRect(NSRect(origin: origin, size: clip.bounds.size)).origin)
         scrollView.reflectScrolledClipView(clip)
         jumping = false
         current = index
         pinned = (index, clip.bounds.minY)
-        textView.window?.makeFirstResponder(textView)
+    }
+
+    /// Lets go of an eased scroll, leaving the page where it has got to.
+    private func cancelFlight() {
+        flight = nil
+        ticker?.stop()
+        ticker = nil
+    }
+
+    /// The reader scrolled: an eased jump lets go, and the mark follows
+    /// the page again.
+    private func userDidScroll() {
+        guard flight != nil else { return }
+        cancelFlight()
+        pinned = nil
+        updateCurrent()
     }
 }

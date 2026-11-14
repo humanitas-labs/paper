@@ -153,7 +153,7 @@ struct OutlineAlignmentTests {
 
         // The column does not scroll with the page.
         let before = try #require(fixture.report.entryBaseline)
-        fixture.model.jump(to: fixture.model.headings[12])
+        fixture.model.jump(to: fixture.model.headings[12], animated: false)
         try await settle(fixture)
         #expect(fixture.textView.visibleRect.minY > 500)
         #expect(fixture.report.entryBaseline == before, "the column stays put while the page scrolls")
