@@ -115,7 +115,7 @@ struct OutlineProbeTests {
             name: "outline-\(appearance == .aqua ? "light" : "dark")"
         )
         #expect(model.current == 4)
-        #expect(OutlineColumn.width(forRoom: model.room) == OutlineColumn.maximumWidth)
+        #expect(OutlineColumn.placement(forRoom: model.room)?.width == OutlineColumn.maximumWidth)
         #expect(!model.headings.contains { $0.title.contains("shell comment") })
     }
 
@@ -124,7 +124,7 @@ struct OutlineProbeTests {
     func renderOutlineNarrow() throws {
         guard RenderProbeTests.probeDirectory != nil else { return }
         let model = try render(width: 1000, height: 700, appearance: .aqua, scrollTo: nil, name: "outline-narrow")
-        #expect(OutlineColumn.width(forRoom: model.room) == nil)
+        #expect(OutlineColumn.placement(forRoom: model.room) == nil)
     }
 
     /// The scan's cost on a megabyte, in this (Debug) build, for the record.

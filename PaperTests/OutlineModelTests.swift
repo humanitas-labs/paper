@@ -168,12 +168,17 @@ struct OutlineModelTests {
     }
 
     @Test
-    func columnWidthFollowsTheRoom() {
-        #expect(OutlineColumn.width(forRoom: 400) == 220)
-        #expect(OutlineColumn.width(forRoom: 214) == 150)
-        #expect(OutlineColumn.width(forRoom: 204) == 140)
-        #expect(OutlineColumn.width(forRoom: 200) == nil)
-        #expect(OutlineColumn.width(forRoom: 0) == nil)
+    func columnSitsAGapPastTheTextAndHidesWhenItCannot() {
+        let wide = OutlineColumn.placement(forRoom: 400)
+        #expect(wide?.width == 220)
+        #expect(wide?.trailing == 400 - OutlineColumn.gap - 220, "a fixed gap from the text, the rest to the edge")
+        let tight = OutlineColumn.placement(forRoom: 250)
+        #expect(tight?.width == 250 - OutlineColumn.gap - OutlineColumn.minimumTrailing)
+        #expect(tight?.trailing == OutlineColumn.minimumTrailing)
+        let narrowest = OutlineColumn.gap + OutlineColumn.minimumWidth + OutlineColumn.minimumTrailing
+        #expect(OutlineColumn.placement(forRoom: narrowest)?.width == OutlineColumn.minimumWidth)
+        #expect(OutlineColumn.placement(forRoom: narrowest - 1) == nil)
+        #expect(OutlineColumn.placement(forRoom: 0) == nil)
     }
 
     // MARK: - ⌥Tab
