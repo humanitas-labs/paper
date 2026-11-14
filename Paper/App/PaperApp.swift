@@ -112,13 +112,18 @@ private struct DocumentView: View {
     @ObservedObject private var store = ConfigurationStore.shared
     @ObservedObject private var updates = UpdateCheck.observed
     @State private var watcher: FileWatcher?
+    @StateObject private var outline = OutlineModel()
 
     var body: some View {
-        MarkdownEditor(text: $document.text, fileURL: fileURL)
+        MarkdownEditor(text: $document.text, fileURL: fileURL, outline: outline)
             .background(Color(nsColor: Appearance.canvas))
             .background(WindowConfigurator())
             .overlay(alignment: .topLeading) { FileBadge(fileURL: fileURL) }
             .overlay(alignment: .topTrailing) { ZoomBadge() }
+            // The headings, at the right; drawn only when the setting is on.
+            .overlay(alignment: .topTrailing) {
+                if store.current.outline { OutlineColumn(model: outline) }
+            }
             // A release installs while someone writes; the badge that asks
             // for the restart sits in the document's corner as it does in
             // the welcome window, which a writer may never open.
@@ -141,6 +146,7 @@ private struct DocumentView: View {
                     FileWatcher(url: url) { reload(from: url) }
                 }
             }
+            .onChange(of: store.current.outline, initial: true) { _, on in outline.setActive(on) }
             .onDisappear {
                 watcher?.cancel()
                 watcher = nil

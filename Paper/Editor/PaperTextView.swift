@@ -263,9 +263,15 @@ final class PaperTextView: NSTextView {
             syntaxStyler.apply(to: self)
         }
         styledMeasure = measure
+        geometryDidChange?()
     }
 
     private var styledMeasure: CGFloat = 0
+
+    /// Called after every frame or inset change: a resize, zoom, the
+    /// measure, the title band settling, full screen. The outline follows
+    /// the text's position through it.
+    var geometryDidChange: (() -> Void)?
 
     /// Set on the offscreen view `PDFExporter` paginates: the document
     /// without the window's chrome around it.
