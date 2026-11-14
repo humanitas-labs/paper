@@ -131,13 +131,26 @@ struct OutlineModelTests {
         #expect(model.top == textView.textContainerInset.height)
     }
 
+    /// Indentation is a heading's rank among the levels the document
+    /// uses, so skipped levels take no room: a title over `####` sections
+    /// still indents them one step.
     @Test
-    func topLevelEntriesSitFlushLeft() {
-        #expect(OutlineColumn.indentBase(for: [2, 3, 2]) == 2)
-        #expect(OutlineColumn.indentBase(for: [1, 2, 3, 2]) == 2, "a lone title shares the edge with the sections")
-        #expect(OutlineColumn.indentBase(for: [1, 2, 1, 2]) == 1)
-        #expect(OutlineColumn.indentBase(for: [1]) == 1)
-        #expect(OutlineColumn.indentBase(for: []) == 1)
+    func indentRanksCompressSkippedLevels() {
+        #expect(OutlineColumn.indentSteps(for: [1, 4, 4, 4, 4]) == [0, 1, 1, 1, 1])
+        #expect(OutlineColumn.indentSteps(for: [1, 3, 6]) == [0, 1, 2])
+    }
+
+    @Test
+    func indentsFollowLevelsInOrder() {
+        #expect(OutlineColumn.indentSteps(for: [1, 2, 3, 2]) == [0, 1, 2, 1])
+        #expect(OutlineColumn.indentSteps(for: [1, 2, 3, 4, 5, 6]) == [0, 1, 2, 3, 3, 3], "capped at three steps")
+        #expect(OutlineColumn.indentSteps(for: []) == [])
+    }
+
+    @Test
+    func indentStartsAtTheShallowestLevelPresent() {
+        #expect(OutlineColumn.indentSteps(for: [2, 3]) == [0, 1])
+        #expect(OutlineColumn.indentSteps(for: [3, 2, 3]) == [1, 0, 1])
     }
 
     /// The column's inks are the ink at fixed steps, light and dark, never

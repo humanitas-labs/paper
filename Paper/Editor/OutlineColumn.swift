@@ -51,14 +51,13 @@ struct OutlineColumn: View {
         return ceil(font.ascender - font.descender + font.leading)
     }
 
-    /// The level drawn flush left: the shallowest level, or, when that
-    /// level is a lone document title, the level under it, so the title
-    /// and the top sections share the left edge.
-    nonisolated static func indentBase(for levels: [Int]) -> Int {
-        guard let shallowest = levels.min() else { return 1 }
-        let rest = levels.filter { $0 != shallowest }
-        guard levels.count - rest.count == 1, let next = rest.min() else { return shallowest }
-        return next
+    /// Each heading's indent, in steps, for the levels in document order:
+    /// its rank among the levels the document uses, so a skipped level
+    /// takes no room (`#` over `####` indents one step) and the shallowest
+    /// level present sits flush left. Capped at `maximumIndentSteps`.
+    nonisolated static func indentSteps(for levels: [Int]) -> [Int] {
+        let ranks = Dictionary(uniqueKeysWithValues: Set(levels).sorted().enumerated().map { ($1, $0) })
+        return levels.map { min(ranks[$0] ?? 0, maximumIndentSteps) }
     }
 
     var body: some View {
@@ -80,9 +79,9 @@ struct OutlineColumn: View {
 
     private var list: some View {
         let headings = model.headings
-        let shallowest = Self.indentBase(for: headings.map(\.level))
+        let steps = Self.indentSteps(for: headings.map(\.level))
         let rows = ForEach(Array(headings.enumerated()), id: \.element.id) { index, heading in
-            row(heading, index: index, shallowest: shallowest)
+            row(heading, index: index, steps: steps[index])
         }
         return Group {
             if scrolls {
@@ -102,12 +101,11 @@ struct OutlineColumn: View {
         }
     }
 
-    private func row(_ heading: OutlineHeading, index: Int, shallowest: Int) -> some View {
+    private func row(_ heading: OutlineHeading, index: Int, steps: Int) -> some View {
         let isCurrent = model.current == index
         let ink = isCurrent ? Appearance.outlineCurrentInk
             : hovered == heading.id ? Appearance.outlineHoverInk
             : Appearance.outlineInk
-        let steps = min(max(0, heading.level - shallowest), Self.maximumIndentSteps)
         return Text(heading.title)
             .font(.system(size: Self.fontSize, weight: isCurrent ? .medium : .regular))
             .foregroundStyle(Color(nsColor: ink))
