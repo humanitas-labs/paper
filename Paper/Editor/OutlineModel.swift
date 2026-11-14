@@ -24,6 +24,10 @@ final class OutlineModel: ObservableObject {
     private var generation = 0
     private var scanPending = false
     private var jumping = false
+    /// The heading a jump marked and the clip origin it left. Near the
+    /// end of a document a heading cannot reach the reading line, so the
+    /// mark stays on the clicked heading until the view scrolls away.
+    private var pinned: (index: Int, origin: CGFloat)?
     /// Read in `deinit`, which is not on the main actor; only touched there
     /// and on the main actor otherwise.
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
@@ -34,6 +38,11 @@ final class OutlineModel: ObservableObject {
     /// The distance below the top of the page's first line at which a
     /// heading counts as reached: a jump lands it exactly there.
     static let readingTolerance: CGFloat = 8
+
+    /// How far the clip may settle after a jump (AppKit re-constrains it
+    /// at the document's end on the next tile) before the mark follows
+    /// the scroll again.
+    static let pinTolerance: CGFloat = 8
 
     var isActive: Bool { active }
 
@@ -125,6 +134,7 @@ final class OutlineModel: ObservableObject {
 
     private func publish(_ fresh: [OutlineHeading]) {
         scanPending = false
+        if fresh != headings { pinned = nil }
         if fresh != headings { headings = fresh }
         updateCurrent()
     }
@@ -144,6 +154,12 @@ final class OutlineModel: ObservableObject {
     /// a jump lands a heading.
     func updateCurrent() {
         guard active, !jumping else { return }
+        if let pinned, let clip = scrollView?.contentView,
+           abs(clip.bounds.minY - pinned.origin) < Self.pinTolerance, headings.indices.contains(pinned.index) {
+            if current != pinned.index { current = pinned.index }
+            return
+        }
+        pinned = nil
         guard !headings.isEmpty,
               let textView, let scrollView,
               let layoutManager = textView.layoutManager,
@@ -151,8 +167,11 @@ final class OutlineModel: ObservableObject {
             if current != nil { current = nil }
             return
         }
-        let clip = scrollView.contentView.bounds
-        let y = clip.minY + textView.textContainerInset.height + Self.readingTolerance - textView.textContainerOrigin.y
+        // The viewport's top in the text view's own coordinates; the
+        // clip view's bounds are in its coordinates, offset by wherever
+        // the text view's frame sits.
+        let top = textView.visibleRect.minY
+        let y = top + textView.textContainerInset.height + Self.readingTolerance - textView.textContainerOrigin.y
         let index = layoutManager.characterIndex(
             for: NSPoint(x: 0, y: max(0, y)), in: container, fractionOfDistanceBetweenInsertionPoints: nil
         )
@@ -174,20 +193,45 @@ final class OutlineModel: ObservableObject {
         let length = (textView.string as NSString).length
         guard target.range.location < length || length == 0 else { return }
 
+        // The caret first: moving it reveals this heading's syntax and
+        // conceals the paragraph it leaves, and either can change line
+        // heights above the target (a long heading wraps once its marks
+        // show). Measured before, the landing point is off by that much.
+        textView.setSelectedRange(NSRange(location: min(target.contentRange.location, length), length: 0))
+
+        // Lay out through the heading, and a viewport past it so the
+        // scroll is not clamped short of a frame still growing behind
+        // the layout.
+        let clip = scrollView.contentView
         layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(NSMaxRange(target.range), length)))
         let glyph = layoutManager.glyphIndexForCharacter(at: min(target.range.location, max(0, length - 1)))
+        let laidOut = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        if let container = textView.textContainer {
+            layoutManager.ensureLayout(
+                forBoundingRect: NSRect(x: 0, y: laidOut.minY, width: container.size.width, height: clip.bounds.height * 2),
+                in: container
+            )
+            // The frame follows layout later, on its own schedule; sized
+            // now, the clamp below sees the document's real end.
+            textView.sizeToFit()
+        }
         let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
-        let clip = scrollView.contentView
-        let y = line.minY + textView.textContainerOrigin.y - textView.textContainerInset.height
-        let origin = clip.constrainBoundsRect(NSRect(origin: NSPoint(x: 0, y: y), size: clip.bounds.size)).origin
+        // The landing point is in the text view's coordinates; the clip
+        // view scrolls in its own, and the text view's frame need not
+        // start at its origin (it sits at a large negative y once the
+        // document has grown from an empty frame), so convert.
+        let landing = textView.convert(
+            NSPoint(x: 0, y: line.minY + textView.textContainerOrigin.y - textView.textContainerInset.height),
+            to: clip
+        )
+        let origin = clip.constrainBoundsRect(NSRect(origin: NSPoint(x: clip.bounds.minX, y: landing.y), size: clip.bounds.size)).origin
 
         jumping = true
         clip.scroll(to: origin)
         scrollView.reflectScrolledClipView(clip)
         jumping = false
         current = index
-
-        textView.setSelectedRange(NSRange(location: min(target.contentRange.location, length), length: 0))
+        pinned = (index, clip.bounds.minY)
         textView.window?.makeFirstResponder(textView)
     }
 }

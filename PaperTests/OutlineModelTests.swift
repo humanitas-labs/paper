@@ -81,8 +81,7 @@ struct OutlineModelTests {
         let heading = model.headings[5]
         model.jump(to: heading)
 
-        let clip = scrollView.contentView.bounds
-        #expect(abs(clip.minY + textView.textContainerInset.height - lineTop(of: heading, in: textView)) < 1)
+        #expect(abs(textView.visibleRect.minY + textView.textContainerInset.height - lineTop(of: heading, in: textView)) < 1)
         #expect(textView.selectedRange() == NSRange(location: heading.contentRange.location, length: 0))
         #expect(model.current == 5)
         model.updateCurrent()
@@ -97,8 +96,7 @@ struct OutlineModelTests {
         model.setActive(true)
         let last = try #require(model.headings.last)
         model.jump(to: last)
-        let clip = scrollView.contentView.bounds
-        #expect(abs(clip.maxY - textView.frame.height) < 1, "clamped to the end of the document")
+        #expect(abs(textView.visibleRect.maxY - textView.bounds.height) < 1, "clamped to the end of the document")
         #expect(model.current == model.headings.count - 1)
     }
 
