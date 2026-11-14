@@ -141,4 +141,58 @@ struct OutlineModelTests {
         #expect(OutlineColumn.width(forRoom: 200) == nil)
         #expect(OutlineColumn.width(forRoom: 0) == nil)
     }
+
+    // MARK: - ⌥Tab
+
+    private func optionTab() throws -> NSEvent {
+        try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .option, timestamp: 0,
+            windowNumber: 0, context: nil, characters: "\t", charactersIgnoringModifiers: "\t",
+            isARepeat: false, keyCode: 48
+        ))
+    }
+
+    /// SwiftUI's View menu item carries ⌥Tab as its key equivalent.
+    @Test
+    func viewMenuItemIsOptionTab() throws {
+        func items(_ menu: NSMenu) -> [NSMenuItem] {
+            menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) }
+        }
+        let menu = try #require(NSApp.mainMenu)
+        let item = try #require(items(menu).first { $0.title == "Show Outline" || $0.title == "Hide Outline" })
+        #expect(item.keyEquivalent == "\t")
+        #expect(item.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask) == .option)
+    }
+
+    /// AppKit matches an ⌥Tab key-down against a menu item with that
+    /// equivalent.
+    @Test
+    func menuMatchesOptionTab() throws {
+        final class Target: NSObject {
+            var fired = 0
+            @objc func fire(_ sender: Any?) { fired += 1 }
+        }
+        let target = Target()
+        let menu = NSMenu()
+        let item = NSMenuItem(title: "Show Outline", action: #selector(Target.fire(_:)), keyEquivalent: "\t")
+        item.keyEquivalentModifierMask = .option
+        item.target = target
+        menu.addItem(item)
+        #expect(menu.performKeyEquivalent(with: try optionTab()))
+        #expect(target.fired == 1)
+    }
+
+    /// Should ⌥Tab reach the text view, its standard binding
+    /// (`insertTabIgnoringFieldEditor:`) toggles the outline and types
+    /// nothing.
+    @Test
+    func optionTabInTheTextViewTogglesInsteadOfTyping() throws {
+        let (_, textView) = makeEditor("- item\n")
+        var toggles = 0
+        textView.toggleOutline = { toggles += 1 }
+        textView.setSelectedRange(NSRange(location: 6, length: 0))
+        textView.interpretKeyEvents([try optionTab()])
+        #expect(toggles == 1)
+        #expect(textView.string == "- item\n")
+    }
 }

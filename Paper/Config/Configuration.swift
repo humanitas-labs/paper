@@ -73,7 +73,7 @@ struct Configuration: Equatable, Sendable {
     var tableHeader: TableHeaderStyle = .bold
     /// Whether each document window lists the document's headings in a
     /// column at its right edge. Off by default; View ▸ Show Outline
-    /// (⌃⌘S) flips it.
+    /// (⌥Tab) flips it.
     var outline: Bool = false
     /// Hex overrides for the theme's colours; nil inherits the theme.
     var colorOverrides = Palette.Overrides()
@@ -276,7 +276,7 @@ struct Configuration: Equatable, Sendable {
     table.header = bold
 
     # An outline of the document's headings in a column at the right of
-    # each window; click a heading to go to it. View ▸ Show Outline (⌃⌘S)
+    # each window; click a heading to go to it. View ▸ Show Outline (⌥Tab)
     # turns it on and off. It hides while the window is too narrow to fit
     # it beside the text.
     outline = off

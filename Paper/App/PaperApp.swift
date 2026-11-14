@@ -85,7 +85,7 @@ struct PaperApp: App {
                 Button(store.current.outline ? "Hide Outline" : "Show Outline") {
                     ConfigurationStore.shared.toggleOutline()
                 }
-                .keyboardShortcut("s", modifiers: [.control, .command])
+                .keyboardShortcut(.tab, modifiers: .option)
                 Divider()
                 // A lens for the monitor at hand: the whole page scales
                 // together and the setting stays on this machine.
