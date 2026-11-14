@@ -134,6 +134,42 @@ struct OutlineModelTests {
     }
 
     @Test
+    func topLevelEntriesSitFlushLeft() {
+        #expect(OutlineColumn.indentBase(for: [2, 3, 2]) == 2)
+        #expect(OutlineColumn.indentBase(for: [1, 2, 3, 2]) == 2, "a lone title shares the edge with the sections")
+        #expect(OutlineColumn.indentBase(for: [1, 2, 1, 2]) == 1)
+        #expect(OutlineColumn.indentBase(for: [1]) == 1)
+        #expect(OutlineColumn.indentBase(for: []) == 1)
+    }
+
+    /// The column's inks are the ink at fixed steps, light and dark, never
+    /// the label ink a theme may tint.
+    @Test
+    func outlineInksAreNeutralStepsOfTheInk() throws {
+        for (name, dark) in [(NSAppearance.Name.aqua, false), (.darkAqua, true)] {
+            let appearance = try #require(NSAppearance(named: name))
+            appearance.performAsCurrentDrawingAppearance {
+                let ink = Appearance.ink.usingColorSpace(.sRGB)!
+                let alphas = Appearance.outlineAlphas
+                for (color, alpha) in [
+                    (Appearance.outlineInk, dark ? alphas.rest.dark : alphas.rest.light),
+                    (Appearance.outlineHoverInk, dark ? alphas.hover.dark : alphas.hover.light),
+                    (Appearance.outlineCurrentInk, dark ? alphas.current.dark : alphas.current.light),
+                ] {
+                    let resolved = color.usingColorSpace(.sRGB)!
+                    #expect(abs(resolved.alphaComponent - alpha) < 0.01)
+                    #expect(abs(resolved.redComponent - ink.redComponent) < 0.01)
+                    #expect(abs(resolved.greenComponent - ink.greenComponent) < 0.01)
+                    #expect(abs(resolved.blueComponent - ink.blueComponent) < 0.01)
+                }
+            }
+        }
+        let alphas = Appearance.outlineAlphas
+        #expect(alphas.rest.light < alphas.hover.light && alphas.hover.light < alphas.current.light)
+        #expect(alphas.rest.dark < alphas.hover.dark && alphas.hover.dark < alphas.current.dark)
+    }
+
+    @Test
     func columnWidthFollowsTheRoom() {
         #expect(OutlineColumn.width(forRoom: 400) == 220)
         #expect(OutlineColumn.width(forRoom: 214) == 150)

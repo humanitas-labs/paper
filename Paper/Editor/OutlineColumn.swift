@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// The outline: the document's headings in a quiet column at the window's
-/// right edge, beside the page and never over it. The body face at a small
-/// fixed size in the label ink, indented by level, with the section in
-/// view in the full ink. No panel, no rule, no highlight. It narrows with
+/// right edge, beside the page and never over it. The system sans at a
+/// small fixed size in neutral steps of the ink, indented by level, with
+/// the section in view a step darker and medium. No panel, no rule, no
+/// highlight. It narrows with
 /// the room beside the text and hides when there is too little, so the
 /// text never moves; it does not scale with zoom, as the badges do not.
 struct OutlineColumn: View {
@@ -24,13 +25,23 @@ struct OutlineColumn: View {
     nonisolated static let bottom: CGFloat = 32
     nonisolated static let indentStep: CGFloat = 12
     nonisolated static let maximumIndentSteps = 3
-    nonisolated static let fontSize: CGFloat = 13
-    nonisolated static let rowPadding: CGFloat = 3
+    nonisolated static let fontSize: CGFloat = 12
+    nonisolated static let rowPadding: CGFloat = 4
 
     /// The column's width for the room beside the text, or nil to hide.
     nonisolated static func width(forRoom room: CGFloat) -> CGFloat? {
         let width = min(maximumWidth, room - trailing - gap)
         return width >= minimumWidth ? width : nil
+    }
+
+    /// The level drawn flush left: the shallowest level, or, when that
+    /// level is a lone document title, the level under it, so the title
+    /// and the top sections share the left edge.
+    nonisolated static func indentBase(for levels: [Int]) -> Int {
+        guard let shallowest = levels.min() else { return 1 }
+        let rest = levels.filter { $0 != shallowest }
+        guard levels.count - rest.count == 1, let next = rest.min() else { return shallowest }
+        return next
     }
 
     var body: some View {
@@ -45,10 +56,9 @@ struct OutlineColumn: View {
 
     private var list: some View {
         let headings = model.headings
-        let shallowest = headings.map(\.level).min() ?? 1
-        let font = Font(Appearance.bodyFont(size: Self.fontSize))
+        let shallowest = Self.indentBase(for: headings.map(\.level))
         let rows = ForEach(Array(headings.enumerated()), id: \.element.id) { index, heading in
-            row(heading, index: index, shallowest: shallowest, font: font)
+            row(heading, index: index, shallowest: shallowest)
         }
         return Group {
             if scrolls {
@@ -68,12 +78,15 @@ struct OutlineColumn: View {
         }
     }
 
-    private func row(_ heading: OutlineHeading, index: Int, shallowest: Int, font: Font) -> some View {
-        let lit = model.current == index || hovered == heading.id
-        let steps = min(heading.level - shallowest, Self.maximumIndentSteps)
+    private func row(_ heading: OutlineHeading, index: Int, shallowest: Int) -> some View {
+        let isCurrent = model.current == index
+        let ink = isCurrent ? Appearance.outlineCurrentInk
+            : hovered == heading.id ? Appearance.outlineHoverInk
+            : Appearance.outlineInk
+        let steps = min(max(0, heading.level - shallowest), Self.maximumIndentSteps)
         return Text(heading.title)
-            .font(font)
-            .foregroundStyle(Color(nsColor: lit ? Appearance.ink : Appearance.labelInk))
+            .font(.system(size: Self.fontSize, weight: isCurrent ? .medium : .regular))
+            .foregroundStyle(Color(nsColor: ink))
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.leading, CGFloat(steps) * Self.indentStep)

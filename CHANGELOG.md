@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- An outline. View ▸ Show Outline (⌥Tab), Settings ▸ Window ▸ Show outline, or `outline = on` in the config file lists the document's headings in a quiet column at the right of each window, indented by level, in the theme's type and inks. It stays in place while the text scrolls; a click scrolls that heading to the top of the page and puts the caret on it, and the section in view is in the full ink. Headings in code blocks and comments are left out. It follows edits and reloads, hides while the window is too narrow to fit it beside the text, and never moves the text. Off by default; the file, export, and print are unchanged. ⌥Tab used to type a literal tab; it now shows and hides the outline.
+- An outline. View ▸ Show Outline (⌥Tab), Settings ▸ Window ▸ Show outline, or `outline = on` in the config file lists the document's headings in a quiet column at the right of each window, indented by level, in the system sans and soft tones of the theme's ink. It stays in place while the text scrolls; a click scrolls that heading to the top of the page and puts the caret on it, and the section in view is a shade darker. Headings in code blocks and comments are left out. It follows edits and reloads, hides while the window is too narrow to fit it beside the text, and never moves the text. Off by default; the file, export, and print are unchanged. ⌥Tab used to type a literal tab; it now shows and hides the outline.
 
 ## 0.9.5 — 2026.11.12
 

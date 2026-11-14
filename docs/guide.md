@@ -32,7 +32,7 @@ The window has no title bar. Rest the pointer in the top-left corner and a pill 
 
 ## Outline
 
-View ▸ Show Outline (⌥Tab), Settings ▸ Window ▸ Show outline, or `outline = on` in the config file lists the document's headings in a column at the right of the window, indented by level. It stays put while the text scrolls; click a heading to go to it, with the caret at its start. The heading of the section you are reading is in the full ink. Headings in code blocks and comments are left out. The setting is the same for every window, and the column hides while a window is too narrow to fit it beside the text, so the text never moves. With the outline taking ⌥Tab, that key no longer types a literal tab.
+View ▸ Show Outline (⌥Tab), Settings ▸ Window ▸ Show outline, or `outline = on` in the config file lists the document's headings in a column at the right of the window, indented by level. It stays put while the text scrolls; click a heading to go to it, with the caret at its start. The outline is set in the system sans in soft tones of the text's ink; the heading of the section you are reading is a shade darker. Headings in code blocks and comments are left out. The setting is the same for every window, and the column hides while a window is too narrow to fit it beside the text, so the text never moves. With the outline taking ⌥Tab, that key no longer types a literal tab.
 
 ## Images
 
