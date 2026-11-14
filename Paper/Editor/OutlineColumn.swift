@@ -11,6 +11,9 @@ struct OutlineColumn: View {
     /// Observed so the inks and the face follow theme and config changes.
     @ObservedObject private var store = ConfigurationStore.shared
     @State private var hovered: Int?
+    /// Off only for offscreen renders: `ImageRenderer` draws nothing
+    /// inside a scroll view, so the probes lay the rows out flat.
+    var scrolls = true
 
     nonisolated static let maximumWidth: CGFloat = 220
     nonisolated static let minimumWidth: CGFloat = 140
@@ -44,18 +47,23 @@ struct OutlineColumn: View {
         let headings = model.headings
         let shallowest = headings.map(\.level).min() ?? 1
         let font = Font(Appearance.bodyFont(size: Self.fontSize))
-        return ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(headings.enumerated()), id: \.element.id) { index, heading in
-                        row(heading, index: index, shallowest: shallowest, font: font)
+        let rows = ForEach(Array(headings.enumerated()), id: \.element.id) { index, heading in
+            row(heading, index: index, shallowest: shallowest, font: font)
+        }
+        return Group {
+            if scrolls {
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(alignment: .leading, spacing: 0) { rows }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .onChange(of: model.current) { _, index in
+                        guard let index, headings.indices.contains(index) else { return }
+                        proxy.scrollTo(headings[index].id)
                     }
                 }
-            }
-            .scrollBounceBehavior(.basedOnSize)
-            .onChange(of: model.current) { _, index in
-                guard let index, headings.indices.contains(index) else { return }
-                proxy.scrollTo(headings[index].id)
+            } else {
+                VStack(alignment: .leading, spacing: 0) { rows }
             }
         }
     }
