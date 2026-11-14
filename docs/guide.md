@@ -22,12 +22,17 @@ Spelling is checked as you type, and grammar can be (`spelling`, `grammar`); cod
 | ⌘+ / ⌘− / ⌘0 | zoom the view in and out, back to actual size; click the badge at the top right to type a percentage; per machine, never written to the config |
 | ⇧⌘E / ⌘P | export the document as a PDF, or print it, as it reads here on Letter or A4 pages |
 | ⇧⌘P | pin the document to the menu bar, or unpin it |
+| ⌥Tab | show or hide the outline of headings at the right |
 | ⌥⌘C | copy the file's path as plain text |
 | ⌘, | settings |
 
 ## The window
 
 The window has no title bar. Rest the pointer in the top-left corner and a pill shows the file's name, with the full path as its tooltip; click it to copy the path or the name, or to show the file in Finder.
+
+## Outline
+
+View ▸ Show Outline (⌥Tab), Settings ▸ Window ▸ Show outline, or `outline = on` in the config file lists the document's headings in a column at the right of the window, indented by level. It stays put while the text scrolls; click a heading to go to it, with the caret at its start. The heading of the section you are reading is in the full ink. Headings in code blocks and comments are left out. The setting is the same for every window, and the column hides while a window is too narrow to fit it beside the text, so the text never moves. With the outline taking ⌥Tab, that key no longer types a literal tab.
 
 ## Images
 
@@ -91,4 +96,5 @@ math = on
 math.font = latin-modern
 math.scale = 1
 table.header = bold
+outline = off
 ```

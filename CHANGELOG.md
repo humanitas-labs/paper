@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- An outline. View ▸ Show Outline (⌥Tab), Settings ▸ Window ▸ Show outline, or `outline = on` in the config file lists the document's headings in a quiet column at the right of each window, indented by level, in the theme's type and inks. It stays in place while the text scrolls; a click scrolls that heading to the top of the page and puts the caret on it, and the section in view is in the full ink. Headings in code blocks and comments are left out. It follows edits and reloads, hides while the window is too narrow to fit it beside the text, and never moves the text. Off by default; the file, export, and print are unchanged. ⌥Tab used to type a literal tab; it now shows and hides the outline.
+
 ## 0.9.5 — 2026.11.12
 
 - `paper export notes.md` writes the PDF from the terminal: the pages File ▸ Export as PDF… makes, saved as `notes.pdf` beside the file, or wherever `-o` says, with `--paper letter` or `--paper a4` to pick the page. It prints the PDF's path and opens no window, so an agent can hand you the PDF; it works whether Paper is running or not, and exports the file as saved on disk. A file named `export` now opens as `paper ./export`.

@@ -40,6 +40,7 @@ If I am someone who works in the terminal, also tell me that `paper <file>` open
 - Images alone on a line draw in the page; paste or drop one to save it beside the document. [Images](docs/guide.md#images)
 - LaTeX math, inline `$…$` and display `$$ … $$`, typeset in place. [Math](docs/guide.md#math)
 - Find, zoom, and export or print as a PDF that reads like the page, from the menu or with `paper export`. [PDF and print](docs/guide.md#pdf-and-print)
+- An outline of the headings at the right of the window, to move around a long document (⌥Tab). [Outline](docs/guide.md#outline)
 - Pinned documents in the menu bar. [Menu bar and pins](docs/guide.md#menu-bar-and-pins)
 - Built-in themes in light and dark, your own colours, and presets. [Themes and presets](docs/guide.md#themes-and-presets)
 - Opens Markdown by default if you want it to. [Default app](docs/guide.md#default-app-for-markdown)
