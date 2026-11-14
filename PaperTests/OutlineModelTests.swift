@@ -128,7 +128,6 @@ struct OutlineModelTests {
         let container = textView.textContainer!
         let textRight = textView.textContainerOrigin.x + container.size.width
         #expect(abs(model.room - (scrollView.bounds.width - textRight)) < 1)
-        #expect(model.top == textView.textContainerInset.height)
     }
 
     /// Indentation is a heading's rank among the levels the document
@@ -180,18 +179,43 @@ struct OutlineModelTests {
         #expect(alphas.rest.dark < alphas.hover.dark && alphas.hover.dark < alphas.current.dark)
     }
 
+    /// The column is centered in the room right of the text, the gap
+    /// from the text held to 56...120 pt and 39 pt kept to the edge; it
+    /// narrows, then hides.
     @Test
-    func columnSitsAGapPastTheTextAndHidesWhenItCannot() {
-        let wide = OutlineColumn.placement(forRoom: 400)
-        #expect(wide?.width == 220)
-        #expect(wide?.trailing == 400 - OutlineColumn.gap - 220, "a fixed gap from the text, the rest to the edge")
-        let tight = OutlineColumn.placement(forRoom: 250)
-        #expect(tight?.width == 250 - OutlineColumn.gap - OutlineColumn.minimumTrailing)
-        #expect(tight?.trailing == OutlineColumn.minimumTrailing)
-        let narrowest = OutlineColumn.gap + OutlineColumn.minimumWidth + OutlineColumn.minimumTrailing
+    func columnIsCenteredBesideTheTextAndHidesWhenItCannot() throws {
+        // Andrew's window: 1,400 pt wide, measure 654.
+        let his = try #require(OutlineColumn.placement(forRoom: 373))
+        #expect(his.width == 220)
+        #expect(his.gap == 76.5 && his.trailing == 76.5, "centered")
+
+        let wide = try #require(OutlineColumn.placement(forRoom: 900))
+        #expect(wide.width == 220)
+        #expect(wide.gap == OutlineColumn.maximumGap, "never stranded far from the page")
+        #expect(wide.trailing == 560)
+
+        // Centering would leave less than the minimum gap: the gap holds
+        // and the trailing margin gives.
+        let snug = try #require(OutlineColumn.placement(forRoom: 320))
+        #expect(snug.width == 220)
+        #expect(snug.gap == OutlineColumn.minimumGap)
+        #expect(snug.trailing == 44)
+
+        let tight = try #require(OutlineColumn.placement(forRoom: 250))
+        #expect(tight.width == 250 - OutlineColumn.minimumGap - OutlineColumn.minimumTrailing)
+        #expect(tight.gap == OutlineColumn.minimumGap)
+        #expect(tight.trailing == OutlineColumn.minimumTrailing)
+
+        let narrowest = OutlineColumn.minimumGap + OutlineColumn.minimumWidth + OutlineColumn.minimumTrailing
         #expect(OutlineColumn.placement(forRoom: narrowest)?.width == OutlineColumn.minimumWidth)
         #expect(OutlineColumn.placement(forRoom: narrowest - 1) == nil)
         #expect(OutlineColumn.placement(forRoom: 0) == nil)
+        for room in stride(from: narrowest, through: 1200, by: 7) {
+            let placement = try #require(OutlineColumn.placement(forRoom: room))
+            #expect(placement.gap >= OutlineColumn.minimumGap && placement.gap <= OutlineColumn.maximumGap)
+            #expect(placement.trailing >= OutlineColumn.minimumTrailing)
+            #expect(abs(placement.gap + placement.width + placement.trailing - room) < 0.001)
+        }
     }
 
     // MARK: - ⌥Tab

@@ -14,10 +14,13 @@ final class OutlineModel: ObservableObject {
     @Published private(set) var headings: [OutlineHeading] = []
     /// Index into `headings` of the section in view; nil above the first.
     @Published private(set) var current: Int?
-    /// Where the page's first line sits below the window's top (the text
-    /// view's top inset), so the column's first entry lines up with it.
-    /// Follows zoom, the title band, and full screen.
-    @Published private(set) var top: CGFloat = 132
+    /// The baseline of the page's first line, below the editor's top (in
+    /// the scroll view's coordinates, top down) with the document scrolled
+    /// to its top; the column's first entry sits on it. Measured from
+    /// layout, not the inset: a heading's font and spacing put its
+    /// baseline well below the top of its line. Follows zoom, the theme
+    /// and fonts, the title band, full screen, and edits to that line.
+    @Published private(set) var firstBaseline: CGFloat = 160
     /// Room between the right edge of the text and the right edge of the
     /// window; the column's width follows it, or it hides.
     @Published private(set) var room: CGFloat = 0
@@ -77,7 +80,13 @@ final class OutlineModel: ObservableObject {
         observers.append(center.addObserver(
             forName: NSText.didChangeNotification, object: textView, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.scheduleScan() }
+            MainActor.assumeIsolated {
+                self?.scheduleScan()
+                // The edit may have restyled the first line (a `#` typed
+                // before it); the styler runs in the delegate's turn, so
+                // measure once this notification has gone round.
+                DispatchQueue.main.async { self?.updateGeometry() }
+            }
         })
         scrollView.contentView.postsBoundsChangedNotifications = true
         observers.append(center.addObserver(
@@ -85,8 +94,9 @@ final class OutlineModel: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateCurrent() }
         })
-        // Width, zoom, measure, the title band, and full screen all land
-        // in the text view's frame and inset, which it reports here.
+        // Width, zoom, measure, fonts, the title band, and full screen all
+        // land in the text view's frame, inset, or styling, which it
+        // reports here.
         // ⌥Tab reaching the text view toggles this window's outline.
         textView.toggleOutline = { [weak self] in self?.toggle() }
         textView.geometryDidChange = { [weak self] in
@@ -163,18 +173,45 @@ final class OutlineModel: ObservableObject {
         scanPending = false
         if fresh != headings { pinned = nil }
         if fresh != headings { headings = fresh }
+        // An edit to the first line can change its font and so its
+        // baseline.
+        updateGeometry()
         updateCurrent()
     }
 
     func updateGeometry() {
         guard active, let textView, let scrollView, let container = textView.textContainer else { return }
-        let top = textView.textContainerInset.height
+        let firstBaseline = Self.firstBaseline(of: textView, in: scrollView)
         let textRight = textView.convert(
             NSPoint(x: textView.textContainerOrigin.x + container.size.width, y: 0), to: scrollView
         ).x
         let room = max(0, scrollView.bounds.width - textRight)
-        if abs(top - self.top) >= 0.5 { self.top = top }
+        if abs(firstBaseline - self.firstBaseline) >= 0.5 { self.firstBaseline = firstBaseline }
         if abs(room - self.room) >= 0.5 { self.room = room }
+    }
+
+    /// The first line's baseline in the scroll view's coordinates, top
+    /// down, as it sits with the document at its top: the first glyph's
+    /// line fragment plus the typesetter's baseline in it, moved into the
+    /// scroll view through the same conversion the jump uses (the text
+    /// view's frame need not start at the clip's origin), with the
+    /// current scroll taken back out.
+    static func firstBaseline(of textView: PaperTextView, in scrollView: NSScrollView) -> CGFloat {
+        var baseline = textView.textContainerOrigin.y
+        if let layoutManager = textView.layoutManager, layoutManager.numberOfGlyphs > 0 {
+            layoutManager.ensureLayout(forGlyphRange: NSRange(location: 0, length: 1))
+            baseline += layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil).minY
+                + layoutManager.location(forGlyphAt: 0).y
+        } else {
+            baseline += (textView.font ?? Appearance.bodyFont()).ascender
+        }
+        let point = textView.convert(NSPoint(x: 0, y: baseline), to: scrollView)
+        let fromTop = scrollView.isFlipped ? point.y : scrollView.bounds.height - point.y
+        // How far the clip has scrolled past the text view's top, in the
+        // clip's coordinates; unlike `visibleRect` it is not clipped
+        // while the page rubber-bands.
+        let scrolled = scrollView.contentView.bounds.minY - textView.frame.minY
+        return fromTop + scrolled
     }
 
     /// The section whose heading last crossed the reading line, the place

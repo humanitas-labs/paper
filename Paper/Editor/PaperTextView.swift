@@ -268,8 +268,9 @@ final class PaperTextView: NSTextView {
 
     private var styledMeasure: CGFloat = 0
 
-    /// Called after every frame or inset change: a resize, zoom, the
-    /// measure, the title band settling, full screen. The outline follows
+    /// Called after every frame or inset change, and after a restyle for
+    /// new settings or a new appearance: a resize, zoom, the measure,
+    /// fonts, the title band settling, full screen. The outline follows
     /// the text's position through it.
     var geometryDidChange: (() -> Void)?
 
@@ -1527,6 +1528,7 @@ final class PaperTextView: NSTextView {
         super.viewDidChangeEffectiveAppearance()
         insertionPointColor = Appearance.ink
         syntaxStyler.apply(to: self)
+        geometryDidChange?()
     }
 
     /// Configuration changes apply to every open window as soon as the file
@@ -1548,6 +1550,9 @@ final class PaperTextView: NSTextView {
         setFrameSize(frame.size)
         syntaxStyler.apply(to: self)
         needsDisplay = true
+        // The restyle may have moved the first line's baseline (a font, a
+        // size, zoom) after `setFrameSize` reported the frame.
+        geometryDidChange?()
     }
 
     private func applyColors() {

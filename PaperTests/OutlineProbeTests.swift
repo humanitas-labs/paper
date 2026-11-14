@@ -43,7 +43,17 @@ struct OutlineProbeTests {
         return text
     }()
 
+    /// A memo: a title, then only `####` sections.
+    private static let memo: String = {
+        var text = "# Memo · inference.sh\n\nDate: `2026.11.14`\n\n> A one-sentence summary of what the memo proposes and the paths open from here.\n\n"
+        for title in ["1. Overview", "2. The situation", "3. The simplification", "4. Strategic options", "Index"] {
+            text += "#### \(title)\n\nA paragraph of ordinary prose, long enough to wrap across the measure, so each section has some height and the page has somewhere to scroll to.\n\n"
+        }
+        return text
+    }()
+
     private func render(
+        _ text: String = OutlineProbeTests.sample,
         width: CGFloat,
         height: CGFloat,
         appearance: NSAppearance.Name,
@@ -61,7 +71,7 @@ struct OutlineProbeTests {
         scrollView.scrollerStyle = .overlay
         scrollView.appearance = NSAppearance(named: appearance)
         textView.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        textView.string = Self.sample
+        textView.string = text
         textView.syntaxStyler.apply(to: textView)
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         textView.sizeToFit()
@@ -72,7 +82,7 @@ struct OutlineProbeTests {
         if let section { model.jump(to: model.headings[section]) }
         // The caret on the heading reveals its marker; park it at the end
         // so the page reads as it does mid-scroll.
-        textView.setSelectedRange(NSRange(location: (Self.sample as NSString).length, length: 0))
+        textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
         scrollView.layoutSubtreeIfNeeded()
 
         let scale: CGFloat = 2
@@ -117,6 +127,15 @@ struct OutlineProbeTests {
         #expect(model.current == 4)
         #expect(OutlineColumn.placement(forRoom: model.room)?.width == OutlineColumn.maximumWidth)
         #expect(!model.headings.contains { $0.title.contains("shell comment") })
+    }
+
+    /// The page at its top: the first entry on the title's baseline, and
+    /// a title over `####` sections still indenting them.
+    @Test
+    func renderOutlineAtTheTop() throws {
+        guard RenderProbeTests.probeDirectory != nil else { return }
+        let model = try render(Self.memo, width: 1400, height: 876, appearance: .aqua, scrollTo: nil, name: "outline-top")
+        #expect(OutlineColumn.indentSteps(for: model.headings.map(\.level)) == [0, 1, 1, 1, 1, 1])
     }
 
     /// Too little room beside the text: no column, the page unchanged.
