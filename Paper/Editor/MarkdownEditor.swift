@@ -6,6 +6,8 @@ struct MarkdownEditor: NSViewRepresentable {
     /// The document's file, so relative links and images resolve; nil
     /// until the first save.
     var fileURL: URL? = nil
+    /// The window's outline, which follows this editor's text and scroll.
+    var outline: OutlineModel? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
@@ -21,6 +23,7 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.syntaxStyler.apply(to: textView)
 
         scrollView.documentView = textView
+        outline?.attach(textView: textView, scrollView: scrollView)
         scrollView.drawsBackground = true
         scrollView.backgroundColor = Appearance.canvas
         scrollView.hasVerticalScroller = true
@@ -47,6 +50,9 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.string = text
         textView.syntaxStyler.apply(to: textView)
         textView.setSelectedRange(selection.clamped(to: text.utf16.count))
+        // A reload from disk replaces the text without a text-change
+        // notification; the outline reads it again.
+        outline?.textWasReplaced()
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {

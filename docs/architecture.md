@@ -18,6 +18,7 @@ Last updated: `2026.11.10`
 | `MarkdownTable`, `TableLayout` | Read pipe tables off the source and fit their columns and wrapped cells to the measure |
 | `ConfigurationStore` | Load, write, and watch user settings and presets |
 | `Appearance` | Resolve configuration into fonts, spacing, and colours |
+| `Outline`, `OutlineModel`, `OutlineColumn` | List the headings beside the page, follow the scroll, and jump on click |
 
 SwiftUI owns application composition. AppKit and TextKit 1 own the writing surface. The boundary between them is `MarkdownEditor`, an `NSViewRepresentable` that synchronizes plain text and the document URL.
 

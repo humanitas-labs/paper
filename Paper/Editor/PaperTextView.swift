@@ -263,9 +263,16 @@ final class PaperTextView: NSTextView {
             syntaxStyler.apply(to: self)
         }
         styledMeasure = measure
+        geometryDidChange?()
     }
 
     private var styledMeasure: CGFloat = 0
+
+    /// Called after every frame or inset change, and after a restyle for
+    /// new settings or a new appearance: a resize, zoom, the measure,
+    /// fonts, the title band settling, full screen. The outline follows
+    /// the text's position through it.
+    var geometryDidChange: (() -> Void)?
 
     /// Set on the offscreen view `PDFExporter` paginates: the document
     /// without the window's chrome around it.
@@ -921,6 +928,18 @@ final class PaperTextView: NSTextView {
         guard applyListIndent(outdent: true) else { return super.insertBacktab(sender) }
     }
 
+    /// ⌥Tab is View ▸ Show/Hide Outline. The menu item normally takes the
+    /// key first; if it ever reaches the text view instead, the standard
+    /// binding sends it here, and it toggles this window's outline rather
+    /// than typing a literal tab.
+    override func insertTabIgnoringFieldEditor(_ sender: Any?) {
+        toggleOutline?()
+    }
+
+    /// What ⌥Tab does when it reaches the text view: the window's outline
+    /// model sets it to toggle that window's outline.
+    var toggleOutline: (() -> Void)?
+
     private func applyListIndent(outdent: Bool) -> Bool {
         guard isEditable, !hasMarkedText(),
               let edit = ListContinuation.indent(in: string as NSString, selection: selectedRange(), outdent: outdent)
@@ -1509,6 +1528,7 @@ final class PaperTextView: NSTextView {
         super.viewDidChangeEffectiveAppearance()
         insertionPointColor = Appearance.ink
         syntaxStyler.apply(to: self)
+        geometryDidChange?()
     }
 
     /// Configuration changes apply to every open window as soon as the file
@@ -1530,6 +1550,9 @@ final class PaperTextView: NSTextView {
         setFrameSize(frame.size)
         syntaxStyler.apply(to: self)
         needsDisplay = true
+        // The restyle may have moved the first line's baseline (a font, a
+        // size, zoom) after `setFrameSize` reported the frame.
+        geometryDidChange?()
     }
 
     private func applyColors() {

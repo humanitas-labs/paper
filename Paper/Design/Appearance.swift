@@ -144,6 +144,20 @@ enum Appearance {
     /// the ink itself.
     static var mathInk: NSColor { colors.mathInk }
 
+    /// The outline column's entries: neutral steps of the ink, never the
+    /// label ink a theme may tint, so the column reads as quiet chrome
+    /// beside the page. Resting, under the pointer, and the section in
+    /// view. Dark takes slightly lower steps, as light text on a dark
+    /// canvas reads stronger at the same opacity.
+    static var outlineInk: NSColor { colors.outlineInk }
+    static var outlineHoverInk: NSColor { colors.outlineHoverInk }
+    static var outlineCurrentInk: NSColor { colors.outlineCurrentInk }
+    static let outlineAlphas = (
+        rest: (light: CGFloat(0.40), dark: CGFloat(0.36)),
+        hover: (light: CGFloat(0.70), dark: CGFloat(0.66)),
+        current: (light: CGFloat(0.88), dark: CGFloat(0.86))
+    )
+
     static var palette: Palette { ConfigurationStore.shared.palette }
 
     private struct Colors {
@@ -155,6 +169,9 @@ enum Appearance {
         let labelInk: NSColor
         let accent: NSColor
         let mathInk: NSColor
+        let outlineInk: NSColor
+        let outlineHoverInk: NSColor
+        let outlineCurrentInk: NSColor
         let selection: NSColor
         let selectionInk: NSColor?
         let hover: NSColor
@@ -185,6 +202,18 @@ enum Appearance {
             labelInk: tone(palette.inkLabel, palette.inkLabelDark, alpha: 0.62),
             accent: tone(palette.accent ?? palette.inkLabel, palette.accentDark ?? palette.inkLabelDark, alpha: 0.62),
             mathInk: tone(palette.math, palette.mathDark, alpha: 1),
+            outlineInk: dynamic(
+                light: lightInk.withAlphaComponent(outlineAlphas.rest.light),
+                dark: darkInk.withAlphaComponent(outlineAlphas.rest.dark)
+            ),
+            outlineHoverInk: dynamic(
+                light: lightInk.withAlphaComponent(outlineAlphas.hover.light),
+                dark: darkInk.withAlphaComponent(outlineAlphas.hover.dark)
+            ),
+            outlineCurrentInk: dynamic(
+                light: lightInk.withAlphaComponent(outlineAlphas.current.light),
+                dark: darkInk.withAlphaComponent(outlineAlphas.current.dark)
+            ),
             selection: tone(palette.selection, palette.selectionDark, alpha: 0.13),
             selectionInk: (palette.selectionInk ?? palette.selectionInkDark) == nil ? nil : dynamic(
                 light: color(hex: palette.selectionInk ?? palette.canvas),

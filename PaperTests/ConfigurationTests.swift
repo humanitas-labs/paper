@@ -9,6 +9,31 @@ struct ConfigurationTests {
     }
 
     @Test
+    func outlineDefaultsOffAndParsesFlags() {
+        #expect(Configuration().outline == false)
+        for value in ["on", "yes", "true", "ON"] {
+            #expect(Configuration.parse("outline = \(value)").outline == true)
+        }
+        #expect(Configuration.parse("outline = on\noutline = off").outline == false)
+        #expect(Configuration.parse("outline = sideways").outline == false)
+    }
+
+    @Test
+    func outlineRoundTripsThroughTheFile() throws {
+        let keys = Configuration().entries.map(\.key)
+        let index = try #require(keys.firstIndex(of: "outline"))
+        #expect(keys[index - 1] == "table.header")
+        #expect(Configuration().entries[index].value == "off")
+
+        var config = Configuration()
+        config.outline = true
+        let merged = config.merged(into: Configuration.template)
+        #expect(merged.contains("\noutline = on\n"))
+        #expect(merged == Configuration.template.replacingOccurrences(of: "outline = off", with: "outline = on"))
+        #expect(Configuration.parse(merged) == config)
+    }
+
+    @Test
     func emptyAndCommentOnlyTextYieldDefaults() {
         #expect(Configuration.parse("") == Configuration())
         #expect(Configuration.parse("# nothing\n\n   \n# = still a comment\n") == Configuration())

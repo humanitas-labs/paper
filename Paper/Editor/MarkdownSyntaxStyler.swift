@@ -11,22 +11,22 @@ final class MarkdownSyntaxStyler {
         ]
     }
 
-    private static let headingPattern = try! NSRegularExpression(
+    nonisolated static let headingPattern = try! NSRegularExpression(
         pattern: #"(?m)^(#{1,6})[\t ]+(.+)$"#
     )
     /// `***both***` and `___both___`: bold and italic at once. Matched
     /// before the doubles, which would otherwise take the inner pair and
     /// leave the outer delimiters plain.
-    private static let strongEmphasisPattern = try! NSRegularExpression(
+    nonisolated static let strongEmphasisPattern = try! NSRegularExpression(
         pattern: #"\*\*\*(?=[^\s*])([^*\n]+?)(?<=\S)\*\*\*|(?<!\w)___(?=\S)([^_\n]+?)(?<=\S)___(?!\w)"#
     )
     /// Following CommonMark, an asterisk run opens only before something
     /// visible and closes only after it, so the marker in `* *Label:* text`
     /// stays a bullet and `2 * 3 * 4` stays literal.
-    private static let strongPattern = try! NSRegularExpression(
+    nonisolated static let strongPattern = try! NSRegularExpression(
         pattern: #"\*\*(?=[^\s*])([^*\n]+?)(?<=\S)\*\*"#
     )
-    private static let emphasisPattern = try! NSRegularExpression(
+    nonisolated static let emphasisPattern = try! NSRegularExpression(
         pattern: #"(?<!\*)\*(?=[^\s*])([^*\n]+?)(?<=\S)\*(?!\*)"#
     )
     /// The underscore spellings, `__strong__` and `_emphasis_`. Following
@@ -35,16 +35,16 @@ final class MarkdownSyntaxStyler {
     /// and the content starts and ends with something visible, so
     /// `snake_case_name`, `a_b`, `_leading`, and `trailing_` stay literal.
     /// Asterisks keep their intraword behaviour above.
-    private static let underscoreStrongPattern = try! NSRegularExpression(
+    nonisolated static let underscoreStrongPattern = try! NSRegularExpression(
         pattern: #"(?<!\w)__(?=\S)([^_\n]+?)(?<=\S)__(?!\w)"#
     )
-    private static let underscoreEmphasisPattern = try! NSRegularExpression(
+    nonisolated static let underscoreEmphasisPattern = try! NSRegularExpression(
         pattern: #"(?<!\w)_(?=\S)([^_\n]+?)(?<=\S)_(?!\w)"#
     )
     /// A code span opens and closes with backtick runs of the same length,
     /// so `` ` `` holds a literal backtick; the closer can neither borrow
     /// from nor donate to a neighbouring run.
-    private static let codePattern = try! NSRegularExpression(
+    nonisolated static let codePattern = try! NSRegularExpression(
         pattern: #"(?<!`)(`+)([^\n]+?)(?<!`)\1(?!`)"#
     )
     /// `$…$`, inline math as GitHub and Pandoc read it: no space just
@@ -55,12 +55,12 @@ final class MarkdownSyntaxStyler {
         pattern: #"(?<![\\$])\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<!\s)\$(?![$\d])"#
     )
     /// `[text](destination)`; an image (`![…]`) is left alone.
-    private static let linkPattern = try! NSRegularExpression(
+    nonisolated static let linkPattern = try! NSRegularExpression(
         pattern: #"(?<!!)\[([^\]\n]+)\]\(([^)\s]+)\)"#
     )
     /// An HTML comment, `<!-- … -->`, across lines; one never closed runs
     /// to the end of the document, as a browser reads it.
-    private static let commentPattern = try! NSRegularExpression(
+    nonisolated static let commentPattern = try! NSRegularExpression(
         pattern: #"<!--[\s\S]*?(?:-->|\z)"#
     )
     /// `->` in prose draws as a single arrow off the active paragraph.
@@ -68,12 +68,12 @@ final class MarkdownSyntaxStyler {
         pattern: #"(?<![-<])->(?!>)"#
     )
     /// Markdown has no underline syntax; `<u>…</u>` is the portable form.
-    private static let underlinePattern = try! NSRegularExpression(
+    nonisolated static let underlinePattern = try! NSRegularExpression(
         pattern: #"<u>([^<\n]+)</u>"#
     )
     /// `~~text~~` strikes through. Only the double tilde counts: a lone `~`
     /// is ordinary prose (`~5 minutes`, `~/.config`).
-    private static let strikethroughPattern = try! NSRegularExpression(
+    nonisolated static let strikethroughPattern = try! NSRegularExpression(
         pattern: #"~~([^~\n]+)~~"#
     )
     /// A block image: `![alt](destination)` alone on its line. An image
@@ -113,7 +113,7 @@ final class MarkdownSyntaxStyler {
     )
     /// A fence line at the margin: three or more backticks or tildes, then
     /// whatever info string follows. Blocks are paired by `fencedBlocks`.
-    private static let fenceLinePattern = try! NSRegularExpression(
+    nonisolated static let fenceLinePattern = try! NSRegularExpression(
         pattern: #"^(`{3,}|~{3,})(.*)$"#
     )
 
@@ -1311,7 +1311,7 @@ final class MarkdownSyntaxStyler {
 
     /// The ranges of HTML comments outside fenced code, from the source
     /// alone, for the passes that run before the comment pass.
-    private static func commentRanges(in source: String, range: NSRange, fenced: [NSRange]) -> [NSRange] {
+    nonisolated static func commentRanges(in source: String, range: NSRange, fenced: [NSRange]) -> [NSRange] {
         var ranges: [NSRange] = []
         commentPattern.enumerateMatches(in: source, range: range) { match, _, _ in
             guard let match, !fenced.contains(where: { NSLocationInRange(match.range.location, $0) }) else { return }
@@ -1393,7 +1393,7 @@ final class MarkdownSyntaxStyler {
     /// around a ``` example, or four backticks around three, still work.
     /// An unterminated fence is never a block, so a half-typed fence never
     /// swallows the rest of the document.
-    static func fencedBlocks(in source: String, range: NSRange) -> [NSRange] {
+    nonisolated static func fencedBlocks(in source: String, range: NSRange) -> [NSRange] {
         let text = source as NSString
         var blocks: [NSRange] = []
         var open: (character: unichar, length: Int, start: Int)?

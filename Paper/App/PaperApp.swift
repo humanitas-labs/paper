@@ -80,6 +80,8 @@ struct PaperApp: App {
                 }
                 .keyboardShortcut("f", modifiers: [.control, .command])
                 Divider()
+                OutlineMenuItem()
+                Divider()
                 // A lens for the monitor at hand: the whole page scales
                 // together and the setting stays on this machine.
                 Button("Zoom In") { Zoom.zoomIn() }
@@ -105,13 +107,20 @@ private struct DocumentView: View {
     @ObservedObject private var store = ConfigurationStore.shared
     @ObservedObject private var updates = UpdateCheck.observed
     @State private var watcher: FileWatcher?
+    /// This window's outline, shown at first as the setting says for new
+    /// documents; ⌥Tab flips it here only.
+    @StateObject private var outline = OutlineModel.forNewWindow(ConfigurationStore.shared.current)
 
     var body: some View {
-        MarkdownEditor(text: $document.text, fileURL: fileURL)
+        MarkdownEditor(text: $document.text, fileURL: fileURL, outline: outline)
             .background(Color(nsColor: Appearance.canvas))
             .background(WindowConfigurator())
             .overlay(alignment: .topLeading) { FileBadge(fileURL: fileURL) }
             .overlay(alignment: .topTrailing) { ZoomBadge() }
+            // The headings, beside the page, while this window shows them.
+            .overlay(alignment: .topTrailing) {
+                if outline.isVisible { OutlineColumn(model: outline) }
+            }
             // A release installs while someone writes; the badge that asks
             // for the restart sits in the document's corner as it does in
             // the welcome window, which a writer may never open.
@@ -125,6 +134,8 @@ private struct DocumentView: View {
             .ignoresSafeArea()
             // File ▸ Pin Document reads the front document's file from here.
             .focusedSceneValue(\.documentURL, fileURL)
+            // View ▸ Show/Hide Outline acts on the front window's outline.
+            .focusedSceneObject(outline)
             .onChange(of: fileURL, initial: true) { _, url in
                 // The welcome window lists recents; SwiftUI's document
                 // controller does not note them itself.
@@ -165,5 +176,20 @@ private struct DocumentView: View {
                 nsDocument?.fileModificationDate = date
             }
         }
+    }
+}
+
+/// View ▸ Show Outline / Hide Outline (⌥Tab) for the front document
+/// window; disabled when no document window is in front. It never touches
+/// the setting, which only says how new documents open.
+private struct OutlineMenuItem: View {
+    @FocusedObject private var outline: OutlineModel?
+
+    var body: some View {
+        Button(outline?.isVisible == true ? "Hide Outline" : "Show Outline") {
+            outline?.toggle()
+        }
+        .keyboardShortcut(.tab, modifiers: .option)
+        .disabled(outline == nil)
     }
 }

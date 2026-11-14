@@ -237,6 +237,10 @@ struct SettingsView: View {
                 Text("Applies to new windows; each window keeps its own size afterwards.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("Show outline in new documents", isOn: binding(\.outline))
+                Text("The document's headings in a column beside the page. ⌥Tab shows or hides it in the front window; this sets how new documents open, and leaves open windows as they are.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Menu bar") {
