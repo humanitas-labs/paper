@@ -246,6 +246,14 @@ final class ConfigurationStore: ObservableObject {
         }
     }
 
+    /// View ▸ Show/Hide Outline: flips `outline` and saves it, so every
+    /// window follows and the choice survives a relaunch.
+    func toggleOutline() {
+        var configuration = current
+        configuration.outline.toggle()
+        write(configuration)
+    }
+
     func reload() {
         guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else { return }
         apply(Configuration.parse(text))

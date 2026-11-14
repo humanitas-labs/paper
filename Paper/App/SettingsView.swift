@@ -237,6 +237,10 @@ struct SettingsView: View {
                 Text("Applies to new windows; each window keeps its own size afterwards.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("Show outline", isOn: binding(\.outline))
+                Text("The document's headings in a column at the right of each window; ⌃⌘S shows and hides it. It hides while the window is too narrow to fit it beside the text.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Menu bar") {

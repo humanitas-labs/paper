@@ -80,6 +80,13 @@ struct PaperApp: App {
                 }
                 .keyboardShortcut("f", modifiers: [.control, .command])
                 Divider()
+                // The headings at the right of every document window; a
+                // saved setting, so it applies to all of them at once.
+                Button(store.current.outline ? "Hide Outline" : "Show Outline") {
+                    ConfigurationStore.shared.toggleOutline()
+                }
+                .keyboardShortcut("s", modifiers: [.control, .command])
+                Divider()
                 // A lens for the monitor at hand: the whole page scales
                 // together and the setting stays on this machine.
                 Button("Zoom In") { Zoom.zoomIn() }

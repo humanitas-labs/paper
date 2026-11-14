@@ -9,6 +9,31 @@ struct ConfigurationTests {
     }
 
     @Test
+    func outlineDefaultsOffAndParsesFlags() {
+        #expect(Configuration().outline == false)
+        for value in ["on", "yes", "true", "ON"] {
+            #expect(Configuration.parse("outline = \(value)").outline == true)
+        }
+        #expect(Configuration.parse("outline = on\noutline = off").outline == false)
+        #expect(Configuration.parse("outline = sideways").outline == false)
+    }
+
+    @Test
+    func outlineRoundTripsThroughTheFile() throws {
+        let keys = Configuration().entries.map(\.key)
+        let index = try #require(keys.firstIndex(of: "outline"))
+        #expect(keys[index - 1] == "table.header")
+        #expect(Configuration().entries[index].value == "off")
+
+        var config = Configuration()
+        config.outline = true
+        let merged = config.merged(into: Configuration.template)
+        #expect(merged.contains("\noutline = on\n"))
+        #expect(merged == Configuration.template.replacingOccurrences(of: "outline = off", with: "outline = on"))
+        #expect(Configuration.parse(merged) == config)
+    }
+
+    @Test
     func emptyAndCommentOnlyTextYieldDefaults() {
         #expect(Configuration.parse("") == Configuration())
         #expect(Configuration.parse("# nothing\n\n   \n# = still a comment\n") == Configuration())
@@ -322,6 +347,27 @@ struct ConfigurationStoreTests {
         #expect(text.contains("line.height = 1.6"))
         #expect(text.hasPrefix("# Paper configuration."))
         #expect(Configuration.parse(text) == config)
+    }
+
+    /// View ▸ Show/Hide Outline flips the setting and saves it in place.
+    @Test
+    func toggleOutlineFlipsAndSaves() throws {
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = ConfigurationStore(fileURL: url)
+        defer { ConfigurationStore.forgetActivePreset(for: url) }
+        store.start()
+        #expect(store.current.outline == false)
+
+        store.toggleOutline()
+        #expect(store.current.outline == true)
+        let on = try String(contentsOf: url, encoding: .utf8)
+        #expect(on.contains("\noutline = on\n"))
+        #expect(on.hasPrefix("# Paper configuration."), "comments survive")
+
+        store.toggleOutline()
+        #expect(store.current.outline == false)
+        #expect(try String(contentsOf: url, encoding: .utf8) == Configuration.template)
     }
 
     @Test
