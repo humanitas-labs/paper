@@ -56,9 +56,51 @@ Click a cell and that row shows its source, pipes and all, with the caret where 
 
 Export as PDF (⇧⌘E) and Print (⌘P) make the same pages: the document as it reads on screen, on Letter or A4, at the size and margin set by `print.font.size` and `print.margin`.
 
+### Styles
+
+A style sets the look of the page. `paper`, the default, is the page as it reads on screen. `book` sets it like a printed book: a 5 × 8 in page in Times New Roman, justified and hyphenated text, paragraphs marked by a first-line indent instead of a blank line (none after a heading, a list, or any other block), headings centered in spaced capitals, black on white, and the page number centered at the foot of every page. `print.style` in the config file picks the style Export and Print use; the save panel's Style menu and `paper export --style` pick one for a single export. The editor never changes.
+
+A style is a plain file of `key = value` lines, and you can write your own: put it in `~/.config/paper/styles/` under the name you will call it by, and it appears in the Style menu and answers to `--style`. A file named `book` or `paper` replaces that built-in. A style can set any key from the config file, applied for the export only (`font.family`, `print.font.size`, `print.margin`, `line.height`, `heading.weight`, `color.ink`, and the rest), and these page keys:
+
+| Key | Values | Default |
+|---|---|---|
+| `text.align` | `left` or `justified` | `left` |
+| `hyphenation` | `on` or `off` | `off` |
+| `paragraph.indent` | first-line indent in ems; above 0, the blank lines between paragraphs close up | `0` |
+| `heading.align` | `left` or `center` | `left` |
+| `heading.case` | `as-typed` or `upper` | `as-typed` |
+| `heading.tracking` | space between a heading's letters, in ems | `0` |
+| `page.numbers` | `on` or `off` | `off` |
+| `page.size` | `letter`, `a4`, `a5`, `trade` (6 × 9 in), `digest` (5.5 × 8.5 in), `pocket` (4.25 × 6.875 in), or `W x H` in inches, or with `mm` or `pt` after it (`5 x 8`, `148 x 210 mm`); it wins over `--paper` and the Paper Size menu | the chosen paper |
+
+The built-in `book` is this file:
+
+```
+font.family = Times New Roman
+font.weight = 400
+heading.weight = 400
+letter.spacing = 0
+line.height = 1.12
+paragraph.spacing = 2
+print.font.size = 11
+print.margin = 40
+page.size = 5 x 8
+color.canvas = #FFFFFF
+color.ink = #000000
+color.canvas.dark = #FFFFFF
+color.ink.dark = #000000
+text.align = justified
+hyphenation = on
+paragraph.indent = 1
+heading.align = center
+heading.case = upper
+heading.tracking = 0.12
+page.numbers = on
+```
+
 To start a new page, put `<!-- pagebreak -->` alone on a line. Whatever follows opens the next page. It is an HTML comment, so GitHub and other Markdown readers show nothing; in Paper it stays in view in the muted ink, like any comment, and is left off the printed page.
 
-From the terminal, `paper export notes.md` writes `notes.pdf` beside the file and prints its path. `-o out.pdf` names another place, and `--paper letter` or `--paper a4` picks the page; without it the system's paper is used. No window opens and Paper does not need to be running, so an agent can make the PDF for you. It exports the file as saved on disk, not unsaved edits in an open window. The command exits 0 on success, 1 when the export failed, and 2 when the arguments were wrong.
+From the terminal, `paper export notes.md` writes `notes.pdf` beside the file and prints its path. `-o out.pdf` names another place, `--paper letter` or `--paper a4` picks the page (without it the system's paper is used), and `--style book` picks the style (without it, `print.style`). A style name nothing answers to is a usage error that lists the styles there are. No window opens and Paper does not need to be running, so an agent can make the PDF for you. It exports the file as saved on disk, not unsaved edits in an open window. The command exits 0 on success, 1 when the export failed, and 2 when the arguments were wrong.
 
 ## Menu bar and pins
 

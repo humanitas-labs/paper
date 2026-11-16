@@ -34,6 +34,14 @@ struct ExportCommandTests {
     }
 
     @Test
+    func styleIsTakenAsTyped() throws {
+        #expect(try parse("memo.md").style == nil)
+        #expect(try parse("memo.md", "--style", "Book").style == "Book")
+        #expect(throws: ExportCommand.UsageError.self) { try parse("memo.md", "--style") }
+        #expect(throws: ExportCommand.UsageError.self) { try parse("memo.md", "--style", " ") }
+    }
+
+    @Test
     func doubleDashEndsOptions() throws {
         #expect(try parse("--", "--paper").source.path == "/work/dir/--paper")
         #expect(try parse("--", "-o").destination.path == "/work/dir/-o.pdf")
@@ -117,5 +125,16 @@ struct ExportCommandTests {
         let usage = try run([], in: folder)
         #expect(usage.status == 2)
         #expect(usage.stderr.contains("usage: paper export"))
+
+        // A named style; one that nothing answers to is a usage error
+        // listing the styles there are, and nothing is written.
+        let book = try run(["memo.md", "--style", "book", "-o", "book.pdf"], in: folder)
+        #expect(book.status == 0, Comment(rawValue: book.stderr))
+        let bookDocument = try #require(PDFDocument(url: folder.appendingPathComponent("book.pdf")))
+        #expect(bookDocument.string?.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("1") == true)
+        let unknown = try run(["memo.md", "--style", "nope", "-o", "nope.pdf"], in: folder)
+        #expect(unknown.status == 2)
+        #expect(unknown.stderr.contains("no style named nope; the styles are paper, book"))
+        #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent("nope.pdf").path))
     }
 }

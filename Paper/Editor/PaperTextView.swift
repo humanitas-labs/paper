@@ -246,7 +246,7 @@ final class PaperTextView: NSTextView {
 
         // A print surface's measure is the page's, whatever the configured
         // maximum; the exporter sizes it with the minimum margins around.
-        let margin = isPrintSurface ? Appearance.minimumHorizontalMargin : max(
+        let margin = isPrintSurface ? (printHorizontalInset ?? Appearance.minimumHorizontalMargin) : max(
             Appearance.minimumHorizontalMargin,
             (newSize.width - Appearance.maximumMeasure) / 2
         )
@@ -277,6 +277,50 @@ final class PaperTextView: NSTextView {
     /// Set on the offscreen view `PDFExporter` paginates: the document
     /// without the window's chrome around it.
     var isPrintSurface = false
+
+    /// The export style's page on a print surface: set before the text,
+    /// and laid over every full styler pass, so a restyle during printing
+    /// (an appearance change, an image) keeps it. Nil is the editor's page.
+    var printPage: PrintStyle.Page?
+
+    /// The print surface's side inset, set by the exporter before the
+    /// frame; nil is the editor's minimum margin.
+    var printHorizontalInset: CGFloat?
+
+    /// Whether each printed page carries its number, centered in the
+    /// bottom margin.
+    var printsPageNumbers: Bool { printPage?.pageNumbers == true }
+
+    /// The page number in the body font and ink at the page's size,
+    /// centered in the bottom margin of the sheet. AppKit calls this in the
+    /// view's own coordinates, clipped to the page's text; the number is
+    /// drawn in the sheet's instead, the context's base space with the
+    /// view's transform and flip undone, which for a PDF page is points
+    /// from its lower left corner.
+    override func drawPageBorder(with borderSize: NSSize) {
+        super.drawPageBorder(with: borderSize)
+        guard isPrintSurface, printsPageNumbers, let operation = NSPrintOperation.current,
+              let context = NSGraphicsContext.current else { return }
+        let info = operation.printInfo
+        let cg = context.cgContext
+        let number = "\(operation.currentPage)" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Appearance.bodyFont(size: Appearance.bodySize * info.scalingFactor),
+            .foregroundColor: Appearance.ink,
+        ]
+        let size = number.size(withAttributes: attributes)
+        cg.saveGState()
+        cg.concatenate(cg.ctm.inverted())
+        cg.resetClip()
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
+        number.draw(
+            at: NSPoint(x: (info.paperSize.width - size.width) / 2, y: (info.bottomMargin - size.height) / 2),
+            withAttributes: attributes
+        )
+        NSGraphicsContext.restoreGraphicsState()
+        cg.restoreGState()
+    }
 
     /// The band under the window's transparent title bar and empty
     /// toolbar. The scroll view no longer insets its content by it

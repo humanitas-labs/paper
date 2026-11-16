@@ -52,7 +52,10 @@ enum PDFExporter {
     /// save job that fails to open its file goes to the default printer
     /// instead. So the destination's folder is checked first, and the
     /// operation only ever writes into a folder made here.
-    static func export(text: String, documentURL: URL?, to destination: URL, paper: Paper = .default) throws {
+    /// `style` sets the page; nil is the configured default.
+    static func export(
+        text: String, documentURL: URL?, to destination: URL, paper: Paper = .default, style: PrintStyle? = nil
+    ) throws {
         var isFolder: ObjCBool = false
         guard FileManager.default.fileExists(atPath: destination.deletingLastPathComponent().path, isDirectory: &isFolder),
               isFolder.boolValue else {
@@ -66,15 +69,16 @@ enum PDFExporter {
         }
         defer { try? FileManager.default.removeItem(at: stagingFolder) }
         let staging = stagingFolder.appendingPathComponent("export.pdf")
-        try Zoom.withScale(1) {
-            let textView = makeSurface(text: text, documentURL: documentURL, paper: paper)
+        try inStyle(style ?? ConfigurationStore.shared.defaultPrintStyle) { style in
+            let size = style.page.pageSize ?? paper.size
+            let textView = makeSurface(text: text, documentURL: documentURL, size: size, style: style)
             let owner = ObjectIdentifier(textView)
             defer { ImageStore.shared.removeDemand(for: owner) }
             try pinImages(of: textView, owner: owner)
             textView.layoutManager?.ensureLayout(for: textView.textContainer!)
             textView.sizeToFit()
 
-            let info = printInfo(for: paper, saving: staging)
+            let info = printInfo(for: size, saving: staging)
             let operation = NSPrintOperation(view: textView, printInfo: info)
             operation.showsPrintPanel = false
             operation.showsProgressPanel = false
@@ -90,6 +94,15 @@ enum PDFExporter {
             }
         } catch {
             throw Failure.write(destination)
+        }
+    }
+
+    /// Runs `body` at zoom 1 with the style's config and colors standing in
+    /// for the store's, so the surface is styled and drawn in the style.
+    private static func inStyle<T>(_ style: PrintStyle, _ body: (PrintStyle) throws -> T) rethrows -> T {
+        let appearance = ConfigurationStore.shared.printAppearance(for: style)
+        return try Appearance.withConfiguration(appearance.configuration, palette: appearance.palette) {
+            try Zoom.withScale(1) { try body(style) }
         }
     }
 
@@ -117,21 +130,59 @@ enum PDFExporter {
     /// The page's scale: the on-screen body brought to `bodySizeOnPage`.
     private static var scale: CGFloat { bodySizeOnPage / Appearance.bodySize }
 
-    /// The margin as set, or the view's own side inset at the page's scale
-    /// when that is wider: the inset is part of the margin, never past it.
-    private static var effectiveMargin: CGFloat {
-        max(pageMargin, Appearance.minimumHorizontalMargin * scale)
+    /// How a page's margins are made. The side margin is split between the
+    /// sheet's own margin (`side`, in page points) and the text view's
+    /// inset (`inset`, in the view's points), which leaves room for quote
+    /// rules and code bands inside the view. The print system moves a
+    /// sheet margin smaller than the printer's unprintable edge out to that
+    /// edge, and only on the left, since the view is clipped on the right:
+    /// a side of 0 pushed the column right by the edge's width. So the side
+    /// never goes under the edge, and the inset shrinks to keep the margin
+    /// as set. Top and bottom are the margin, or the edge when it is wider.
+    struct Margins: Equatable {
+        let side: CGFloat
+        let inset: CGFloat
+        let top: CGFloat
+        let bottom: CGFloat
+    }
+
+    static func margins(for size: NSSize) -> Margins {
+        let edges = unprintableEdges(for: size)
+        let floor = max(edges.left, edges.right)
+        let fullInset = Appearance.minimumHorizontalMargin * scale
+        let side = max(pageMargin - fullInset, floor)
+        let insetOnPage = max(pageMargin - side, 0)
+        return Margins(
+            side: side, inset: insetOnPage / scale,
+            top: max(pageMargin, edges.top), bottom: max(pageMargin, edges.bottom)
+        )
+    }
+
+    /// The printer's unprintable edges for a sheet of `size`, from the
+    /// imageable bounds the print system reports for it; zero when it
+    /// reports none.
+    private static func unprintableEdges(for size: NSSize) -> NSEdgeInsets {
+        let info = NSPrintInfo()
+        info.paperSize = size
+        let bounds = info.imageablePageBounds
+        guard bounds.width > 0, bounds.height > 0 else { return NSEdgeInsetsZero }
+        return NSEdgeInsets(
+            top: max(size.height - bounds.maxY, 0), left: max(bounds.minX, 0),
+            bottom: max(bounds.minY, 0), right: max(size.width - bounds.maxX, 0)
+        )
     }
 
     /// The column that fills the page between its margins at that scale,
-    /// with Paper's minimum side margins around it (the quote rules and
-    /// code bands need them); no window, so no title band, and no
-    /// selection, so every marker is concealed.
-    private static func makeSurface(text: String, documentURL: URL?, paper: Paper) -> PaperTextView {
+    /// with the view's inset around it (see `Margins`); no window, so no
+    /// title band, and no selection, so every marker is concealed.
+    private static func makeSurface(text: String, documentURL: URL?, size: NSSize, style: PrintStyle) -> PaperTextView {
         let textView = PaperTextView()
         textView.isPrintSurface = true
-        let measure = (paper.size.width - 2 * effectiveMargin) / scale
-        let width = measure + 2 * Appearance.minimumHorizontalMargin
+        textView.printPage = style.page
+        let margins = margins(for: size)
+        textView.printHorizontalInset = margins.inset
+        let measure = (size.width - 2 * (margins.side + margins.inset * scale)) / scale
+        let width = measure + 2 * margins.inset
         textView.frame = NSRect(x: 0, y: 0, width: width, height: 100)
         textView.documentURL = documentURL
         textView.string = text
@@ -173,9 +224,9 @@ enum PDFExporter {
         }
     }
 
-    private static func printInfo(for paper: Paper, saving url: URL) -> NSPrintInfo {
+    private static func printInfo(for size: NSSize, saving url: URL) -> NSPrintInfo {
         let info = NSPrintInfo()
-        configure(info, for: paper)
+        configure(info, for: size)
         info.jobDisposition = .save
         info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = url
         return info
@@ -183,15 +234,15 @@ enum PDFExporter {
 
     /// The column scaled so the body lands at `bodySizeOnPage`; the view's
     /// own side margins are part of the page margin.
-    private static func configure(_ info: NSPrintInfo, for paper: Paper) {
-        info.paperSize = paper.size
+    private static func configure(_ info: NSPrintInfo, for size: NSSize) {
+        info.paperSize = size
         info.orientation = .portrait
         info.scalingFactor = scale
-        let side = effectiveMargin - Appearance.minimumHorizontalMargin * scale
-        info.leftMargin = side
-        info.rightMargin = side
-        info.topMargin = effectiveMargin
-        info.bottomMargin = effectiveMargin
+        let margins = margins(for: size)
+        info.leftMargin = margins.side
+        info.rightMargin = margins.side
+        info.topMargin = margins.top
+        info.bottomMargin = margins.bottom
         info.horizontalPagination = .clip
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
@@ -203,19 +254,21 @@ enum PDFExporter {
     /// The print panel over the same surface the export paginates, so a
     /// printed page and an exported one are the same page. The panel's
     /// own PDF button works too. App-modal, as the images stay pinned
-    /// only for the length of the call.
+    /// only for the length of the call. The page is in the configured
+    /// default style.
     static func print(_ textView: PaperTextView) {
-        Zoom.withScale(1) {
+        inStyle(ConfigurationStore.shared.defaultPrintStyle) { style in
             let info = NSPrintInfo.shared.copy() as! NSPrintInfo
             let paper = abs(info.paperSize.width - Paper.a4.size.width) < 1 ? Paper.a4 : .letter
-            let surface = makeSurface(text: textView.string, documentURL: textView.documentURL, paper: paper)
+            let size = style.page.pageSize ?? paper.size
+            let surface = makeSurface(text: textView.string, documentURL: textView.documentURL, size: size, style: style)
             let owner = ObjectIdentifier(surface)
             defer { ImageStore.shared.removeDemand(for: owner) }
             try? pinImages(of: surface, owner: owner)
             surface.layoutManager?.ensureLayout(for: surface.textContainer!)
             surface.sizeToFit()
 
-            configure(info, for: paper)
+            configure(info, for: size)
             let operation = NSPrintOperation(view: surface, printInfo: info)
             operation.jobTitle = textView.printJobTitle
             operation.showsPrintPanel = true
@@ -226,8 +279,8 @@ enum PDFExporter {
 
     // MARK: - Save panel
 
-    /// The save panel as a sheet on the view's window, a paper picker in
-    /// its accessory, the document's name proposed. A failure is reported
+    /// The save panel as a sheet on the view's window, paper and style
+    /// pickers in its accessory, the document's name proposed. A failure is reported
     /// on the same window.
     static func present(for textView: PaperTextView) {
         let panel = NSSavePanel()
@@ -245,7 +298,7 @@ enum PDFExporter {
         let finish: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
             do {
-                try export(text: text, documentURL: documentURL, to: url, paper: picker.paper)
+                try export(text: text, documentURL: documentURL, to: url, paper: picker.paper, style: picker.style)
             } catch {
                 let alert = NSAlert()
                 alert.messageText = "The PDF was not exported."
@@ -264,20 +317,32 @@ enum PDFExporter {
         }
     }
 
-    /// "Paper Size: [Letter ▾]" for the save panel.
+    /// "Paper Size: [Letter ▾]  Style: [Paper ▾]" for the save panel. The
+    /// styles are read when the panel opens; the configured one is chosen.
     private final class PaperPicker: NSView {
         private let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
+        private let stylePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+        private let styles = ConfigurationStore.shared.printStyles()
 
         var paper: Paper {
             Paper.allCases[max(0, popUp.indexOfSelectedItem)]
         }
 
+        var style: PrintStyle {
+            styles.indices.contains(stylePopUp.indexOfSelectedItem) ? styles[stylePopUp.indexOfSelectedItem] : .paper
+        }
+
         init() {
-            super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 40))
+            super.init(frame: NSRect(x: 0, y: 0, width: 420, height: 40))
             let label = NSTextField(labelWithString: "Paper Size:")
             popUp.addItems(withTitles: Paper.allCases.map(\.rawValue))
             popUp.selectItem(at: Paper.allCases.firstIndex(of: .default) ?? 0)
-            let stack = NSStackView(views: [label, popUp])
+            let styleLabel = NSTextField(labelWithString: "Style:")
+            stylePopUp.addItems(withTitles: styles.map { $0.name.prefix(1).uppercased() + $0.name.dropFirst() })
+            let chosen = ConfigurationStore.shared.defaultPrintStyle.name
+            stylePopUp.selectItem(at: styles.firstIndex { $0.name == chosen } ?? 0)
+            let stack = NSStackView(views: [label, popUp, styleLabel, stylePopUp])
+            stack.setCustomSpacing(20, after: popUp)
             stack.orientation = .horizontal
             stack.alignment = .firstBaseline
             stack.translatesAutoresizingMaskIntoConstraints = false

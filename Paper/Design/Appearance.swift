@@ -4,7 +4,23 @@ import AppKit
 /// `Configuration`; everything else is fixed here.
 @MainActor
 enum Appearance {
-    static var configuration: Configuration { ConfigurationStore.shared.current }
+    static var configuration: Configuration { override?.configuration ?? ConfigurationStore.shared.current }
+
+    /// A configuration and palette standing in for the store's while an
+    /// export draws its page in a style; nil the rest of the time.
+    private static var override: (configuration: Configuration, palette: Palette)?
+
+    /// Runs `body` with `configuration` and `palette` in place of the
+    /// store's, as `Zoom.withScale` does for the scale. Nothing is posted,
+    /// so open windows neither see nor redraw for it.
+    static func withConfiguration<T>(
+        _ configuration: Configuration, palette: Palette, _ body: () throws -> T
+    ) rethrows -> T {
+        let previous = override
+        override = (configuration, palette)
+        defer { override = previous }
+        return try body()
+    }
 
     /// The view scale multiplies the configured size, the measure, and the
     /// margins, so the page keeps its proportions at every step; the
@@ -158,7 +174,7 @@ enum Appearance {
         current: (light: CGFloat(0.88), dark: CGFloat(0.86))
     )
 
-    static var palette: Palette { ConfigurationStore.shared.palette }
+    static var palette: Palette { override?.palette ?? ConfigurationStore.shared.palette }
 
     private struct Colors {
         let palette: Palette

@@ -50,6 +50,13 @@ final class ConfigurationStore: ObservableObject {
         fileURL.deletingLastPathComponent().appendingPathComponent("themes", isDirectory: true)
     }
 
+    /// `styles/` beside the config file; one file per export style holding
+    /// `key = value` lines, named after the style. Read when an export
+    /// asks, not watched: nothing on screen shows a style.
+    var stylesDirectoryURL: URL {
+        fileURL.deletingLastPathComponent().appendingPathComponent("styles", isDirectory: true)
+    }
+
     private var fileSource: DispatchSourceFileSystemObject?
     private var directorySource: DispatchSourceFileSystemObject?
     private var presetsSource: DispatchSourceFileSystemObject?
@@ -82,6 +89,44 @@ final class ConfigurationStore: ObservableObject {
         loadPresets()
         loadThemes()
         watch()
+    }
+
+    // MARK: - Export styles
+
+    /// The built-in styles followed by the style files, read now. A file
+    /// named like a built-in replaces it in place.
+    func printStyles() -> [PrintStyle] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: stylesDirectoryURL.path)) ?? []
+        let user: [PrintStyle] = names
+            .filter { !$0.hasPrefix(".") }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            .compactMap { name in
+                let url = stylesDirectoryURL.appendingPathComponent(name)
+                guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+                return PrintStyle(name: name, text: text)
+            }
+        let replaced = Dictionary(user.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let builtInNames = Set(PrintStyle.builtIn.map(\.name))
+        return PrintStyle.builtIn.map { replaced[$0.name] ?? $0 } + user.filter { !builtInNames.contains($0.name) }
+    }
+
+    func printStyle(named name: String) -> PrintStyle? {
+        let wanted = PrintStyle.canonicalName(name)
+        return printStyles().first { $0.name == wanted }
+    }
+
+    /// The configured default style, or `paper` when nothing has its name.
+    var defaultPrintStyle: PrintStyle {
+        printStyle(named: current.printStyle) ?? .paper
+    }
+
+    /// The configuration and palette a page in `style` is drawn with: the
+    /// style's keys over the config, and its colors over the theme it
+    /// names (the config's own theme unless it sets one).
+    func printAppearance(for style: PrintStyle) -> (configuration: Configuration, palette: Palette) {
+        let configuration = style.configuration(over: current)
+        let theme = theme(named: configuration.theme) ?? .enso
+        return (configuration, configuration.palette(over: theme.palette))
     }
 
     // MARK: - Themes

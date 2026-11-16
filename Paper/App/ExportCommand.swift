@@ -14,6 +14,8 @@ enum ExportCommand {
         var destination: URL
         /// Nil is the system's paper, as in the save panel.
         var paper: PDFExporter.Paper?
+        /// The style's name as typed; nil is `print.style` in the config.
+        var style: String? = nil
     }
 
     /// A mistake in the arguments: reported with the usage line, exit 2.
@@ -21,7 +23,7 @@ enum ExportCommand {
         let message: String
     }
 
-    static let usage = "usage: paper export <file> [-o <out.pdf>] [--paper letter|a4]"
+    static let usage = "usage: paper export <file> [-o <out.pdf>] [--paper letter|a4] [--style <name>]"
 
     /// Whether the process was started with the flag, from the launcher.
     static var requestedOnCommandLine: Bool {
@@ -35,6 +37,7 @@ enum ExportCommand {
         var source: String?
         var output: String?
         var paper: PDFExporter.Paper?
+        var style: String?
         var optionsEnded = false
         var index = 0
 
@@ -66,6 +69,10 @@ enum ExportCommand {
                     throw UsageError(message: "--paper takes letter or a4, not \(name)")
                 }
                 paper = match
+            case "--style":
+                let name = try value(for: argument).trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { throw UsageError(message: "--style needs a value") }
+                style = name
             default:
                 throw UsageError(message: "unknown option \(argument)")
             }
@@ -84,21 +91,40 @@ enum ExportCommand {
         guard destination != sourceURL else {
             throw UsageError(message: "the PDF would replace \(sourceURL.path); name another file with -o")
         }
-        return Request(source: sourceURL, destination: destination, paper: paper)
+        return Request(source: sourceURL, destination: destination, paper: paper, style: style)
     }
 
-    /// Reads the source and writes its PDF. The config file is read once,
-    /// for the page's type, margins, and theme; it is neither created nor
-    /// watched, which is the first launch's work.
+    /// Loads the config file once, for the page's type, margins, theme,
+    /// and styles; it is neither created nor watched, which is the first
+    /// launch's work.
     @MainActor
-    static func export(_ request: Request) throws {
-        let data = try Data(contentsOf: request.source)
-        let text = try MarkdownDocument(data: data).text
+    static func loadConfiguration() {
         ConfigurationStore.shared.reload()
         ConfigurationStore.shared.loadThemes()
+    }
+
+    /// The style a request names, or the configured default when it names
+    /// none. A name nothing answers to is a usage error listing the styles
+    /// there are.
+    @MainActor
+    static func style(for request: Request) throws -> PrintStyle {
+        let store = ConfigurationStore.shared
+        guard let name = request.style else { return store.defaultPrintStyle }
+        guard let style = store.printStyle(named: name) else {
+            let names = store.printStyles().map(\.name).joined(separator: ", ")
+            throw UsageError(message: "no style named \(name); the styles are \(names)")
+        }
+        return style
+    }
+
+    /// Reads the source and writes its PDF in the request's style.
+    @MainActor
+    static func export(_ request: Request, style: PrintStyle) throws {
+        let data = try Data(contentsOf: request.source)
+        let text = try MarkdownDocument(data: data).text
         try PDFExporter.export(
             text: text, documentURL: request.source, to: request.destination,
-            paper: request.paper ?? .default
+            paper: request.paper ?? .default, style: style
         )
     }
 
@@ -118,9 +144,17 @@ enum ExportCommand {
             let message = (error as? UsageError)?.message ?? error.localizedDescription
             fail("paper: \(message)\n\(usage)", status: 2)
         }
+        loadConfiguration()
+        let style: PrintStyle
+        do {
+            style = try Self.style(for: request)
+        } catch {
+            let message = (error as? UsageError)?.message ?? error.localizedDescription
+            fail("paper: \(message)\n\(usage)", status: 2)
+        }
         NSApplication.shared.setActivationPolicy(.prohibited)
         do {
-            try export(request)
+            try export(request, style: style)
         } catch {
             fail("paper: \(request.source.lastPathComponent) was not exported: \(error.localizedDescription)", status: 1)
         }
