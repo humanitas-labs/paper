@@ -1,10 +1,10 @@
 import AppKit
 
-/// Paper's item in the menu bar (#77): the pinned documents, then the
-/// recent ones, then New and Open. Behind `menu.bar` in the config; the
-/// item comes and goes as the key changes, on by default. The menu is rebuilt each time
-/// it opens, so it reflects pins, recents, and files that have come or
-/// gone since the last click.
+/// Paper's item in the menu bar (#77): the pinned documents, then New
+/// and Open. Behind `menu.bar` in the config; the item comes and goes as
+/// the key changes, on by default. The menu is rebuilt each time it
+/// opens, so it reflects pins and files that have come or gone since the
+/// last click.
 @MainActor
 final class MenuBarItem: NSObject, NSMenuDelegate {
     static let shared = MenuBarItem()
@@ -67,12 +67,6 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             }
             menu.addItem(item)
         }
-        let recents = WelcomeModel.recents(from: NSDocumentController.shared.recentDocumentURLs)
-            .filter { recent in !pinned.contains { $0.url == recent.url } }
-        if !recents.isEmpty {
-            menu.addItem(.separator())
-            for recent in recents { menu.addItem(documentItem(recent.url, title: recent.name, symbol: "clock")) }
-        }
         menu.addItem(.separator())
         let new = NSMenuItem(title: "New", action: #selector(newDocument(_:)), keyEquivalent: "")
         new.target = self
@@ -82,8 +76,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(open)
     }
 
-    /// A pin beside the pinned, a clock beside the recent, in the grey a
-    /// section header uses, so the symbol reads as a label and not a button.
+    /// A pin beside each pinned document, in the grey a section header
+    /// uses, so the symbol reads as a label and not a button.
     private func documentItem(_ url: URL, title: String, symbol: String) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: #selector(open(_:)), keyEquivalent: "")
         item.target = self

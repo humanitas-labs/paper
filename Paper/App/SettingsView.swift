@@ -245,7 +245,7 @@ struct SettingsView: View {
 
             Section("Menu bar") {
                 Toggle("Show Paper in the menu bar", isOn: binding(\.menuBar))
-                Text("An item beside the clock listing the pinned documents (File ▸ Pin Document), the recent ones, New, and Open.")
+                Text("An item beside the clock listing the pinned documents (File ▸ Pin Document), New, and Open.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if !pins.pins.urls.isEmpty {
