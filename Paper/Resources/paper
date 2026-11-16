@@ -5,7 +5,7 @@
 #   paper                open Paper
 #   paper file.md …      open files, creating any that do not exist yet
 #   paper export file.md write file.pdf beside it, as Export as PDF does
-#                        [-o out.pdf] [--paper letter|a4]
+#                        [-o out.pdf] [--paper letter|a4] [--style book]
 #   paper --help         this text
 #   paper --version      the version of the app the command belongs to
 #   paper --set-default  make Paper the app that opens Markdown files
@@ -18,13 +18,15 @@
 usage() {
   cat <<'EOF'
 usage: paper [file ...]
-       paper export <file> [-o <out.pdf>] [--paper letter|a4]
+       paper export <file> [-o <out.pdf>] [--paper letter|a4] [--style <name>]
        paper --help | --version | --set-default
 
 Opens files in Paper, creating any that do not exist yet. With no
 arguments, opens the app. export writes the file as a PDF, beside it
 unless -o names another place, and prints the PDF's path; no window
-opens. --set-default makes Paper the app that opens Markdown files.
+opens. --style picks the page's look: paper (as on screen), book, or a
+file in ~/.config/paper/styles/; print.style in the config sets the
+default. --set-default makes Paper the app that opens Markdown files.
 A file named export opens as ./export.
 EOF
 }

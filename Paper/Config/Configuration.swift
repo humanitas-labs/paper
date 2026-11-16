@@ -49,6 +49,10 @@ struct Configuration: Equatable, Sendable {
     /// laid out fresh at that size; the window's zoom plays no part.
     var printFontSize: Double = 10
     var printMargin: Double = 64
+    /// The export style a PDF or a print takes unless one is named: a
+    /// built-in or a file in `styles/`. Kept as written, like the theme;
+    /// a name that resolves to nothing exports in `paper`.
+    var printStyle: String = PrintStyle.paper.name
     /// Whether to ask GitHub, once a day on launch, for the latest release
     /// and show a download icon in the welcome window when it is newer.
     /// Off never makes the request.
@@ -245,6 +249,17 @@ struct Configuration: Equatable, Sendable {
     print.font.size = 10
     print.margin = 64
 
+    # The style an export or a print takes unless paper export --style or
+    # the save panel names another: paper (the page as on screen) or book
+    # (justified, indented paragraphs, centered capital headings, page
+    # numbers, black on white), or the name of a file in the styles/
+    # directory beside this one. A style file holds key = value lines: any
+    # key in this file, applied for the export only, and the page keys
+    # text.align, hyphenation, paragraph.indent, heading.align,
+    # heading.case, heading.tracking, page.numbers, and page.size. A file
+    # named like a built-in replaces it.
+    print.style = paper
+
     # Once a day on launch, ask GitHub whether a newer Paper is out and show
     # a download icon in the welcome window when there is. Off never makes
     # the request.
@@ -321,12 +336,19 @@ struct Configuration: Equatable, Sendable {
     /// Parses `key = value` lines. Whitespace around keys and values is
     /// trimmed; a value may be wrapped in single or double quotes.
     static func parse(_ text: String) -> Configuration {
-        var config = Configuration()
+        Configuration().applying(text)
+    }
+
+    /// This configuration with the `key = value` lines in `text` applied
+    /// over it, as `parse` reads a file; keys it does not know are skipped.
+    /// An export style overlays the config this way.
+    func applying(_ text: String) -> Configuration {
+        var config = self
         for rawLine in text.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty, !line.hasPrefix("#"), let separator = line.firstIndex(of: "=") else { continue }
             let key = line[..<separator].trimmingCharacters(in: .whitespaces).lowercased()
-            let value = unquote(line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces))
+            let value = Self.unquote(line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces))
             config.apply(key: key, value: value)
         }
         return config
@@ -377,6 +399,9 @@ struct Configuration: Equatable, Sendable {
             printFontSize = Self.number(value, in: Self.printFontSizeRange) ?? printFontSize
         case "print.margin":
             printMargin = Self.number(value, in: Self.printMarginRange) ?? printMargin
+        case "print.style":
+            let name = value.trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { printStyle = name }
         case "update.check":
             updateCheck = Self.flag(value) ?? updateCheck
         case "menu.bar":
@@ -425,6 +450,7 @@ struct Configuration: Equatable, Sendable {
             ("window.height", Self.format(windowHeight)),
             ("print.font.size", Self.format(printFontSize)),
             ("print.margin", Self.format(printMargin)),
+            ("print.style", printStyle),
             ("update.check", updateCheck ? "on" : "off"),
             ("menu.bar", menuBar ? "on" : "off"),
             ("ambient.context", ambientContext ? "on" : "off"),

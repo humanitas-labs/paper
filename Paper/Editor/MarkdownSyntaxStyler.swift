@@ -150,6 +150,9 @@ final class MarkdownSyntaxStyler {
         let comments = Self.commentRanges(in: source, range: fullRange, fenced: fences)
         apply(to: textView, range: fullRange, fenced: fences, comments: comments)
         (textView as? PaperTextView)?.clearCheckingMarksInCode(in: fullRange)
+        if let paperView = textView as? PaperTextView, paperView.isPrintSurface, let page = paperView.printPage {
+            page.apply(to: paperView)
+        }
         lastPassWasFull = true
     }
 
