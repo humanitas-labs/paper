@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.6 — 2026.11.15
 
 - Export styles. A style sets the look of an exported or printed page: `paper`, the default, is the page as it reads on screen, and `book` sets it like a printed book, on a 5 × 8 in page in Times New Roman, justified and hyphenated, with paragraphs marked by a first-line indent instead of a blank line, headings centered in spaced capitals, black on white, and the page number centered at the foot of every page. `print.style` in the config file sets the default; the save panel's Style menu and `paper export --style book` pick one for a single export. Styles are files of `key = value` lines in `~/.config/paper/styles/`, so you can write your own: any config key, applied for the export only, plus the page keys `text.align`, `hyphenation`, `paragraph.indent`, `heading.align`, `heading.case`, `heading.tracking`, `page.numbers`, and `page.size`, which sets the sheet to a book trim such as `trade` or any `W x H` and wins over the Paper Size menu and `--paper`. A file named like a built-in replaces it. The editor is unchanged.
 - A narrow `print.margin` keeps the text centered. Below the page's own inset the side margin was set to zero, the print system moved the left one out to the printer's edge, and the text sat about 17 pt right of center on a 40 pt margin. The side margins now stay at that edge or wider and the inset takes up the rest, so both sides come out equal.
