@@ -104,7 +104,7 @@ From the terminal, `paper export notes.md` writes `notes.pdf` beside the file an
 
 ## Menu bar and pins
 
-Paper keeps an item in the menu bar, beside the clock, listing your pinned documents, then the recent ones, then New and Open. Pin the front document with File ▸ Pin Document… (⇧⌘P) or from the file pill's menu; it asks for a name, the file name by default. Settings ▸ Menu bar renames, reorders, and unpins them, and `menu.bar = off` takes the item away.
+Paper keeps an item in the menu bar, beside the clock, listing your pinned documents, then New and Open. Pin the front document with File ▸ Pin Document… (⇧⌘P) or from the file pill's menu; it asks for a name, the file name by default. Settings ▸ Menu bar renames, reorders, and unpins them, and `menu.bar = off` takes the item away.
 
 ## Themes and presets
 

@@ -116,7 +116,7 @@ private struct DocumentView: View {
             .background(Color(nsColor: Appearance.canvas))
             .background(WindowConfigurator())
             .overlay(alignment: .topLeading) { FileBadge(fileURL: fileURL) }
-            .overlay(alignment: .topTrailing) { ZoomBadge() }
+            .overlay(alignment: .topTrailing) { ZoomBadge(fileURL: fileURL) }
             // The headings, beside the page, while this window shows them.
             .overlay(alignment: .topTrailing) {
                 if outline.isVisible { OutlineColumn(model: outline) }

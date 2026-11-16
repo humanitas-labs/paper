@@ -266,7 +266,7 @@ struct Configuration: Equatable, Sendable {
     update.check = on
 
     # A Paper item in the menu bar, beside the clock, listing the pinned
-    # documents (File ▸ Pin Document), the recent ones, New, and Open.
+    # documents (File ▸ Pin Document), New, and Open.
     menu.bar = on
 
     # Let an agent app on this Mac ask Paper what is open and selected,
