@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- A pin in the window's top-right corner. While the pointer rests there, a pin shows to the left of the zoom percentage; a click pins the document to the menu bar item, asking for its name as File ▸ Pin Document… does, or unpins it. It is filled while the document is pinned, hides when the pointer leaves, does not come up with the zoom's flash, and is absent for a document not yet saved.
+- The menu bar item lists the pinned documents, then New and Open. The recent documents are gone from it; the welcome window and File ▸ Open Recent still list them.
+
 ## 0.9.6 — 2026.11.15
 
 - Export styles. A style sets the look of an exported or printed page: `paper`, the default, is the page as it reads on screen, and `book` sets it like a printed book, on a 5 × 8 in page in Times New Roman, justified and hyphenated, with paragraphs marked by a first-line indent instead of a blank line, headings centered in spaced capitals, black on white, and the page number centered at the foot of every page. `print.style` in the config file sets the default; the save panel's Style menu and `paper export --style book` pick one for a single export. Styles are files of `key = value` lines in `~/.config/paper/styles/`, so you can write your own: any config key, applied for the export only, plus the page keys `text.align`, `hyphenation`, `paragraph.indent`, `heading.align`, `heading.case`, `heading.tracking`, `page.numbers`, and `page.size`, which sets the sheet to a book trim such as `trade` or any `W x H` and wins over the Paper Size menu and `--paper`. A file named like a built-in replaces it. The editor is unchanged.
