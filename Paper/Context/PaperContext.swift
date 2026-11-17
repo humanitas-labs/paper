@@ -104,6 +104,33 @@ final class PaperContext: ContextProvider {
         return root
     }
 
+    // MARK: - display
+
+    /// Paper's words for the line a host shows: the front document's
+    /// name, and the lines of the selection in it.
+    ///
+    ///     draft.md · lines 12–18
+    ///
+    /// Nil with nothing open, which leaves the wording to the host.
+    func display() -> ContextDisplay? {
+        guard let front = textViews().first else { return nil }
+        return ContextDisplay(title: Self.title(of: front), detail: Self.selectedLines(in: front).map { lines in
+            lines.start == lines.end ? "line \(lines.start)" : "lines \(lines.start)–\(lines.end)"
+        })
+    }
+
+    /// The first and last line of the selection in `view`, counted from
+    /// one, or nil when nothing is selected. A selection that ends with
+    /// a line's break ends on that line, not the next.
+    static func selectedLines(in view: PaperTextView) -> (start: Int, end: Int)? {
+        let selection = view.selectedRange()
+        let text = view.string as NSString
+        guard selection.length > 0, NSMaxRange(selection) <= text.length else { return nil }
+        let start = line(at: selection.location, in: text)
+        let inside = NSRange(location: selection.location, length: selection.length - 1)
+        return (start, start + newlines(in: inside, of: text))
+    }
+
     /// The selected text in `view` as an element, or nil when nothing is
     /// selected. A passage keeps the id it was first given.
     private func selection(in view: PaperTextView) -> ContextElement? {
@@ -119,11 +146,10 @@ final class PaperContext: ContextProvider {
             view.trackedRanges.track(selection, as: id)
         }
         let sent = NSRange(location: selection.location, length: min(selection.length, Self.contentLimit))
-        let startLine = Self.line(at: selection.location, in: text)
-        let inside = NSRange(location: selection.location, length: max(selection.length - 1, 0))
+        let lines = Self.selectedLines(in: view) ?? (start: 1, end: 1)
         var attributes: [String: ContextValue] = ["lines": .object([
-            "start": .integer(startLine),
-            "end": .integer(startLine + Self.newlines(in: inside, of: text)),
+            "start": .integer(lines.start),
+            "end": .integer(lines.end),
         ])]
         if sent.length < selection.length { attributes["truncated"] = .bool(true) }
         return ContextElement(

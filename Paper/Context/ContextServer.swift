@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-// A provider for the Ambient Context Protocol, version 0.2.0: a small MCP
+// A provider for the Ambient Context Protocol, version 0.2.1: a small MCP
 // server on the loopback interface that answers `current` and `locate`
 // as two resources, and the descriptor file that tells a host where it
 // is. It is handed a `ContextProvider` and knows nothing else about the
@@ -125,7 +125,7 @@ struct ContextResponder: Sendable {
         var version: String
     }
 
-    static let protocolVersion = "0.2.0"
+    static let protocolVersion = "0.2.1"
     static let extensionID = "io.github.ambientcontextprotocol/context"
     static let endpointPath = "/mcp"
     static let currentURI = "ambient://current"
@@ -144,7 +144,12 @@ struct ContextResponder: Sendable {
     var instance: String
     var token: String
     var current: @Sendable () async -> ContextElement
+    /// Nil for a provider that leaves the wording to the host.
+    var display: (@Sendable () async -> ContextDisplay?)? = nil
     var locate: @Sendable (String) async -> ContextLocation?
+    /// The tree and its display read in one turn. When set, it is used
+    /// in place of `current` and `display`.
+    var answer: (@Sendable () async -> (ContextElement, ContextDisplay?))? = nil
 
     func respond(to request: ContextHTTPRequest) async -> ContextHTTPResponse {
         // A browser attaches Origin to a page's requests, and no page
@@ -294,7 +299,17 @@ struct ContextResponder: Sendable {
     /// resource.
     private func read(_ uri: String) async -> String? {
         if uri == Self.currentURI {
-            return Self.json(CurrentResult(protocol: Self.protocolVersion, instance: instance, root: await current()))
+            let root: ContextElement
+            let words: ContextDisplay?
+            if let answer {
+                (root, words) = await answer()
+            } else {
+                root = await current()
+                words = await display?()
+            }
+            return Self.json(CurrentResult(
+                protocol: Self.protocolVersion, instance: instance, display: words?.sent, root: root
+            ))
         }
         guard uri.hasPrefix(Self.locationPrefix),
               let id = String(uri.dropFirst(Self.locationPrefix.count)).removingPercentEncoding,
@@ -303,11 +318,13 @@ struct ContextResponder: Sendable {
         return Self.json(location)
     }
 
-    /// Exactly these three: the app's name is the root's title and its
-    /// identifier is in the descriptor.
+    /// These and no others: the app's name is the root's title and its
+    /// identifier is in the descriptor. `display` is left out when the
+    /// provider has none.
     private struct CurrentResult: Encodable {
         var `protocol`: String
         var instance: String
+        var display: ContextDisplay?
         var root: ContextElement
     }
 
@@ -499,7 +516,8 @@ final class ContextServer {
         let responder = ContextResponder(
             app: app, instance: instance, token: token,
             current: { await provider.current() },
-            locate: { await provider.locate($0) }
+            locate: { await provider.locate($0) },
+            answer: { await MainActor.run { (provider.current(), provider.display()) } }
         )
         let queue = queue
         listener.newConnectionHandler = { connection in

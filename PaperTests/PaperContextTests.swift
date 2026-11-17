@@ -203,6 +203,47 @@ struct PaperContextTests {
         #expect(selection.attributes?["truncated"] == .bool(true))
     }
 
+    // MARK: - display
+
+    @Test
+    func displayNamesTheFrontDocumentAndTheSelectedLines() {
+        let front = makeTextView(essay, file: "draft.md")
+        let back = makeTextView("notes", file: "notes.md")
+        let context = PaperContext(textViews: { [front, back] })
+        #expect(context.display() == ContextDisplay(title: "draft.md", detail: nil))
+
+        let sentence = (essay as NSString).range(of: "The command line lasted thirty years.")
+        front.setSelectedRange(sentence)
+        #expect(context.display() == ContextDisplay(title: "draft.md", detail: "line 3"))
+
+        // Through the end of line 3, its break and the blank line 4, into line 5.
+        let through = (essay as NSString).range(of: "Then")
+        front.setSelectedRange(NSRange(location: sentence.location, length: NSMaxRange(through) - sentence.location))
+        #expect(context.display() == ContextDisplay(title: "draft.md", detail: "lines 3–5"))
+        // The words agree with the lines the tree gives the selection.
+        let selection = context.current().all.first { $0.role == .text }
+        #expect(selection?.attributes?["lines"] == .object(["start": .integer(3), "end": .integer(5)]))
+
+        // A selection that takes a line with its break is that one line.
+        front.setSelectedRange(NSRange(location: sentence.location, length: sentence.length + 1))
+        #expect(context.display()?.detail == "line 3")
+    }
+
+    @Test
+    func displayIsLeftToTheHostWithNothingOpenAndNamesAnUnsavedDocument() {
+        #expect(PaperContext(textViews: { [] }).display() == nil)
+        let unsaved = PaperContext(textViews: { [makeTextView("unsaved")] })
+        #expect(unsaved.display() == ContextDisplay(title: "Untitled", detail: nil))
+    }
+
+    @Test
+    func aDisplayIsSentAsOneLineOfAtMostEightyCharacters() {
+        let long = ContextDisplay(title: "a\nb\t c", detail: String(repeating: "é", count: 200)).sent
+        #expect(long == ContextDisplay(title: "a b c", detail: String(repeating: "é", count: 79) + "…"))
+        #expect(ContextDisplay(title: " \n", detail: "lines 1–2").sent == nil)
+        #expect(ContextDisplay(detail: "lines 1–2").sent == nil)
+    }
+
     @Test
     func linesAreCountedFromOne() {
         let text = "a\nb\n\nd" as NSString
@@ -256,6 +297,7 @@ struct PaperContextTests {
                 ContextElement(id: "doc-1", role: .document, title: "draft.md", focused: true),
             ])
         }
+        func display() -> ContextDisplay? { ContextDisplay(title: "draft.md", detail: "lines 3–4") }
         func locate(_ id: String) -> ContextLocation? { nil }
     }
 

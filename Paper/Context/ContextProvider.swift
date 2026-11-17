@@ -1,6 +1,6 @@
 import Foundation
 
-// The Ambient Context Protocol's types, version 0.2.0, and the interface an
+// The Ambient Context Protocol's types, version 0.2.1, and the interface an
 // app implements to answer its two questions. Nothing in this file or in
 // `ContextServer.swift` knows about Paper, so both can be lifted into
 // another app unchanged.
@@ -131,6 +131,44 @@ struct ContextElement: Equatable, Sendable, Encodable {
     var all: [ContextElement] { [self] + children.flatMap(\.all) }
 }
 
+/// The app's own words for what an answer holds, for the line a host
+/// shows the user: `draft.md · lines 12–18`. A host that gets none words
+/// the line itself from the tree. It labels the answer it is sent with
+/// and names nothing the tree does not hold.
+///
+/// The picture a host draws beside it is not sent: it is the file
+/// `favicon.svg` or `favicon.png` in the app bundle's resources, which
+/// the host finds itself.
+struct ContextDisplay: Equatable, Sendable, Encodable {
+    /// The longest line the protocol allows, in characters.
+    static let lineLimit = 80
+
+    /// What is open.
+    var title: String?
+    /// What is selected or in focus within it.
+    var detail: String?
+
+    /// What is sent: each string on one line of at most 80 characters,
+    /// or nil when there is no title, since a host uses `display` only
+    /// when it has one.
+    var sent: ContextDisplay? {
+        guard let title = title.flatMap(Self.line) else { return nil }
+        return ContextDisplay(title: title, detail: detail.flatMap(Self.line))
+    }
+
+    /// One line of plain text: line breaks and control characters become
+    /// spaces, runs of spaces become one, and a line over the limit is
+    /// cut and ends in an ellipsis. Nil when nothing is left.
+    static func line(_ text: String) -> String? {
+        let spaced = String(String.UnicodeScalarView(text.unicodeScalars.map { scalar in
+            scalar.properties.generalCategory == .control || scalar == "\u{2028}" || scalar == "\u{2029}" ? " " : scalar
+        }))
+        let line = spaced.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        if line.isEmpty { return nil }
+        return line.count <= lineLimit ? line : String(line.prefix(lineLimit - 1)) + "…"
+    }
+}
+
 /// A rectangle in global display coordinates: points, origin at the top
 /// left of the primary display, y increasing downward.
 struct ContextRect: Equatable, Sendable, Encodable {
@@ -163,6 +201,10 @@ protocol ContextProvider: AnyObject, Sendable {
     /// What the app shows, as one tree rooted at the app, from state
     /// already in memory.
     func current() -> ContextElement
+    /// The app's own words for what `current()` holds, or nil to let the
+    /// host word it. Called straight after `current()`, in the same turn
+    /// on the main actor, so the two describe the same moment.
+    func display() -> ContextDisplay?
     /// Where the element is, or nil for an id this run never issued. An
     /// element that was issued and no longer exists is a location whose
     /// state is `gone`.
