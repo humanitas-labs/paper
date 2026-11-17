@@ -141,12 +141,15 @@ final class PaperContext: ContextProvider {
     ///
     ///     draft.md · lines 12–18
     ///
-    /// Nil with nothing open, which leaves the wording to the host.
+    /// With nothing selected the detail is `(none)`, as Sync and Marina
+    /// say it, in brackets so it cannot be read as a name. Nil with
+    /// nothing open, which leaves the wording to the host.
     func display() -> ContextDisplay? {
         guard let front = textViews().first else { return nil }
-        return ContextDisplay(title: Self.title(of: front), detail: Self.selectedLines(in: front).map { lines in
+        let detail = Self.selectedLines(in: front).map { lines in
             lines.start == lines.end ? "line \(lines.start)" : "lines \(lines.start)–\(lines.end)"
-        })
+        }
+        return ContextDisplay(title: Self.title(of: front), detail: detail ?? "(none)")
     }
 
     /// The first and last line of the selection in `view`, counted from

@@ -210,7 +210,7 @@ struct PaperContextTests {
         let front = makeTextView(essay, file: "draft.md")
         let back = makeTextView("notes", file: "notes.md")
         let context = PaperContext(textViews: { [front, back] })
-        #expect(context.display() == ContextDisplay(title: "draft.md", detail: nil))
+        #expect(context.display() == ContextDisplay(title: "draft.md", detail: "(none)"))
 
         let sentence = (essay as NSString).range(of: "The command line lasted thirty years.")
         front.setSelectedRange(sentence)
@@ -233,7 +233,7 @@ struct PaperContextTests {
     func displayIsLeftToTheHostWithNothingOpenAndNamesAnUnsavedDocument() {
         #expect(PaperContext(textViews: { [] }).display() == nil)
         let unsaved = PaperContext(textViews: { [makeTextView("unsaved")] })
-        #expect(unsaved.display() == ContextDisplay(title: "Untitled", detail: nil))
+        #expect(unsaved.display() == ContextDisplay(title: "Untitled", detail: "(none)"))
     }
 
     @Test
