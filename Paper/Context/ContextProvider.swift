@@ -1,6 +1,6 @@
 import Foundation
 
-// The Ambient Context Protocol's types, version 0.2.1, and the interface an
+// The Ambient Context Protocol's types, version 0.2.2, and the interface an
 // app implements to answer its two questions. Nothing in this file or in
 // `ContextServer.swift` knows about Paper, so both can be lifted into
 // another app unchanged.

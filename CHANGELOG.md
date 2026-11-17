@@ -4,6 +4,8 @@
 
 - Paper words its own line in agent apps. With "Share what is open and selected with agent apps" on, Paper now also says how to name what it shared: the front document and the selected lines, as in `draft.md · lines 12–18`, and ships its enso as a small picture for the agent app to draw beside those words. An agent app that shows what it read before sending, as Sirius does in its composer, uses them. Nothing more of a document is shared than before. Paper speaks the Ambient Context Protocol 0.2.1.
 
+- That line stays current. An agent app that is showing what it read from Paper can now ask to be told when it changes, so selecting other lines while the agent app's composer is open updates the line there without your returning to it. Paper says only that something changed; the agent app reads again. It tells nothing unless such an app has asked, and nothing when the setting is off. (Ambient Context Protocol 0.2.2.)
+
 ## 0.9.6 — 2026.11.16
 
 - A pin in the window's top-right corner. While the pointer rests there, a pin shows to the left of the zoom percentage; a click pins the document to the menu bar item, asking for its name as File ▸ Pin Document… does, or unpins it. It is filled while the document is pinned, hides when the pointer leaves, does not come up with the zoom's flash, and is absent for a document not yet saved.

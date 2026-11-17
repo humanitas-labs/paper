@@ -1,7 +1,8 @@
 import Foundation
 import Network
+import Observation
 
-// A provider for the Ambient Context Protocol, version 0.2.1: a small MCP
+// A provider for the Ambient Context Protocol, version 0.2.2: a small MCP
 // server on the loopback interface that answers `current` and `locate`
 // as two resources, and the descriptor file that tells a host where it
 // is. It is handed a `ContextProvider` and knows nothing else about the
@@ -125,12 +126,14 @@ struct ContextResponder: Sendable {
         var version: String
     }
 
-    static let protocolVersion = "0.2.1"
+    static let protocolVersion = "0.2.2"
     static let extensionID = "io.github.ambientcontextprotocol/context"
     static let endpointPath = "/mcp"
     static let currentURI = "ambient://current"
     static let locationPrefix = "ambient://location/"
     static let locationTemplate = "ambient://location/{id}"
+    static let listenMethod = "subscriptions/listen"
+    static let metaSubscription = "io.modelcontextprotocol/subscriptionId"
     /// The MCP revision this server is written for.
     static let mcpVersion = "2026-07-28"
     /// Earlier revisions, which open with `initialize`, served as well.
@@ -150,8 +153,38 @@ struct ContextResponder: Sendable {
     /// The tree and its display read in one turn. When set, it is used
     /// in place of `current` and `display`.
     var answer: (@Sendable () async -> (ContextElement, ContextDisplay?))? = nil
+    /// The open watches (protocol 0.2.2, RFC-0006), for the responder
+    /// `ContextServer` listens with. Nil elsewhere: `watch` is then not
+    /// declared and the method is not known.
+    var watches: ContextWatches? = nil
 
     func respond(to request: ContextHTTPRequest) async -> ContextHTTPResponse {
+        switch await route(request) {
+        case .response(let response): response
+        // Only `ContextServer` sets `watches`, and it calls `route`.
+        case .watch(let id): Self.failure(404, id: id, code: -32601, message: "Method not found")
+        }
+    }
+
+    /// What a request gets: one response, or a watch to be held open on
+    /// its connection.
+    enum Route: Sendable {
+        case response(ContextHTTPResponse)
+        case watch(RequestID)
+    }
+
+    /// Every check a request has, the watch request included, before
+    /// anything is answered or any stream opened.
+    func route(_ request: ContextHTTPRequest) async -> Route {
+        var watch: RequestID?
+        let response = await answerOne(request, watch: &watch)
+        if let watch { return .watch(watch) }
+        return .response(response)
+    }
+
+    /// Sets `watch`, and returns a response that is not sent, when the
+    /// request is a watch this responder will hold.
+    private func answerOne(_ request: ContextHTTPRequest, watch: inout RequestID?) async -> ContextHTTPResponse {
         // A browser attaches Origin to a page's requests, and no page
         // should be calling this server. Refused before the token is
         // looked at, so a page learns nothing about it.
@@ -192,6 +225,16 @@ struct ContextResponder: Sendable {
             if let refusal = Self.validate(request: request, method: method, params: params, meta: meta, id: id) {
                 return refusal
             }
+        }
+        if method == Self.listenMethod, !legacy, watches != nil {
+            // Whatever else the host asked for, it is told about
+            // `ambient://current` or about nothing.
+            let filter = params["notifications"] as? [String: Any]
+            guard let named = filter?["resourceSubscriptions"] as? [String], named.contains(Self.currentURI) else {
+                return Self.failure(400, id: id, code: -32602, message: "Only \(Self.currentURI) can be watched")
+            }
+            watch = id
+            return ContextHTTPResponse(status: 200)
         }
         return await dispatch(method, params: params, id: id, legacy: legacy)
     }
@@ -256,7 +299,7 @@ struct ContextResponder: Sendable {
             return Self.success(id: id, legacy: false, result: [
                 "supportedVersions": [Self.mcpVersion] + Self.legacyVersions,
                 "capabilities": [
-                    "resources": [String: Any](),
+                    "resources": watches == nil ? [String: Any]() : ["subscribe": true],
                     "extensions": [Self.extensionID: ["version": Self.protocolVersion]],
                 ],
                 "_meta": [Self.metaServerInfo: ["name": app.name, "version": app.version]],
@@ -307,6 +350,7 @@ struct ContextResponder: Sendable {
                 root = await current()
                 words = await display?()
             }
+            watches?.remember(Self.signature(root, words))
             return Self.json(CurrentResult(
                 protocol: Self.protocolVersion, instance: instance, display: words?.sent, root: root
             ))
@@ -321,6 +365,35 @@ struct ContextResponder: Sendable {
     /// These and no others: the app's name is the root's title and its
     /// identifier is in the descriptor. `display` is left out when the
     /// provider has none.
+    /// What a watch compares to tell whether the answer to `current`
+    /// changed: the tree and the display as they would be sent, with
+    /// `hovered` left out, since the pointer moving is not a change a
+    /// watch reports. It stays in this process.
+    func signature() async -> String? {
+        if let answer {
+            let (root, words) = await answer()
+            return Self.signature(root, words)
+        }
+        let root = await current()
+        return Self.signature(root, await display?())
+    }
+
+    private static func signature(_ root: ContextElement, _ words: ContextDisplay?) -> String? {
+        json(Signature(display: words?.sent, root: unhovered(root)))
+    }
+
+    private static func unhovered(_ element: ContextElement) -> ContextElement {
+        var copy = element
+        copy.hovered = false
+        copy.children = element.children.map(unhovered)
+        return copy
+    }
+
+    private struct Signature: Encodable {
+        var display: ContextDisplay?
+        var root: ContextElement
+    }
+
     private struct CurrentResult: Encodable {
         var `protocol`: String
         var instance: String
@@ -369,6 +442,35 @@ struct ContextResponder: Sendable {
             case .number(let number): number
             }
         }
+    }
+
+    /// One message on a watch's stream, as a server-sent event.
+    static func event(_ message: [String: Any]) -> Data {
+        Data("event: message\ndata: ".utf8) + data(message) + Data("\n\n".utf8)
+    }
+
+    /// The first message on a watch: what the provider agreed to tell.
+    static func acknowledgment(_ id: RequestID) -> Data {
+        event(["jsonrpc": "2.0", "method": "notifications/subscriptions/acknowledged", "params": [
+            "_meta": [metaSubscription: id.value],
+            "notifications": ["resourceSubscriptions": [currentURI]],
+        ]])
+    }
+
+    /// The notice: the answer to `current` changed. It says no more.
+    static func notice(_ id: RequestID) -> Data {
+        event(["jsonrpc": "2.0", "method": "notifications/resources/updated", "params": [
+            "_meta": [metaSubscription: id.value],
+            "uri": currentURI,
+        ]])
+    }
+
+    /// The answer to the watch request, which ends the watch.
+    static func completion(_ id: RequestID) -> Data {
+        event(["jsonrpc": "2.0", "id": id.value, "result": [
+            "resultType": "complete",
+            "_meta": [metaSubscription: id.value],
+        ]])
     }
 
     private static func success(id: RequestID, legacy: Bool, result: [String: Any]) -> ContextHTTPResponse {
@@ -482,7 +584,8 @@ final class ContextServer {
     private let directory: URL
     private var listener: NWListener?
     private var descriptorURL: URL?
-    private let queue = DispatchQueue(label: "org.humanitas.ambient-context.server")
+    private let queue: DispatchQueue
+    private let watches: ContextWatches
 
     /// The endpoint, once the listener is up.
     private(set) var endpoint: URL?
@@ -495,6 +598,39 @@ final class ContextServer {
         self.provider = provider
         self.app = app
         self.directory = directory
+        let queue = DispatchQueue(label: "org.humanitas.ambient-context.server")
+        self.queue = queue
+        self.watches = ContextWatches(queue: queue)
+    }
+
+    /// Tells any host that is watching that the answer to `current` may
+    /// have changed. Call it from the app's own events: the selection
+    /// changed, the focus moved, a document opened or closed, a title
+    /// changed. Not from a timer, and not for the pointer moving, which
+    /// is not a change a watch reports.
+    ///
+    /// An app whose `current()` reads `@Observable` state need not call
+    /// it for that state: the server observes what the provider reads.
+    /// It is for everything else, such as a text view's selection.
+    ///
+    /// It costs nothing when no host is watching, and may be called as
+    /// often as the app likes and from any thread: calls are gathered
+    /// into at most one notice in 250 milliseconds, the last change
+    /// always tells, and a call after which the answer is the same as
+    /// before tells nothing.
+    nonisolated func contextDidChange() {
+        watches.changed()
+    }
+
+    /// The watches hosts hold open now.
+    var watchCount: Int { watches.count }
+
+    /// For tests: the least time between two notices on one watch, and
+    /// how long a watch may stay quiet before a keep-alive. Set before
+    /// `start()`.
+    var watchTiming: (interval: TimeInterval, keepAlive: TimeInterval) {
+        get { watches.timing }
+        set { watches.timing = newValue }
     }
 
     /// Opens the listener on the loopback interface, on a port the
@@ -513,12 +649,26 @@ final class ContextServer {
         guard let listener = try? NWListener(using: parameters) else { return }
 
         let provider = provider
+        let watches = watches
         let responder = ContextResponder(
             app: app, instance: instance, token: token,
             current: { await provider.current() },
             locate: { await provider.locate($0) },
-            answer: { await MainActor.run { (provider.current(), provider.display()) } }
+            answer: {
+                // The `@Observable` state the provider reads is observed
+                // as it is read, so a change to it is heard of with no
+                // call from the app.
+                await MainActor.run {
+                    withObservationTracking {
+                        (provider.current(), provider.display())
+                    } onChange: {
+                        watches.changed()
+                    }
+                }
+            },
+            watches: watches
         )
+        watches.signature = { await responder.signature() }
         let queue = queue
         listener.newConnectionHandler = { connection in
             ContextConnection(connection, responder: responder).start(on: queue)
@@ -556,6 +706,7 @@ final class ContextServer {
     /// Closes the listener and removes the descriptor.
     func stop() {
         let wasRunning = listener != nil
+        watches.endAll()
         listener?.cancel()
         listener = nil
         if let descriptorURL { try? FileManager.default.removeItem(at: descriptorURL) }
@@ -579,12 +730,14 @@ final class ContextServer {
     }
 }
 
-/// One accepted connection: reads a request, answers it, closes. All of
-/// its state is touched only on the server's queue.
+/// One accepted connection: reads a request, answers it, closes; or,
+/// for a watch, answers with a stream and holds it open. All of its
+/// state is touched only on the server's queue.
 private final class ContextConnection: @unchecked Sendable {
     private let connection: NWConnection
     private let responder: ContextResponder
     private var buffer = Data()
+    private var watching = false
 
     init(_ connection: NWConnection, responder: ContextResponder) {
         self.connection = connection
@@ -593,24 +746,36 @@ private final class ContextConnection: @unchecked Sendable {
 
     func start(on queue: DispatchQueue) {
         connection.start(queue: queue)
-        // A client that connects and says nothing is dropped.
-        queue.asyncAfter(deadline: .now() + 10) { [weak self] in self?.connection.cancel() }
-        receive()
+        // A client that connects and says nothing is dropped. A watch is
+        // meant to stay.
+        queue.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self, !self.watching else { return }
+            self.connection.cancel()
+        }
+        receive(on: queue)
     }
 
-    private func receive() {
+    private func receive(on queue: DispatchQueue) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [self] data, _, finished, error in
             if let data { buffer.append(data) }
             switch ContextHTTP.parse(buffer) {
             case .request(let request):
                 let responder = responder
-                Task { [self] in send(await responder.respond(to: request)) }
+                Task { [self] in
+                    let route = await responder.route(request)
+                    queue.async { [self] in
+                        switch route {
+                        case .response(let response): send(response)
+                        case .watch(let id): watch(id)
+                        }
+                    }
+                }
             case .malformed:
                 send(ContextHTTPResponse(status: 400))
             case .tooLarge:
                 send(ContextHTTPResponse(status: 413))
             case .incomplete:
-                if finished || error != nil { connection.cancel() } else { receive() }
+                if finished || error != nil { connection.cancel() } else { receive(on: queue) }
             }
         }
     }
@@ -618,5 +783,186 @@ private final class ContextConnection: @unchecked Sendable {
     private func send(_ response: ContextHTTPResponse) {
         let connection = connection
         connection.send(content: response.serialized, completion: .contentProcessed { _ in connection.cancel() })
+    }
+
+    /// Answers with an event stream and hands the connection to the
+    /// watches, which write to it from here on.
+    private func watch(_ id: ContextResponder.RequestID) {
+        guard let watches = responder.watches else { return connection.cancel() }
+        watching = true
+        let head = "HTTP/1.1 200 OK\r\nCache-Control: no-store\r\nConnection: close\r\n"
+            + "Content-Type: text/event-stream\r\nX-Accel-Buffering: no\r\n\r\n"
+        let watch = ContextWatch(connection: connection, id: id)
+        watch.write(Data(head.utf8) + ContextResponder.acknowledgment(id))
+        watches.add(watch)
+        listenForTheEnd(of: watch, in: watches)
+    }
+
+    /// A host ends a watch by closing the connection. Nothing more is
+    /// read from it; anything it sends is dropped.
+    private func listenForTheEnd(of watch: ContextWatch, in watches: ContextWatches) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [self] _, _, finished, error in
+            if finished || error != nil {
+                watches.remove(watch)
+                connection.cancel()
+            } else {
+                listenForTheEnd(of: watch, in: watches)
+            }
+        }
+    }
+}
+
+/// One watch: a connection held open, and the id of the request that
+/// opened it, which every message on it carries.
+final class ContextWatch: @unchecked Sendable {
+    let connection: NWConnection
+    let id: ContextResponder.RequestID
+    var lastWrite = DispatchTime.now()
+
+    init(connection: NWConnection, id: ContextResponder.RequestID) {
+        self.connection = connection
+        self.id = id
+    }
+
+    func write(_ data: Data) {
+        lastWrite = .now()
+        connection.send(content: data, completion: .contentProcessed { _ in })
+    }
+
+    /// The completion result, then the close.
+    func end() {
+        let connection = connection
+        connection.send(content: ContextResponder.completion(id), completion: .contentProcessed { _ in connection.cancel() })
+    }
+}
+
+/// The watches open on one `ContextServer`, and when each is told. Its
+/// state is touched only on the server's queue.
+final class ContextWatches: @unchecked Sendable {
+    /// How many watches are held at once. One more ends the oldest.
+    static let limit = 8
+
+    private let queue: DispatchQueue
+    private var open: [ContextWatch] = []
+    /// The answer last given to a read or last announced.
+    private var last: String?
+    private var lastNotice: DispatchTime?
+    private var scheduled = false
+    private var computing = false
+    private var changedMeanwhile = false
+    private var keepAliveTimer: DispatchSourceTimer?
+    private var interval: TimeInterval = 0.25
+    private var keepAlive: TimeInterval = 10
+    private var answer: (@Sendable () async -> String?)?
+
+    init(queue: DispatchQueue) {
+        self.queue = queue
+    }
+
+    var count: Int { queue.sync { open.count } }
+
+    var timing: (interval: TimeInterval, keepAlive: TimeInterval) {
+        get { queue.sync { (interval, keepAlive) } }
+        set { queue.sync { (interval, keepAlive) = newValue } }
+    }
+
+    /// How the answer to `current` is had, as text to compare.
+    var signature: (@Sendable () async -> String?)? {
+        get { queue.sync { answer } }
+        set { queue.sync { answer = newValue } }
+    }
+
+    /// A read was answered with this.
+    func remember(_ signature: String?) {
+        guard let signature else { return }
+        queue.async { [self] in last = signature }
+    }
+
+    func add(_ watch: ContextWatch) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        open.append(watch)
+        if open.count > Self.limit { open.removeFirst().end() }
+        startKeepAlive()
+        // The host read before it asked to watch. If the answer moved in
+        // between, it is told now.
+        if last != nil { schedule() }
+    }
+
+    func remove(_ watch: ContextWatch) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        open.removeAll { $0 === watch }
+        if open.isEmpty { stopKeepAlive() }
+    }
+
+    /// Ends every watch as the protocol asks: the completion result,
+    /// then the close.
+    func endAll() {
+        queue.sync {
+            for watch in open { watch.end() }
+            open.removeAll()
+            stopKeepAlive()
+            last = nil
+        }
+    }
+
+    /// The app says its answer may have changed.
+    func changed() {
+        queue.async { [self] in schedule() }
+    }
+
+    /// At most one look, and so one notice, in any `interval`; a change
+    /// that arrives while waiting or looking is not lost.
+    private func schedule() {
+        guard !open.isEmpty else { return }
+        if computing { changedMeanwhile = true; return }
+        guard !scheduled else { return }
+        scheduled = true
+        var wait = 0.0
+        if let lastNotice {
+            let since = Double(DispatchTime.now().uptimeNanoseconds - lastNotice.uptimeNanoseconds) / 1e9
+            wait = max(0, interval - since)
+        }
+        queue.asyncAfter(deadline: .now() + wait) { [self] in look() }
+    }
+
+    private func look() {
+        scheduled = false
+        guard !open.isEmpty, let answer else { return }
+        computing = true
+        Task { [self] in
+            let now = await answer()
+            queue.async { [self] in
+                computing = false
+                if let now, now != last {
+                    last = now
+                    lastNotice = .now()
+                    for watch in open { watch.write(ContextResponder.notice(watch.id)) }
+                }
+                if changedMeanwhile {
+                    changedMeanwhile = false
+                    schedule()
+                }
+            }
+        }
+    }
+
+    private func startKeepAlive() {
+        guard keepAliveTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let tick = keepAlive / 2
+        timer.schedule(deadline: .now() + tick, repeating: tick)
+        timer.setEventHandler { [self] in
+            let quietSince = DispatchTime.now().uptimeNanoseconds
+            for watch in open where Double(quietSince - watch.lastWrite.uptimeNanoseconds) / 1e9 >= keepAlive / 2 {
+                watch.write(Data(": keep-alive\n\n".utf8))
+            }
+        }
+        timer.resume()
+        keepAliveTimer = timer
+    }
+
+    private func stopKeepAlive() {
+        keepAliveTimer?.cancel()
+        keepAliveTimer = nil
     }
 }

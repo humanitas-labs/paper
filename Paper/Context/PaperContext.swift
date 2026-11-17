@@ -24,6 +24,9 @@ final class PaperContext: ContextProvider {
     private var documents: [(id: String, editor: Editor)] = []
     private var windows: [(id: String, editor: Editor)] = []
     private var server: ContextServer?
+    /// While the server runs: the app's events after which the answer
+    /// may differ, each of which says so to the server (protocol 0.2.2).
+    private var changeObservers: [any NSObjectProtocol] = []
 
     private final class Editor {
         weak var view: PaperTextView?
@@ -65,12 +68,39 @@ final class PaperContext: ContextProvider {
             ))
             server.start()
             self.server = server
+            observeChanges(for: server)
         } else {
             stop()
         }
     }
 
+    /// A host that shows what it read may watch, and is told when the
+    /// answer changes. Paper's answer is read from its windows and text
+    /// views, so these are the events that can change it: the selection
+    /// moving, the text under a selection being edited, and a window
+    /// coming forward, closing or taking a new title. The server gathers
+    /// them, compares the answer and tells a host only when it differs,
+    /// so each event can simply say so.
+    private func observeChanges(for server: ContextServer) {
+        let names: [Notification.Name] = [
+            NSTextView.didChangeSelectionNotification,
+            NSText.didChangeNotification,
+            NSWindow.didBecomeMainNotification,
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.willCloseNotification,
+        ]
+        changeObservers = names.map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak server] _ in
+                // After the event has taken effect: a closing window is
+                // still open while its notification is delivered.
+                DispatchQueue.main.async { server?.contextDidChange() }
+            }
+        }
+    }
+
     func stop() {
+        for observer in changeObservers { NotificationCenter.default.removeObserver(observer) }
+        changeObservers = []
         server?.stop()
         server = nil
     }
