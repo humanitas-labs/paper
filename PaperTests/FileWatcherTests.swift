@@ -55,6 +55,25 @@ struct FileWatcherTests {
     }
 
     @Test
+    func reportsAFileThatAppearsAfterWatchingBegan() async throws {
+        // An image referenced before it is written: the watcher starts on
+        // a missing path, re-arms until the file exists, and reports its
+        // appearance even though the write predates the descriptor.
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("watch-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var fired = false
+        let watcher = FileWatcher(url: url) { fired = true }
+        defer { watcher.cancel() }
+
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!fired)
+        try Data("pixels".utf8).write(to: url)
+        try await waitForChange { fired }
+        #expect(fired)
+    }
+
+    @Test
     func cancelStopsReports() async throws {
         let url = try temporaryFile("one")
         defer { try? FileManager.default.removeItem(at: url) }
