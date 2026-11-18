@@ -376,8 +376,10 @@ final class PaperTextView: NSTextView {
     /// One watcher per image file the document shows. A file rewritten in
     /// place or replaced by another program is decoded again and its band
     /// resized, the way the document itself reloads when it changes on disk.
-    /// Only files that exist are watched: a missing one would keep the
-    /// watcher re-arming, and it is picked up on the next restyle instead.
+    /// A file that does not exist yet is watched too: the watcher re-arms
+    /// (with backoff) until the file appears and reports the appearance, so
+    /// an image written after its line was styled still gets its band — a
+    /// document whose images are still being generated when it opens.
     private var imageWatchers: [URL: FileWatcher] = [:]
 
     /// Each watcher holds a file descriptor, a finite resource; a document
@@ -386,7 +388,7 @@ final class PaperTextView: NSTextView {
     private static let imageWatcherLimit = 64
 
     func watchImages(_ urls: Set<URL>) {
-        var wanted = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+        var wanted = urls
         if wanted.count > Self.imageWatcherLimit {
             var capped = Set(wanted.intersection(imageWatchers.keys).prefix(Self.imageWatcherLimit))
             for url in wanted where capped.count < Self.imageWatcherLimit { capped.insert(url) }

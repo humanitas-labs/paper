@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- An image written after its note opened now appears. An image line whose file did not yet exist was never watched, so a note opened while its images were still being generated kept the alt text until an edit forced a restyle; export, which reads the file at that moment, showed them, and the open note did not. Missing files are now watched too, and the watcher reports the file's appearance (checking with a small backoff, within about two seconds), so the band draws as soon as the file lands.
+
 - Paper words its own line in agent apps. With "Share what is open and selected with agent apps" on, Paper now also says how to name what it shared: the front document and the selected lines, as in `draft.md · lines 12–18`, or `draft.md · (none)` with nothing selected, and ships its enso as a small picture for the agent app to draw beside those words. An agent app that shows what it read before sending, as Sirius does in its composer, uses them. Nothing more of a document is shared than before. Paper speaks the Ambient Context Protocol 0.2.1.
 
 - That line stays current. An agent app that is showing what it read from Paper can now ask to be told when it changes, so selecting other lines while the agent app's composer is open updates the line there without your returning to it. Paper says only that something changed; the agent app reads again. It tells nothing unless such an app has asked, and nothing when the setting is off. (Ambient Context Protocol 0.2.2.)
