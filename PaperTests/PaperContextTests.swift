@@ -40,9 +40,10 @@ struct PaperContextTests {
         #expect(documents.map(\.title) == ["draft.md", "notes.md"])
         #expect(documents[0].url == "file:///tmp/essays/draft.md")
         #expect(documents[0].content == nil, "a document's text is not sent")
-        // The front window and its document are the focus path.
+        // The front window, its document and the caret in it are the focus path.
         let focused = current.all.filter { $0.focused }.map { $0.id }
-        #expect(focused == [current.children[0].id, documents[0].id])
+        #expect(focused == [current.children[0].id, documents[0].id, documents[0].children[0].id])
+        #expect(documents[1].children.isEmpty, "only the front document says where the caret is")
         let ids = current.all.map { $0.id }
         #expect(Set(ids).count == ids.count)
         // Asking again changes nothing.
@@ -203,6 +204,88 @@ struct PaperContextTests {
         #expect(selection.attributes?["truncated"] == .bool(true))
     }
 
+    // MARK: - Caret
+
+    private let chapters = "Preface, before any heading.\n\n# Pricing\n\nPer seat.\n\n## Annual *plans*\n\nTwo months free.\n"
+
+    @Test
+    func withNothingSelectedTheCaretIsAFocusedTextElementThatSaysWhereItIs() throws {
+        let front = makeTextView(chapters, file: "draft.md")
+        let context = PaperContext(textViews: { [front] })
+        front.setSelectedRange(NSRange(location: (chapters as NSString).range(of: "seat").location, length: 0))
+
+        let current = context.current()
+        #expect(current.all.map(\.role) == [.application, .window, .document, .text])
+        let caret = try #require(current.all.last)
+        #expect(caret.subrole == "caret")
+        #expect(caret.focused)
+        #expect(!caret.selected)
+        #expect(caret.content == nil, "no text is sent for a caret")
+        #expect(caret.attributes == [
+            "line": .integer(5), "column": .integer(5), "heading": .string("Pricing"), "heading_level": .integer(1),
+        ])
+        #expect(context.display() == ContextDisplay(title: "draft.md", detail: "line 5, under “Pricing”"))
+
+        // Under a deeper heading, whose title is given as the outline shows it.
+        front.setSelectedRange(NSRange(location: (chapters as NSString).range(of: "Two months").location, length: 0))
+        let deeper = try #require(context.current().all.last)
+        #expect(deeper.id == caret.id, "an editor's caret keeps its id as it moves")
+        #expect(deeper.attributes == [
+            "line": .integer(9), "column": .integer(1), "heading": .string("Annual plans"), "heading_level": .integer(2),
+        ])
+
+        // On a heading's own line the caret is under that heading.
+        front.setSelectedRange(NSRange(location: (chapters as NSString).range(of: "Pricing").location, length: 0))
+        #expect(context.current().all.last?.attributes?["heading"] == .string("Pricing"))
+        #expect(context.current().all.last?.attributes?["column"] == .integer(3))
+    }
+
+    @Test
+    func aCaretAboveTheFirstHeadingOrAtTheEndNamesNoHeadingItIsNotUnder() throws {
+        let front = makeTextView(chapters, file: "draft.md")
+        let context = PaperContext(textViews: { [front] })
+        front.setSelectedRange(NSRange(location: 7, length: 0))
+        let caret = try #require(context.current().all.last)
+        #expect(caret.attributes == ["line": .integer(1), "column": .integer(8)])
+        #expect(context.display() == ContextDisplay(title: "draft.md", detail: "line 1"))
+
+        // After the final line break: the empty last line, first column.
+        front.setSelectedRange(NSRange(location: (chapters as NSString).length, length: 0))
+        let end = try #require(context.current().all.last)
+        #expect(end.attributes?["line"] == .integer(10))
+        #expect(end.attributes?["column"] == .integer(1))
+        #expect(end.attributes?["heading"] == .string("Annual plans"))
+
+        // An empty document still has a caret.
+        let empty = PaperContext(textViews: { [makeTextView("")] })
+        #expect(empty.current().all.last?.attributes == ["line": .integer(1), "column": .integer(1)])
+    }
+
+    @Test
+    func theColumnCountsCharactersAndASelectionReplacesTheCaret() throws {
+        let text = "naïve 👩‍👩‍👧 café\n"
+        let front = makeTextView(text)
+        let context = PaperContext(textViews: { [front] })
+        front.setSelectedRange(NSRange(location: (text as NSString).range(of: "café").location, length: 0))
+        #expect(context.current().all.last?.attributes?["column"] == .integer(9))
+
+        front.setSelectedRange((text as NSString).range(of: "café"))
+        let selection = try #require(context.current().all.last)
+        #expect(selection.selected)
+        #expect(selection.subrole == nil)
+        #expect(!selection.focused)
+        #expect(PaperContext.caretPosition(in: front) == nil)
+    }
+
+    @Test
+    func aCaretInAnEditorWithNoWindowIsGoneAndOneNeverIssuedIsUnknown() throws {
+        let front = makeTextView(chapters)
+        let context = PaperContext(textViews: { [front] })
+        let caret = try #require(context.current().all.last)
+        #expect(context.locate(caret.id) == .gone(caret.id))
+        #expect(context.locate("caret-999") == nil)
+    }
+
     // MARK: - display
 
     @Test
@@ -210,7 +293,8 @@ struct PaperContextTests {
         let front = makeTextView(essay, file: "draft.md")
         let back = makeTextView("notes", file: "notes.md")
         let context = PaperContext(textViews: { [front, back] })
-        #expect(context.display() == ContextDisplay(title: "draft.md", detail: "(none)"))
+        front.setSelectedRange(NSRange(location: 0, length: 0))
+        #expect(context.display() == ContextDisplay(title: "draft.md", detail: "line 1, under “Draft”"))
 
         let sentence = (essay as NSString).range(of: "The command line lasted thirty years.")
         front.setSelectedRange(sentence)
@@ -233,7 +317,7 @@ struct PaperContextTests {
     func displayIsLeftToTheHostWithNothingOpenAndNamesAnUnsavedDocument() {
         #expect(PaperContext(textViews: { [] }).display() == nil)
         let unsaved = PaperContext(textViews: { [makeTextView("unsaved")] })
-        #expect(unsaved.display() == ContextDisplay(title: "Untitled", detail: "(none)"))
+        #expect(unsaved.display() == ContextDisplay(title: "Untitled", detail: "line 1"))
     }
 
     @Test

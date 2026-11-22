@@ -1,12 +1,13 @@
 import AppKit
 
 /// Paper as a provider for the Ambient Context Protocol: which documents
-/// are open, what is selected in the front one, and where a document or
-/// a selection is on screen.
+/// are open, what is selected in the front one or where the caret is in
+/// it, and where a document, a selection or the caret is on screen.
 ///
 /// Everything is answered from the windows as they stand; nothing is read
 /// from disk. A document's text is not sent: an agent gets the file's
-/// URL and the selection, and reads the file itself if it needs more.
+/// URL and the selection, or the caret's line, column and heading, and
+/// reads the file itself if it needs more.
 @MainActor
 final class PaperContext: ContextProvider {
     static let shared = PaperContext()
@@ -23,6 +24,7 @@ final class PaperContext: ContextProvider {
     private var issued: [String: Editor] = [:]
     private var documents: [(id: String, editor: Editor)] = []
     private var windows: [(id: String, editor: Editor)] = []
+    private var carets: [(id: String, editor: Editor)] = []
     private var server: ContextServer?
     /// While the server runs: the app's events after which the answer
     /// may differ, each of which says so to the server (protocol 0.2.2).
@@ -108,16 +110,20 @@ final class PaperContext: ContextProvider {
     // MARK: - current
 
     /// The app, a window for each open editor front to back, the
-    /// document in it, and the selected text in the front one:
+    /// document in it, and the selected text in the front one, or the
+    /// caret when nothing is selected:
     ///
     ///     Application → Window → Document [markdown] → Text, selected
+    ///     Application → Window → Document [markdown] → Text [caret], focused
     ///
-    /// The front window and its document are the focus path. A window
-    /// that is minimized or behind another tab is marked not visible.
+    /// The front window and its document are the focus path, and the
+    /// caret ends it. A window that is minimized or behind another tab
+    /// is marked not visible.
     func current() -> ContextElement {
         let views = textViews()
         documents.removeAll { $0.editor.view == nil }
         windows.removeAll { $0.editor.view == nil }
+        carets.removeAll { $0.editor.view == nil }
 
         var root = ContextElement(id: "app", role: .application, title: "Paper")
         for (index, view) in views.enumerated() {
@@ -126,7 +132,7 @@ final class PaperContext: ContextProvider {
                 id: documentID(for: view), role: .document, subrole: "markdown", title: Self.title(of: view),
                 url: view.documentURL?.absoluteString, focused: front
             )
-            if front, let selection = selection(in: view) { document.children = [selection] }
+            if front, let pointed = selection(in: view) ?? caret(in: view) { document.children = [pointed] }
             var window = ContextElement(id: windowID(for: view), role: .window, focused: front, children: [document])
             if let shown = view.window, !shown.isVisible || shown.isMiniaturized { window.visible = false }
             root.children.append(window)
@@ -137,19 +143,52 @@ final class PaperContext: ContextProvider {
     // MARK: - display
 
     /// Paper's words for the line a host shows: the front document's
-    /// name, and the lines of the selection in it.
+    /// name, and the lines of the selection in it, or the caret's line
+    /// and the heading it is under when nothing is selected.
     ///
     ///     draft.md · lines 12–18
+    ///     draft.md · line 42, under “Pricing”
     ///
-    /// With nothing selected the detail is `(none)`, as Sync and Marina
-    /// say it, in brackets so it cannot be read as a name. Nil with
-    /// nothing open, which leaves the wording to the host.
+    /// Nil with nothing open, which leaves the wording to the host.
     func display() -> ContextDisplay? {
         guard let front = textViews().first else { return nil }
-        let detail = Self.selectedLines(in: front).map { lines in
+        var detail = Self.selectedLines(in: front).map { lines in
             lines.start == lines.end ? "line \(lines.start)" : "lines \(lines.start)–\(lines.end)"
         }
+        if detail == nil, let caret = Self.caretPosition(in: front) {
+            detail = "line \(caret.line)" + (caret.heading.map { ", under “\($0.title)”" } ?? "")
+        }
         return ContextDisplay(title: Self.title(of: front), detail: detail ?? "(none)")
+    }
+
+    /// Where the caret is in `view` when nothing is selected: its line
+    /// and its column on that line, both counted from one, and the
+    /// heading whose section holds it, nil above the first heading. The
+    /// column counts characters as a reader does, so the caret before a
+    /// line's first character is at column 1. Nil when text is selected.
+    static func caretPosition(in view: PaperTextView) -> (line: Int, column: Int, heading: OutlineHeading?)? {
+        let selection = view.selectedRange()
+        let text = view.string as NSString
+        guard selection.length == 0, selection.location <= text.length else { return nil }
+        let at = selection.location
+        let lineStart = text.lineRange(for: NSRange(location: at, length: 0)).location
+        let before = text.substring(with: NSRange(location: lineStart, length: at - lineStart))
+        let headings = Outline.headings(in: view.string)
+        let heading = Outline.sectionIndex(containing: at, in: headings).map { headings[$0] }
+        return (line(at: at, in: text), before.count + 1, heading)
+    }
+
+    /// The caret in `view` as an element, or nil when text is selected:
+    /// a `Text` with no content, focused and not selected, that says
+    /// where it is in its attributes. An editor's caret keeps one id.
+    private func caret(in view: PaperTextView) -> ContextElement? {
+        guard let caret = Self.caretPosition(in: view) else { return nil }
+        var attributes: [String: ContextValue] = ["line": .integer(caret.line), "column": .integer(caret.column)]
+        if let heading = caret.heading {
+            attributes["heading"] = .string(heading.title)
+            attributes["heading_level"] = .integer(heading.level)
+        }
+        return ContextElement(id: caretID(for: view), role: .text, subrole: "caret", focused: true, attributes: attributes)
     }
 
     /// The first and last line of the selection in `view`, counted from
@@ -207,6 +246,21 @@ final class PaperContext: ContextProvider {
                 window: window.windowNumber
             )
         }
+        if id.hasPrefix("caret-") {
+            // The caret has a place only while nothing is selected and
+            // its line is in view.
+            let selection = view.selectedRange()
+            guard onScreen, selection.length == 0, let rect = view.screenCaretRect(at: selection.location) else {
+                return ContextLocation(id: id, state: .offscreen, window: window.windowNumber)
+            }
+            return ContextLocation(
+                id: id, state: .visible,
+                rects: [ContextGeometry.global(rect)],
+                window: window.windowNumber,
+                avoid: view.screenTextColumn().map(ContextGeometry.global),
+                edge: .right
+            )
+        }
         guard case .live(let range) = view.trackedRanges.state(of: id) else { return .gone(id) }
         let rects = onScreen ? view.screenRects(for: range) : []
         guard !rects.isEmpty else { return ContextLocation(id: id, state: .offscreen, window: window.windowNumber) }
@@ -239,6 +293,13 @@ final class PaperContext: ContextProvider {
         if let known = windows.first(where: { $0.editor.view === view }) { return known.id }
         let id = mint("win", for: view)
         if let editor = issued[id] { windows.append((id, editor)) }
+        return id
+    }
+
+    private func caretID(for view: PaperTextView) -> String {
+        if let known = carets.first(where: { $0.editor.view === view }) { return known.id }
+        let id = mint("caret", for: view)
+        if let editor = issued[id] { carets.append((id, editor)) }
         return id
     }
 
@@ -337,6 +398,31 @@ extension PaperTextView {
             guard !shown.isNull, shown.width >= 0.5, shown.height >= 0.5 else { return nil }
             return window.convertToScreen(convert(shown, to: nil))
         }
+    }
+
+    /// The caret's line at `location`, one point wide, in AppKit screen
+    /// coordinates; nil when that line is not in view.
+    func screenCaretRect(at location: Int) -> NSRect? {
+        guard let window, let layoutManager, let container = textContainer, let storage = textStorage,
+              location <= storage.length else { return nil }
+        let origin = textContainerOrigin
+        var rect: NSRect
+        if location == storage.length, layoutManager.extraLineFragmentTextContainer != nil {
+            // After a final line break the caret is on the empty last line.
+            rect = layoutManager.extraLineFragmentRect
+        } else if storage.length == 0 {
+            return nil
+        } else {
+            let last = location == storage.length
+            let glyph = layoutManager.glyphIndexForCharacter(at: last ? location - 1 : location)
+            let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let spot = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+            rect = NSRect(x: last ? spot.maxX : spot.minX, y: line.minY, width: 1, height: line.height)
+        }
+        rect = NSRect(x: rect.minX + origin.x, y: rect.minY + origin.y, width: 1, height: rect.height)
+        let shown = rect.intersection(visibleRect)
+        guard !shown.isNull, shown.height >= 0.5 else { return nil }
+        return window.convertToScreen(convert(shown, to: nil))
     }
 
     /// The visible part of the column the text is set in, in AppKit
