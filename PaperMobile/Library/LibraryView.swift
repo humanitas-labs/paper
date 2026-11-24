@@ -651,8 +651,6 @@ enum NoteMiniature {
 
 /// The toast while notes are picked, after Spatial's: a dark capsule with
 /// a folder to move them and a bin to delete them.
-/// The two glyphs are Spatial's own, copied for this demo build only; they
-/// are placeholders to replace before Paper is distributed.
 private struct SelectionToast: View {
     /// Spatial's corners: rounded, not a full capsule.
     static let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -664,21 +662,9 @@ private struct SelectionToast: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            button(Image("SpatialFolder"), label: "Move", action: move)
-            if let rename {
-                Button(action: rename) {
-                    // Drawn to the Spatial glyphs' grid and weight: the
-                    // system pencil sits larger than they do.
-                    PencilGlyph()
-                        .stroke(ToastPalette.glyph, style: StrokeStyle(lineWidth: 2 * 22 / 24, lineCap: .round, lineJoin: .round))
-                        .frame(width: 22, height: 22)
-                        .frame(width: 56, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Rename")
-            }
-            button(Image("SpatialTrash"), label: "Delete", action: delete)
+            button(FolderGlyph(), label: "Move", action: move)
+            if let rename { button(PencilGlyph(), label: "Rename", action: rename) }
+            button(TrashGlyph(), label: "Delete", action: delete)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -691,8 +677,8 @@ private struct SelectionToast: View {
         .overlay(Self.shape.strokeBorder(ToastPalette.border, lineWidth: 1))
     }
 
-    private func button(_ image: Image, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { BarGlyph(image: image) }
+    private func button(_ glyph: some Shape, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { BarGlyph(glyph: glyph) }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
     }
@@ -828,17 +814,17 @@ struct FolderSilhouette: Shape {
     }
 }
 
-/// A glyph in a bottom capsule: one size and color for every button.
-private struct BarGlyph: View {
-    let image: Image
+/// A glyph in a toast: one size, weight and color for every button.
+private struct BarGlyph<Glyph: Shape>: View {
+    let glyph: Glyph
+
+    /// Two points on the 24 pt grid, drawn at 22 pt.
+    static var style: StrokeStyle { StrokeStyle(lineWidth: 2 * 22 / 24, lineCap: .round, lineJoin: .round) }
 
     var body: some View {
-        image
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
+        glyph
+            .stroke(ToastPalette.glyph, style: Self.style)
             .frame(width: 22, height: 22)
-            .foregroundStyle(ToastPalette.glyph)
             .frame(width: 56, height: 44)
             .contentShape(Rectangle())
     }
@@ -940,7 +926,7 @@ private struct CreateToast: View {
     }
 }
 
-/// Spatial's classic folder with a plus badge at its top right, as the
+/// The folder glyph with a plus badge at its top right, as the
 /// system's folder-plus has: the badge is cut out of the folder's corner
 /// so the two never touch.
 private struct FolderPlusGlyph: View {
@@ -950,10 +936,8 @@ private struct FolderPlusGlyph: View {
     private static let arm: CGFloat = 2.7
 
     var body: some View {
-        Image("SpatialFolder")
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
+        FolderGlyph()
+            .stroke(.foreground, style: BarGlyph<FolderGlyph>.style)
             // The folder gives up a little room at the top right to the badge.
             .frame(width: 19, height: 19)
             .frame(width: 22, height: 22, alignment: .bottomLeading)
@@ -1043,7 +1027,7 @@ private struct PickGesture: ViewModifier {
     }
 }
 
-/// A pencil on the Spatial glyphs' 24 pt grid: a slanted body with a
+/// A pencil on the toast glyphs' 24 pt grid: a slanted body with a
 /// rounded tip at the lower left and a band below its end.
 struct PencilGlyph: Shape {
     func path(in rect: CGRect) -> Path {
@@ -1059,6 +1043,62 @@ struct PencilGlyph: Shape {
         path.closeSubpath()
         path.move(to: p(13.3, 6.8))
         path.addLine(to: p(17.2, 10.7))
+        return path
+    }
+}
+
+/// A folder on the toast glyphs' 24 pt grid: a rounded body whose tab
+/// steps down at the top left.
+struct FolderGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+        var path = Path()
+        path.move(to: p(3, 8))
+        path.addQuadCurve(to: p(6, 5), control: p(3, 5))
+        path.addLine(to: p(9, 5))
+        path.addQuadCurve(to: p(10.9, 5.8), control: p(10.2, 5))
+        path.addLine(to: p(12.1, 7))
+        path.addQuadCurve(to: p(14, 7.8), control: p(12.8, 7.8))
+        path.addLine(to: p(18, 7.8))
+        path.addQuadCurve(to: p(21, 10.8), control: p(21, 7.8))
+        path.addLine(to: p(21, 16))
+        path.addQuadCurve(to: p(18, 19), control: p(21, 19))
+        path.addLine(to: p(6, 19))
+        path.addQuadCurve(to: p(3, 16), control: p(3, 19))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A bin on the toast glyphs' 24 pt grid: a lid with a flat handle over a
+/// tapered body, ribbed twice.
+struct TrashGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+        var path = Path()
+        // The lid and its handle.
+        path.move(to: p(3.5, 6.5))
+        path.addLine(to: p(20.5, 6.5))
+        path.move(to: p(9, 6.5))
+        path.addLine(to: p(9, 5))
+        path.addQuadCurve(to: p(10.5, 3.5), control: p(9, 3.5))
+        path.addLine(to: p(13.5, 3.5))
+        path.addQuadCurve(to: p(15, 5), control: p(15, 3.5))
+        path.addLine(to: p(15, 6.5))
+        // The body, narrowing to a rounded foot.
+        path.move(to: p(5.5, 6.5))
+        path.addLine(to: p(6.7, 18))
+        path.addQuadCurve(to: p(8.9, 20), control: p(6.9, 20))
+        path.addLine(to: p(15.1, 20))
+        path.addQuadCurve(to: p(17.3, 18), control: p(17.1, 20))
+        path.addLine(to: p(18.5, 6.5))
+        // Ribs.
+        path.move(to: p(10, 10.5))
+        path.addLine(to: p(10, 16))
+        path.move(to: p(14, 10.5))
+        path.addLine(to: p(14, 16))
         return path
     }
 }
