@@ -8,14 +8,26 @@ struct MarqueeLayer: View {
     let rect: CGRect?
     /// The rectangle last dragged, kept so it can fade where it was let go.
     @State private var last = CGRect.zero
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// On the dark page, Spatial's white line and wash. On the light page
+    /// the same in black read heavy, and white is lost on the pale cards,
+    /// so it takes the system blue of the picked cards' rings.
+    private static func line(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? .white.opacity(0.9) : Color(nsColor: .systemBlue).opacity(0.85)
+    }
+
+    private static func wash(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? .white.opacity(0.2) : Color(nsColor: .systemBlue).opacity(0.12)
+    }
 
     var body: some View {
         GeometryReader { _ in
             // Square-cornered, a light wash inside a crisp line, as
             // Spatial draws its rubber band.
             Rectangle()
-                .fill(Color.primary.opacity(0.2))
-                .overlay(Rectangle().strokeBorder(Color.primary.opacity(0.9), lineWidth: 1.5))
+                .fill(Self.wash(colorScheme))
+                .overlay(Rectangle().strokeBorder(Self.line(colorScheme), lineWidth: 1.5))
                 .frame(width: (rect ?? last).width, height: (rect ?? last).height)
                 .offset(x: (rect ?? last).minX, y: (rect ?? last).minY)
                 .opacity(rect == nil ? 0 : 1)
