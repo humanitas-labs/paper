@@ -80,3 +80,40 @@ struct LibrarySearchTests {
         #expect(FolderListing.search("absent", under: root, isDefaultRoot: false).isEmpty)
     }
 }
+
+@MainActor
+struct ZoomDismissTests {
+    private struct Harness: View {
+        let url: URL
+        @Namespace var cards
+        @State var path: [URL] = []
+        var body: some View {
+            NavigationStack(path: $path) {
+                Button("Open") { path = [url] }
+                    .matchedTransitionSource(id: url, in: cards)
+                    .navigationDestination(for: URL.self) { url in
+                        NoteView(url: url).navigationTransition(.zoom(sourceID: url, in: cards))
+                    }
+                    .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { path = [url] } }
+            }
+        }
+    }
+
+    /// A pull down must not close a note; only the sideways swipe does.
+    @Test func aNoteOpenedWithTheZoomIgnoresAPullDown() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("zoom.md")
+        try "# Hi\n\nBody".write(to: url, atomically: true, encoding: .utf8)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.rootViewController = UIHostingController(rootView: Harness(url: url))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        for _ in 0..<30 { try await Task.sleep(for: .milliseconds(100)); window.layoutIfNeeded() }
+        var recognizers: [UIGestureRecognizer] = []
+        func walk(_ v: UIView) { recognizers += v.gestureRecognizers ?? []; v.subviews.forEach(walk) }
+        walk(window)
+        let pullDown = recognizers.filter { $0.name?.contains("ZoomInteractiveDismissSwipeDown") == true }
+        try #require(!pullDown.isEmpty)
+        #expect(pullDown.allSatisfy { !$0.isEnabled })
+        #expect(recognizers.contains { $0.name == "UINavigationController.edgeSwipe" && $0.isEnabled })
+    }
+}

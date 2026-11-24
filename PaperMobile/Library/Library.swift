@@ -158,6 +158,9 @@ struct FolderListing: Sendable {
 
 /// Reads and writes a note in place, coordinated with Files and iCloud.
 enum NoteFile {
+    /// Posted after a note is written, so the library shows its new title.
+    static let didSaveNotification = Notification.Name("PaperNoteDidSave")
+
     static func read(_ url: URL) throws -> String {
         var result: Result<String, Error> = .failure(CocoaError(.fileReadUnknown))
         var coordinationError: NSError?
@@ -176,5 +179,6 @@ enum NoteFile {
         }
         if let coordinationError { throw coordinationError }
         try result.get()
+        NotificationCenter.default.post(name: didSaveNotification, object: url)
     }
 }

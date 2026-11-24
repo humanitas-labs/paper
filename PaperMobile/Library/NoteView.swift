@@ -22,6 +22,7 @@ struct NoteView: View {
         // view, so its `task` never runs and the note never loads.
         ZStack {
             Color(uiColor: Appearance.canvas).ignoresSafeArea()
+            PullDownDismissBlocker().frame(width: 0, height: 0)
             if let failure {
                 Text(failure)
                     .foregroundStyle(.secondary)
@@ -79,6 +80,45 @@ struct NoteView: View {
             saved = content
         } catch {
             failure = "This note couldn’t be saved: \(error.localizedDescription)"
+        }
+    }
+}
+
+/// A note opened with the zoom transition closes on a pull down, which
+/// fires while scrolling back to the top. Only the sideways swipe (the
+/// navigation controller's own) should close it, so this view switches the
+/// zoom's pull-down recognizer off, found by its name, whenever it is
+/// attached or the screen lays out.
+private struct PullDownDismissBlocker: UIViewRepresentable {
+    func makeUIView(context: Context) -> BlockerView { BlockerView() }
+    func updateUIView(_ view: BlockerView, context: Context) { view.disable() }
+
+    final class BlockerView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            disable()
+            // The transition attaches its recognizer once the push lands.
+            for delay in [0.1, 0.5, 1.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.disable() }
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            disable()
+        }
+
+        func disable() {
+            guard let window else { return }
+            Self.disable(in: window)
+        }
+
+        private static func disable(in view: UIView) {
+            for recognizer in view.gestureRecognizers ?? []
+            where recognizer.name?.contains("ZoomInteractiveDismissSwipeDown") == true {
+                recognizer.isEnabled = false
+            }
+            view.subviews.forEach(disable(in:))
         }
     }
 }

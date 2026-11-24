@@ -56,7 +56,8 @@ struct FolderView: View {
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
-    private let columns = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 16)]
+    /// Three columns on a phone, as many as fit at that size on wider screens.
+    private let columns = [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 12)]
 
     var body: some View {
         ScrollView {
@@ -99,6 +100,10 @@ struct FolderView: View {
             if phase == .active { Task { await reload() } }
         }
         .onAppear { Task { await reload() } }
+        // A note's last save lands as the library reappears; reload after it.
+        .onReceive(NotificationCenter.default.publisher(for: NoteFile.didSaveNotification)) { _ in
+            Task { await reload(); if searching { await search() } }
+        }
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -113,7 +118,7 @@ struct FolderView: View {
     }
 
     private func noteGrid(_ notes: [FolderListing.Note]) -> some View {
-        LazyVGrid(columns: columns, spacing: 16) {
+        LazyVGrid(columns: columns, spacing: 12) {
             ForEach(notes) { item in
                 NavigationLink(value: LibraryRoute.note(item.url)) {
                     NoteCard(note: item).matchedTransitionSource(id: item.url, in: cards) { source in
@@ -127,7 +132,7 @@ struct FolderView: View {
 
     @ViewBuilder private var contents: some View {
                 if !listing.folders.isEmpty {
-                    LazyVGrid(columns: columns, spacing: 16) {
+                    LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(listing.folders) { item in
                             NavigationLink(value: LibraryRoute.folder(item.url)) {
                                 FolderCard(folder: item).matchedTransitionSource(id: item.url, in: cards)
@@ -228,41 +233,94 @@ struct FolderCard: View {
     }
 
     private var label: some View {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(folder.itemCount == 1 ? "1 item" : "\(folder.itemCount) items")
-                        .font(.system(size: 12))
+                        .font(.system(size: 10))
                         .foregroundStyle(LibraryPalette.secondaryLabel)
                     Text(folder.name)
-                        .font(.system(size: 14, weight: .medium))
-                        .tracking(-0.07)
+                        .font(.system(size: 12, weight: .medium))
+                        .tracking(-0.06)
                         .foregroundStyle(.white)
                         .lineLimit(1)
                 }
     }
 }
 
-/// Marina's spatial note card: a quiet panel with the note's title.
+/// Marina's spatial note card: the note itself in miniature, drawn by
+/// the editor at a phone's page width and scaled into the card, so the
+/// card is the page it zooms into. Until the miniature is drawn, the card
+/// shows the title.
 struct NoteCard: View {
     let note: FolderListing.Note
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var miniature: UIImage?
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
             .fill(LibraryPalette.card)
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(LibraryPalette.border, lineWidth: 1))
-            .aspectRatio(150.0 / 200.0, contentMode: .fit)
-            .overlay(alignment: .topLeading) {
-                // The page's own heading face, so the title reads as the
-                // note it grows into.
-                Text(note.title)
-                    .font(Font(Appearance.headingFont(size: 15)))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(4)
-                    .padding(.horizontal, 15)
-                    .padding(.top, 17)
+            .aspectRatio(NoteMiniature.aspect, contentMode: .fit)
+            .overlay {
+                if let miniature {
+                    Image(uiImage: miniature)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Text(note.title)
+                        .font(Font(Appearance.headingFont(size: 11)))
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(10)
+                }
             }
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .accessibilityElement(children: .combine)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(LibraryPalette.border, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(note.title)
+            .task(id: NoteMiniature.Key(url: note.url, modified: note.modified, dark: colorScheme == .dark)) {
+                miniature = NoteMiniature.image(for: note, dark: colorScheme == .dark)
+            }
+    }
+}
+
+/// Miniatures of notes, drawn by an offscreen editor and kept for as long
+/// as the note is unchanged.
+@MainActor
+enum NoteMiniature {
+    /// The card's shape, a page a phone's width across.
+    static let aspect: CGFloat = 3.0 / 4.0
+    static let pageWidth: CGFloat = 402
+    /// Only the head of a long note can show.
+    static let characterLimit = 2400
+
+    struct Key: Hashable {
+        let url: URL
+        let modified: Date
+        let dark: Bool
+    }
+
+    private static var cache: [Key: UIImage] = [:]
+
+    static func image(for note: FolderListing.Note, dark: Bool) -> UIImage? {
+        let key = Key(url: note.url, modified: note.modified, dark: dark)
+        if let cached = cache[key] { return cached }
+        guard let text = try? NoteFile.read(note.url) else { return nil }
+        let head = String(text.prefix(characterLimit))
+        let size = CGSize(width: pageWidth, height: pageWidth / aspect)
+        let editor = MobileTextView()
+        editor.overrideUserInterfaceStyle = dark ? .dark : .light
+        editor.frame = CGRect(origin: .zero, size: size)
+        editor.documentURL = note.url
+        editor.load(head)
+        editor.layoutIfNeeded()
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            editor.layer.render(in: context.cgContext)
+        }
+        cache[key] = image
+        return image
     }
 }
 
