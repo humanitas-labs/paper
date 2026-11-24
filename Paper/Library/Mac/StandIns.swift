@@ -64,7 +64,7 @@ struct FolderCard: View {
                         .frame(width: proxy.size.width * 0.78, alignment: .leading)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                         .padding(.leading, 29.5 * scale)
-                        .padding(.bottom, 37 * scale)
+                        .padding(.bottom, 29 * scale)
                 }
             }
             // Picked: a bright outline around the folder's silhouette.
@@ -87,16 +87,20 @@ struct FolderCard: View {
     }
 
     /// Spatial's label: the count and the name at one size in the system
-    /// sans, regular weight, the count in a soft gray. Sized from the card,
-    /// about 5% of its width, so the type scales with the folder.
+    /// sans, regular weight, the count in a soft gray. Spatial sets it
+    /// near 20 pt, where the system face is the tighter display cut; at a
+    /// card's smaller size the same look needs the letters drawn in a
+    /// little. Sized from the card (5.6% of its width), so it scales.
     private func label(scale: CGFloat) -> some View {
-        let size = 15.5 * scale
-        return VStack(alignment: .leading, spacing: 2.5 * scale) {
+        let size = 16.3 * scale
+        return VStack(alignment: .leading, spacing: 1.6 * scale) {
             Text(folder.itemCount == 1 ? "1 item" : "\(folder.itemCount) items")
                 .font(.system(size: size, weight: .regular))
+                .tracking(-0.022 * size)
                 .foregroundStyle(FolderCard.countInk)
             Text(folder.name)
                 .font(.system(size: size, weight: .regular))
+                .tracking(-0.022 * size)
                 .foregroundStyle(FolderCard.nameInk)
                 .lineLimit(1)
         }
