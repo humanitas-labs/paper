@@ -60,11 +60,11 @@ struct FolderCard: View {
                 // anchored at the bottom, it cannot run past the card.
                 GeometryReader { proxy in
                     let scale = proxy.size.width / Self.shape.width
-                    label
+                    label(scale: scale)
                         .frame(width: proxy.size.width * 0.78, alignment: .leading)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                        .padding(.leading, 25.2 * scale)
-                        .padding(.bottom, 26 * scale)
+                        .padding(.leading, 29.5 * scale)
+                        .padding(.bottom, 37 * scale)
                 }
             }
             // Picked: a bright outline around the folder's silhouette.
@@ -86,18 +86,24 @@ struct FolderCard: View {
             .modifier(CardShadow())
     }
 
-    private var label: some View {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(folder.itemCount == 1 ? "1 item" : "\(folder.itemCount) items")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LibraryPalette.secondaryLabel)
-                    Text(folder.name)
-                        .font(.system(size: 14, weight: .medium))
-                        .tracking(-0.07)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
+    /// Spatial's label: the count and the name at one size in the system
+    /// sans, regular weight, the count in a soft gray. Sized from the card,
+    /// about 5% of its width, so the type scales with the folder.
+    private func label(scale: CGFloat) -> some View {
+        let size = 15.5 * scale
+        return VStack(alignment: .leading, spacing: 2.5 * scale) {
+            Text(folder.itemCount == 1 ? "1 item" : "\(folder.itemCount) items")
+                .font(.system(size: size, weight: .regular))
+                .foregroundStyle(FolderCard.countInk)
+            Text(folder.name)
+                .font(.system(size: size, weight: .regular))
+                .foregroundStyle(FolderCard.nameInk)
+                .lineLimit(1)
+        }
     }
+
+    static let countInk = Color(nsColor: LibraryPalette.nsColor(dark: 0x959EAC, light: 0x6E7073))
+    static let nameInk = Color(nsColor: LibraryPalette.nsColor(dark: 0xF2F3F4, light: 0x1A1C1F))
 }
 
 /// The folder artwork's outline (its back panel and tab), fitted to the
