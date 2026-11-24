@@ -4,15 +4,38 @@ import AppKit
 import SwiftUI
 
 enum LibraryPalette {
-    static let background = dynamic(dark: 0x0C0D0D, light: 0xE8EAEB)
-    static let card = dynamic(dark: 0x212426, light: 0xF3F4F5)
-    static let border = dynamic(dark: 0x2F3233, light: 0xFFFFFF)
+    /// From the theme's page color, so the library wears the theme the
+    /// notes do. On the light page a note is the page itself, a card on a
+    /// dimmed ground, as in Spatial. On the dark page the ground is the
+    /// note's own color and a card is lifted a little off it.
+    static let background = themed { canvas, dark in
+        dark ? canvas : canvas.blended(withFraction: 0.07, of: .black) ?? canvas
+    }
+    static let card = themed { canvas, dark in
+        dark ? canvas.blended(withFraction: 0.06, of: .white) ?? canvas : canvas
+    }
+    static let border = themed { canvas, dark in
+        dark ? canvas.blended(withFraction: 0.12, of: .white) ?? canvas : .white
+    }
     static let secondaryLabel = dynamic(dark: 0x959EAC, light: 0x6B7280)
 
     static func nsColor(dark: UInt32, light: UInt32) -> NSColor {
         NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(hex: dark) : NSColor(hex: light)
         }
+    }
+
+    /// A color worked out from the theme's canvas in each appearance, read
+    /// as it draws, so a theme change shows once the library redraws.
+    private static func themed(_ make: @escaping @Sendable (NSColor, Bool) -> NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            var canvas = NSColor.white
+            appearance.performAsCurrentDrawingAppearance {
+                canvas = (MainActor.assumeIsolated { Appearance.canvas }.usingColorSpace(.sRGB)) ?? .white
+            }
+            return make(canvas, dark)
+        })
     }
 
     private static func dynamic(dark: UInt32, light: UInt32) -> Color { Color(nsColor: nsColor(dark: dark, light: light)) }
@@ -32,6 +55,7 @@ extension NSColor {
 struct FolderCard: View {
     let folder: FolderListing.Folder
     var selected = false
+    @Environment(\.colorScheme) private var colorScheme
 
     /// The artwork draws the folder inside a larger canvas (room for its
     /// shadow): the shape spans x 10.5–301.6 and y 4.5–210 of 312 × 226.
@@ -50,6 +74,10 @@ struct FolderCard: View {
                     let scale = proxy.size.width / Self.shape.width
                     Image("FolderShape")
                         .resizable()
+                        // The dark art was drawn for a near-black page; on
+                        // the theme's page it is lifted to sit level with
+                        // the note cards.
+                        .brightness(colorScheme == .dark ? 0.07 : 0)
                         .frame(width: Self.canvas.width * scale, height: Self.canvas.height * scale)
                         .offset(x: -Self.shape.minX * scale, y: -Self.shape.minY * scale)
                 }

@@ -35,6 +35,7 @@ struct LibraryView: View {
     @State private var width: CGFloat = 0
     /// Shown when the library shows hidden items: the ones Finder hides.
     @State private var hiddenItems: Set<URL> = []
+    @State private var themeGeneration = 0
     /// The card the rename sheet is for.
     @State private var renameTarget: URL?
     /// The folder the listing is of; until the new folder's arrives, the
@@ -129,6 +130,11 @@ struct LibraryView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(keyCommands)
         .onChange(of: showsHidden) { Task { await reload() } }
+        // A theme change redraws the library in the theme's colors.
+        .id(themeGeneration)
+        .onReceive(NotificationCenter.default.publisher(for: Configuration.didChangeNotification)) { _ in
+            themeGeneration += 1
+        }
         .task(id: folder) {
             selection.removeAll()
             cards.rects.removeAll()
