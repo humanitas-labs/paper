@@ -164,6 +164,13 @@ enum NoteMiniature {
         }
     }
 
+    /// Drops every miniature, as a settings change does.
+    static func invalidate() {
+        generation += 1
+        cache.removeAll()
+        order.removeAll()
+    }
+
     private static func startObserving() {
         guard observer == nil else { return }
         observer = NotificationCenter.default.addObserver(

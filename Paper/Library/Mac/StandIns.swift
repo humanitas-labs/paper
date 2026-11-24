@@ -13,7 +13,17 @@ enum LibraryPalette {
     }
     static let card = themed(cardColor)
     static func cardColor(canvas: NSColor, dark: Bool) -> NSColor {
-        dark ? canvas.blended(withFraction: 0.06, of: .white) ?? canvas : canvas
+        dark ? canvas.blended(withFraction: darkLift, of: .white) ?? canvas : canvas
+    }
+
+    // TEMPORARY: shades to try for the dark card, picked from the library's
+    // menu, until themes declare their own surface shades.
+    static let darkLiftKey = "libraryDarkSurfaceLift"
+    static let darkLifts: [Double] = [0.06, 0.045, 0.03, 0.015]
+    /// How far the dark card is lifted from the page toward white.
+    static var darkLift: CGFloat {
+        let stored = UserDefaults.standard.double(forKey: darkLiftKey)
+        return stored > 0 ? stored : 0.06
     }
 
     /// The note card's color in an appearance, resolved now.
@@ -26,12 +36,12 @@ enum LibraryPalette {
         return cardColor(canvas: canvas, dark: dark).usingColorSpace(.sRGB) ?? .white
     }
     static let border = themed { canvas, dark in
-        dark ? canvas.blended(withFraction: 0.12, of: .white) ?? canvas : .white
+        dark ? canvas.blended(withFraction: darkLift * 2, of: .white) ?? canvas : .white
     }
     /// The folder's fine rim in dark mode: halfway between the card and
     /// the note card's border, which read harsh around a folder.
     static let folderRim = themed { canvas, dark in
-        dark ? canvas.blended(withFraction: 0.09, of: .white) ?? canvas : .clear
+        dark ? canvas.blended(withFraction: darkLift * 1.5, of: .white) ?? canvas : .clear
     }
     static let secondaryLabel = dynamic(dark: 0x959EAC, light: 0x6B7280)
 

@@ -45,6 +45,12 @@ struct LibraryView: View {
     @State private var hovered: HoverTarget?
     @State private var renaming = false
     @State private var renameText = ""
+    @AppStorage(LibraryGrouping.storageKey) private var groupingStorage = "none"
+    @State private var query = ""
+    @State private var searching = false
+    @FocusState private var searchFocused: Bool
+    /// Each note's frontmatter, read after the listing, for grouping.
+    @State private var properties: [URL: [String: String]] = [:]
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
     private let scrolls: Bool
 
@@ -64,6 +70,10 @@ struct LibraryView: View {
     private let noteColumns = [GridItem(.adaptive(minimum: 150, maximum: 210), spacing: 18)]
 
     var body: some View {
+        observing(library)
+    }
+
+    private var library: some View {
         VStack(spacing: 0) {
             Group {
                 if scrolls {
@@ -98,16 +108,16 @@ struct LibraryView: View {
                 .padding(.leading, navigation.fullScreen ? 94 : 181)
                 .ignoresSafeArea()
         }
-        // How many cards are picked, across from the folder's name.
+        // Across from the folder's name: how many are picked, the
+        // grouping and the search.
         .overlay(alignment: .topTrailing) {
-            if !selection.isEmpty {
-                LibraryTitlePill(title: selection.count == 1 ? "1 selected" : "\(selection.count) selected")
-                    .monospacedDigit()
-                    .frame(height: 52)
-                    .padding(.trailing, 20)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-            }
+            LibraryControls(
+                selectionCount: selection.count, query: $query, searching: $searching,
+                searchFocus: $searchFocused, showGroupMenu: showGroupMenu
+            )
+            .frame(height: 52)
+            .padding(.trailing, 14)
+            .ignoresSafeArea()
         }
         .overlay(MarqueeLayer(rect: marquee))
         // Tabs, once there are two, at the foot of the window.
@@ -149,13 +159,6 @@ struct LibraryView: View {
         .environment(\.libraryWidth, width)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(keyCommands)
-        .onChange(of: showsHidden) { Task { await reload() } }
-        // What agent apps are told the library shows.
-        .onChange(of: listing.folders) { publishContext() }
-        .onChange(of: listing.notes) { publishContext() }
-        .onChange(of: hiddenItems) { publishContext() }
-        .onChange(of: selection) { publishContext() }
-        .onChange(of: hovered?.url) { publishContext() }
         .onAppear {
             navigation.frames = cards
             publishContext()
@@ -169,6 +172,12 @@ struct LibraryView: View {
             selection.removeAll()
             cards.rects.removeAll()
             hovered = nil
+            // A search is for the folder it was typed in.
+            if query.isEmpty == false || searching {
+                query = ""
+                searching = false
+                searchFocused = false
+            }
             await reload(arriving: true)
             watch()
         }
@@ -176,6 +185,23 @@ struct LibraryView: View {
             watcher?.cancel()
             watcher = nil
         }
+    }
+
+    /// What the library follows: settings, and what agent apps are told it
+    /// shows.
+    private func observing(_ view: some View) -> some View {
+        view
+            .onChange(of: showsHidden) { Task { await reload() } }
+        // What agent apps are told the library shows.
+            .onChange(of: listing.folders) { publishContext() }
+            .onChange(of: listing.notes) { publishContext() }
+            .onChange(of: hiddenItems) { publishContext() }
+            .onChange(of: selection) { publishContext() }
+            .onChange(of: hovered?.url) { publishContext() }
+            .onChange(of: query) { publishContext() }
+            .onChange(of: groupingStorage) { publishContext() }
+            .onChange(of: properties) { publishContext() }
+            .task(id: listing.notes) { await readProperties() }
     }
 
     private var page: some View {
@@ -195,9 +221,11 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var grid: some View {
-        if !listing.folders.isEmpty {
+        let folders = visibleFolders
+        let groups = noteGroups
+        if !folders.isEmpty {
             LazyVGrid(columns: folderColumns, alignment: .leading, spacing: 18) {
-                ForEach(listing.folders) { item in
+                ForEach(folders) { item in
                     FolderCard(folder: item, selected: selection.contains(item.url))
                         .background(FolderCard.shadow)
                         .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
@@ -209,30 +237,88 @@ struct LibraryView: View {
                 }
             }
         }
-        if !listing.notes.isEmpty {
-            LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
-                ForEach(listing.notes) { item in
-                    LibraryNoteTile(note: item, selected: selection.contains(item.url))
-                        .modifier(NoteShadow())
-                        .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
-                        .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
-                        .modifier(CardFrame(url: item.url, frames: cards))
-                        .transition(Self.cardTransition)
+        ForEach(groups) { group in
+            VStack(alignment: .leading, spacing: 14) {
+                if !group.title.isEmpty { NoteGroupHeading(group: group) }
+                LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
+                    ForEach(group.notes) { item in
+                        LibraryNoteTile(note: item, selected: selection.contains(item.url))
+                            .modifier(NoteShadow())
+                            .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
+                            .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
+                            .modifier(CardFrame(url: item.url, frames: cards))
+                            .transition(Self.cardTransition)
+                    }
                 }
             }
         }
-        if loaded, listing.folders.isEmpty, listing.notes.isEmpty {
-            Text("No notes here yet.")
+        if loaded, folders.isEmpty, groups.isEmpty {
+            Text(isFiltering ? "Nothing matches “\(query.trimmingCharacters(in: .whitespaces))”." : "No notes here yet.")
                 .foregroundStyle(LibraryPalette.secondaryLabel)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 120)
         }
     }
 
+    // MARK: Grouping and search
+
+    private var grouping: LibraryGrouping { LibraryGrouping(storage: groupingStorage) }
+    private var isFiltering: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    private var visibleFolders: [FolderListing.Folder] {
+        guard listedFolder == nil || listedFolder == folder else { return [] }
+        return listing.folders.filter { LibraryOrganize.matches(query, name: $0.name) }
+    }
+
+    private var visibleNotes: [FolderListing.Note] {
+        guard listedFolder == nil || listedFolder == folder else { return [] }
+        return listing.notes.filter { LibraryOrganize.matches(query, name: $0.url.lastPathComponent, title: $0.title) }
+    }
+
+    private var noteGroups: [NoteGroup] {
+        var grouping = grouping
+        // A property no note here has groups nothing; show the plain list.
+        if case .property(let key) = grouping, !properties.values.contains(where: { $0[key] != nil }) { grouping = .none }
+        return LibraryOrganize.groups(visibleNotes, by: grouping, properties: properties)
+    }
+
+    private func showGroupMenu(under frame: CGRect) {
+        if menu != nil {
+            withAnimation(LibraryMenuLayer.wash) { menu = nil }
+            return
+        }
+        var choices: [LibraryGrouping] = [.none, .modified, .name]
+        choices += LibraryOrganize.groupableKeys(properties).map { .property($0) }
+        let items = choices.map { choice in
+            LibraryMenuItem(title: choice.title, glyph: GroupGlyph(), hint: choice == grouping ? "✓" : "") {
+                withAnimation(LibraryMotion.itemSpring) { groupingStorage = choice.storage }
+            }
+        }
+        // Under the button, its right edge on the button's; the menu turns
+        // left at the window's edge.
+        showMenu(at: CGPoint(x: frame.maxX, y: frame.maxY + 4), items: items)
+    }
+
+    private func openSearch() {
+        searching = true
+        DispatchQueue.main.async { searchFocused = true }
+    }
+
+    /// Reads the frontmatter of the notes shown, off the main thread.
+    private func readProperties() async {
+        let notes = listing.notes.map(\.url)
+        let folder = folder
+        let read = await Task.detached(priority: .utility) {
+            Dictionary(uniqueKeysWithValues: notes.map { ($0.standardizedFileURL, NoteProperties.read($0)) })
+        }.value
+        guard folder == self.folder, read != properties else { return }
+        properties = read
+    }
+
     private func publishContext() {
         navigation.snapshot = LibrarySnapshot(
-            folders: listedFolder == nil || listedFolder == folder ? listing.folders : [],
-            notes: listedFolder == nil || listedFolder == folder ? listing.notes : [],
+            folders: visibleFolders,
+            notes: noteGroups.flatMap(\.notes),
             hidden: hiddenItems, selection: selection, hovered: hovered?.url
         )
     }
@@ -299,7 +385,7 @@ struct LibraryView: View {
     }
 
     private func selectAll() {
-        selection = Set(listing.folders.map(\.url) + listing.notes.map(\.url))
+        selection = Set(visibleFolders.map(\.url) + visibleNotes.map(\.url))
     }
 
     /// To the Trash, recoverable; the folder watcher takes the cards away.
@@ -437,7 +523,23 @@ struct LibraryView: View {
             LibraryMenuItem(
                 title: showsHidden ? "Hide Hidden Items" : "Show Hidden Items", glyph: EyeGlyph(), hint: "⇧⌘."
             ) { showsHidden.toggle() },
-        ]
+        ] + shadeItems
+    }
+
+    /// TEMPORARY: the dark card's shade, to compare in place.
+    @Environment(\.colorScheme) private var colorScheme
+    private var shadeItems: [LibraryMenuItem] {
+        guard colorScheme == .dark else { return [] }
+        return LibraryPalette.darkLifts.enumerated().map { index, lift in
+            LibraryMenuItem(
+                title: "Card Shade \(index + 1) (\(String(format: "%g", lift * 100))%)", glyph: FolderGlyph(),
+                hint: abs(LibraryPalette.darkLift - lift) < 0.0001 ? "✓" : ""
+            ) {
+                UserDefaults.standard.set(lift, forKey: LibraryPalette.darkLiftKey)
+                NoteMiniature.invalidate()
+                themeGeneration += 1
+            }
+        }
     }
 
     /// An empty `Untitled.md`, numbered when the name is taken, left
@@ -468,16 +570,21 @@ struct LibraryView: View {
                 .keyboardShortcut(".", modifiers: [.command, .shift])
             Button("Enclosing Folder") { goUp() }
                 .keyboardShortcut(.upArrow, modifiers: .command)
+                .disabled(searchFocused)
+            Button("Find") { openSearch() }
+                .keyboardShortcut("f", modifiers: .command)
             Button("Back") { goBack() }
                 .keyboardShortcut("[", modifiers: .command)
             Button("Forward") { goForward() }
                 .keyboardShortcut("]", modifiers: .command)
             Button("Select All") { selectAll() }
                 .keyboardShortcut("a", modifiers: .command)
+                .disabled(searchFocused)
             // Escape lets go of what is picked; with nothing picked it
             // steps back, as ⌃T does, after vim's tag stack.
             Button("Deselect or Back") { selection.isEmpty ? stepBack() : deselect() }
                 .keyboardShortcut(.escape, modifiers: [])
+                .disabled(searchFocused)
             // ⌘N here makes a blank note in the folder shown, which grows
             // into the grid, newest first, ready to click into. Elsewhere
             // ⌘N is File ▸ New as before.
@@ -498,12 +605,15 @@ struct LibraryView: View {
             }
             Button("Step Back") { stepBack() }
                 .keyboardShortcut("t", modifiers: .control)
+                .disabled(searchFocused)
             Button("Move to Trash") { trashSelection() }
                 .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(searchFocused)
             // Delete alone does the same: to the Trash, so it can be put
             // back, never removed outright.
             Button("Delete") { if !renaming && menu == nil { trashSelection() } }
                 .keyboardShortcut(.delete, modifiers: [])
+                .disabled(searchFocused)
         }
         .opacity(0)
         .allowsHitTesting(false)

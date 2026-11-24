@@ -223,6 +223,51 @@ struct LibraryTests {
         return try #require(rep.colorAt(x: Int(CGFloat(rep.pixelsWide) * x), y: Int(CGFloat(rep.pixelsHigh) * y)))
     }
 
+    @Test func notesGroupByDateNameAndProperty() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        func note(_ name: String, daysAgo: Double) -> FolderListing.Note {
+            FolderListing.Note(url: URL(fileURLWithPath: "/n/\(name).md"), title: name, modified: now.addingTimeInterval(-daysAgo * 86_400))
+        }
+        let notes = [note("beta", daysAgo: 0), note("alpha", daysAgo: 1), note("Émile", daysAgo: 3), note("2026", daysAgo: 400)]
+        let byDate = LibraryOrganize.groups(notes, by: .modified, now: now, calendar: calendar)
+        #expect(byDate.map(\.title).prefix(3) == ["Today", "Yesterday", "Previous 7 Days"])
+        #expect(byDate.count == 4)
+        let byName = LibraryOrganize.groups(notes, by: .name, now: now, calendar: calendar)
+        #expect(byName.map(\.title) == ["A", "B", "E", "#"])
+        let properties: [URL: [String: String]] = [
+            URL(fileURLWithPath: "/n/beta.md"): ["status": "draft"],
+            URL(fileURLWithPath: "/n/alpha.md"): ["status": "done"],
+        ]
+        let byStatus = LibraryOrganize.groups(notes, by: .property("status"), properties: properties)
+        #expect(byStatus.map(\.title) == ["done", "draft", "No status"])
+        #expect(byStatus.last?.notes.count == 2)
+        #expect(LibraryOrganize.groups(notes, by: .none).first?.notes == notes)
+        #expect(LibraryGrouping(storage: LibraryGrouping.property("type").storage) == .property("type"))
+    }
+
+    @Test func frontmatterGivesTopLevelProperties() {
+        let text = "---\ntitle: \"Hello\"\nstatus: draft # soon\ntags: [one, two]\naliases:\n  - first\n  - second\nnested:\n  key: x\n---\n# Body\nkey: not this"
+        let values = NoteProperties.parse(text)
+        #expect(values["title"] == "Hello")
+        #expect(values["status"] == "draft")
+        #expect(values["tags"] == "one")
+        #expect(values["aliases"] == "first")
+        #expect(values["nested"] == nil)
+        #expect(values["key"] == nil)
+        #expect(NoteProperties.parse("# No frontmatter\nstatus: x").isEmpty)
+        #expect(NoteProperties.parse("---\nstatus: open").isEmpty)
+        #expect(LibraryOrganize.groupableKeys([URL(fileURLWithPath: "/a"): ["title": "x", "status": "y"]]) == ["status"])
+    }
+
+    @Test func searchMatchesEveryWordInNameOrTitle() {
+        #expect(LibraryOrganize.matches("", name: "anything.md"))
+        #expect(LibraryOrganize.matches("renais", name: "renaissance-notes.md"))
+        #expect(LibraryOrganize.matches("emile plan", name: "x.md", title: "Émile's Plan"))
+        #expect(!LibraryOrganize.matches("emile budget", name: "x.md", title: "Émile's Plan"))
+    }
+
     private static func samples(_ rep: NSBitmapImageRep) -> [Double] {
         var values: [Double] = []
         let step = 6
