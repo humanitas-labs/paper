@@ -16,6 +16,8 @@ struct LibraryTabBar: View {
     /// frame, and a slide begun in that frame stuttered. Begun after it,
     /// the slide runs on quiet frames, as Marina's does.
     @State private var lit: Int?
+    /// The tab a carried card is held over.
+    var dropTab: UUID?
     static let slide = Animation.spring(duration: 0.2, bounce: 0.15)
 
     var body: some View {
@@ -38,9 +40,16 @@ struct LibraryTabBar: View {
                             Capsule().fill(TabPalette.front).matchedGeometryEffect(id: "front", in: highlight)
                         }
                     }
+                    // A card held over a tab rings it; let go, it moves
+                    // into the tab's folder.
+                    .overlay {
+                        if dropTab == tab.id { Capsule().strokeBorder(LibrarySelectionRing.color, lineWidth: 1.5) }
+                    }
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LibraryDrag.shared.tabFrames[tab.id] = $0 }
+                .onDisappear { LibraryDrag.shared.tabFrames[tab.id] = nil }
                 .overlay(MiddleClick { navigation.closeTab(index) })
             }
             if hovering {

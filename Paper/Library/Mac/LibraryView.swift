@@ -45,6 +45,19 @@ struct LibraryView: View {
     @State private var hovered: HoverTarget?
     @State private var renaming = false
     @State private var renameText = ""
+    /// The folder card a drag is held over.
+    @State private var dropTarget: URL?
+    /// The tab a carried card is held over.
+    @State private var dropTab: UUID?
+    /// What the drag in progress does, decided as it begins.
+    @State private var dragMode: DragMode?
+    private enum DragMode { case marquee, cards }
+    /// The cards lifted out of the grid and following the pointer.
+    @State private var carried: CarriedCards?
+    /// Cards leaving or rejoining the grid by the drag: they fly, and do
+    /// not shrink or grow as a deleted or new card does.
+    @State private var inFlight: Set<URL> = []
+    @Namespace private var liftSpace
     /// No grouping and no search for now; their controls are put away.
     private let grouping = LibraryGrouping.none
     private let query = ""
@@ -99,6 +112,11 @@ struct LibraryView: View {
         // A drag anywhere below the toolbar draws the rubber band.
         .contentShape(Rectangle())
         .simultaneousGesture(marqueeGesture)
+        // Files dropped on the page from elsewhere move into the folder
+        // shown; a folder card takes a drop on it for itself.
+        .dropDestination(for: URL.self) { dropped, _ in
+            LibraryDrag.shared.drop(dropped, into: folder) { self.dropped() }
+        }
         // The folder's name, after the arrows: the toolbar's in a window,
         // the drawn header's in full screen.
         .overlay(alignment: .topLeading) {
@@ -118,7 +136,7 @@ struct LibraryView: View {
         // Tabs, once there are two, at the foot of the window.
         .overlay(alignment: .bottom) {
             if navigation.tabs.count > 1 {
-                LibraryTabBar(navigation: navigation)
+                LibraryTabBar(navigation: navigation, dropTab: dropTab)
                     .padding(.bottom, 16)
                     .transition(.opacity.combined(with: .offset(y: 8)))
             }
@@ -146,6 +164,7 @@ struct LibraryView: View {
             Button("Rename", action: renameSelection)
             Button("Cancel", role: .cancel) {}
         }
+        .overlay(carriedLayer)
         .overlay(LibraryMenuLayer(request: $menu))
         .onReceive(navigation.secondaryClicks) { secondaryClick(at: $0) }
         .onReceive(navigation.primaryClicks) { primaryClick(at: $0) }
@@ -213,14 +232,18 @@ struct LibraryView: View {
         if !folders.isEmpty {
             LazyVGrid(columns: folderColumns, alignment: .leading, spacing: 18) {
                 ForEach(folders) { item in
-                    FolderCard(folder: item, selected: selection.contains(item.url))
+                    FolderCard(folder: item, selected: selection.contains(item.url) || dropTarget == item.url)
                         .background(FolderCard.shadow)
+                        // A drag held over a folder lifts it, as a hover does.
+                        .scaleEffect(dropTarget == item.url ? 1.04 : 1)
                         .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
                         .modifier(CardClick(hover: { if $0 { ListingCache.prefetch(item.url, showsHidden: showsHidden) } }) { click(item.url) { go(to: item.url) } })
+                        .modifier(FolderDrop(folder: item.url, targeted: dropBinding(item.url)) { dropped() })
                         // A middle click opens the folder in a new tab behind, as a link in a browser.
                         .overlay(MiddleClick { navigation.openTab(item.url, behind: true) })
                         .modifier(CardFrame(url: item.url, frames: cards))
-                        .transition(Self.cardTransition)
+                        .matchedGeometryEffect(id: item.url, in: liftSpace)
+                        .transition(inFlight.contains(item.url) ? .identity : Self.cardTransition)
                 }
             }
         }
@@ -255,7 +278,136 @@ struct LibraryView: View {
             .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
             .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
             .modifier(CardFrame(url: item.url, frames: cards))
-            .transition(Self.cardTransition)
+            .matchedGeometryEffect(id: item.url, in: liftSpace)
+            .transition(inFlight.contains(item.url) ? .identity : Self.cardTransition)
+    }
+
+    // MARK: Drag and drop
+
+    /// Lifts the card, and the others picked with it when it is picked,
+    /// out of the grid: the grid closes up behind them and they follow
+    /// the pointer, the grabbed card under it as it was grabbed.
+    private func pickUp(_ url: URL, frame: CGRect, at point: CGPoint) {
+        let urls = selection.contains(url)
+            ? [url] + selection.filter { $0 != url }.sorted { $0.path < $1.path }
+            : [url]
+        hovered = nil
+        // First, without animation, the cards' leaving is made a flight
+        // rather than a shrink; then they leave.
+        inFlight.formUnion(urls)
+        let sizes = Dictionary(uniqueKeysWithValues: urls.map { ($0, cards.rects[$0]?.size ?? frame.size) })
+        let grab = CGSize(width: point.x - frame.midX, height: point.y - frame.midY)
+        DispatchQueue.main.async {
+            guard dragMode == .cards else { return }
+            withAnimation(Self.lift) {
+                carried = CarriedCards(urls: urls, sizes: sizes, grab: grab, point: point)
+            }
+        }
+    }
+
+    private func carry(to point: CGPoint) {
+        carried?.point = point
+        let over = cards.rects.first { url, rect in
+            rect.contains(point) && listing.folders.contains { $0.url == url } && carried?.urls.contains(url) != true
+        }?.key
+        let tab = over == nil ? LibraryDrag.shared.tabFrames.first { $0.value.contains(point) }?.key : nil
+        if over != dropTarget || tab != dropTab {
+            withAnimation(.spring(duration: 0.22, bounce: 0.2)) {
+                dropTarget = over
+                dropTab = tab
+            }
+        }
+    }
+
+    /// Over a folder or a tab, the cards sink into it and move there;
+    /// anywhere else they fly back to their places.
+    private func letGo() {
+        guard let carried else {
+            inFlight.removeAll()
+            return
+        }
+        let tabFolder = dropTab.flatMap { id in navigation.tabs.first { $0.id == id }?.folder }
+        let target = dropTarget ?? tabFolder
+        let targetFrame = dropTarget.flatMap { cards.rects[$0] } ?? dropTab.flatMap { LibraryDrag.shared.tabFrames[$0] }
+        guard let target, let targetFrame else {
+            withAnimation(Self.lift) { self.carried = nil }
+            settle(carried.urls)
+            return
+        }
+        withAnimation(.easeIn(duration: 0.2)) {
+            self.carried?.sinking = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+            dropTarget = nil
+            dropTab = nil
+        }
+        let moving = LibraryDrag.movable(carried.urls, into: target)
+        selection.subtract(carried.urls)
+        Task {
+            await Task.detached { for url in moving { try? NoteFile.move(url, into: target) } }.value
+            await reload()
+            // Any that could not go come back into the grid.
+            withAnimation(Self.lift) { self.carried = nil }
+            settle(carried.urls)
+        }
+    }
+
+    /// Once the cards have landed, they grow and shrink again as cards do.
+    private func settle(_ urls: [URL]) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if carried == nil { inFlight.subtract(urls) }
+        }
+    }
+
+    static let lift = Animation.spring(duration: 0.32, bounce: 0.18)
+
+    /// The carried cards over everything, the grabbed one on top and the
+    /// rest fanned a little behind it.
+    private var carriedLayer: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+            if let carried {
+                ForEach(Array(carried.urls.enumerated().reversed()), id: \.element) { index, url in
+                    let size = carried.sizes[url] ?? .zero
+                    let fan = CGFloat(min(index, 3))
+                    carriedCard(url)
+                        .frame(width: size.width, height: size.height)
+                        .matchedGeometryEffect(id: url, in: liftSpace)
+                        .rotationEffect(.degrees(index == 0 ? 0 : (index % 2 == 1 ? -3 : 3)))
+                        .shadow(color: .black.opacity(carried.sinking == nil ? 0.16 : 0), radius: 18, y: 12)
+                        .scaleEffect(carried.sinking == nil ? 1.04 : 0.12)
+                        .opacity(carried.sinking == nil ? 1 : 0)
+                        .position(carried.sinking ?? CGPoint(
+                            x: carried.point.x - carried.grab.width + fan * 4,
+                            y: carried.point.y - carried.grab.height + fan * 4
+                        ))
+                        .transition(.identity)
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder private func carriedCard(_ url: URL) -> some View {
+        if let folder = listing.folders.first(where: { $0.url == url }) {
+            FolderCard(folder: folder).background(FolderCard.shadow)
+        } else if let note = listing.notes.first(where: { $0.url == url }) {
+            LibraryNoteTile(note: note, selected: false).modifier(NoteShadow())
+        }
+    }
+
+    private func dropBinding(_ url: URL) -> Binding<Bool> {
+        Binding(
+            get: { dropTarget == url },
+            set: { over in
+                if over { dropTarget = url } else if dropTarget == url { dropTarget = nil }
+            }
+        )
+    }
+
+    /// After a drop: what was picked has gone, and the grid closes up.
+    private func dropped() {
+        deselect()
+        Task { await reload() }
     }
 
     // MARK: Grouping and search
@@ -264,12 +416,14 @@ struct LibraryView: View {
 
     private var visibleFolders: [FolderListing.Folder] {
         guard listedFolder == nil || listedFolder == folder else { return [] }
-        return listing.folders.filter { LibraryOrganize.matches(query, name: $0.name) }
+        let away = Set(carried?.urls ?? [])
+        return listing.folders.filter { !away.contains($0.url) && LibraryOrganize.matches(query, name: $0.name) }
     }
 
     private var visibleNotes: [FolderListing.Note] {
         guard listedFolder == nil || listedFolder == folder else { return [] }
-        return listing.notes.filter { LibraryOrganize.matches(query, name: $0.url.lastPathComponent, title: $0.title) }
+        let away = Set(carried?.urls ?? [])
+        return listing.notes.filter { !away.contains($0.url) && LibraryOrganize.matches(query, name: $0.url.lastPathComponent, title: $0.title) }
     }
 
     private var noteGroups: [NoteGroup] {
@@ -323,13 +477,26 @@ struct LibraryView: View {
 
     /// The rubber band: every card it touches is picked, on top of what
     /// was picked before when ⌘ is held.
+    /// A drag begun on a card carries the card; one begun on empty space
+    /// draws the rubber band: every card it touches is picked, on top of
+    /// what was picked before when ⌘ is held.
     private var marqueeGesture: some Gesture {
         DragGesture(minimumDistance: 5, coordinateSpace: .global)
             .onChanged { value in
                 guard menu == nil else { return }
-                if marquee == nil {
-                    let adding = !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty
-                    marqueeBase = adding ? selection : []
+                if dragMode == nil {
+                    if let (url, rect) = cards.rects.first(where: { $0.value.contains(value.startLocation) }) {
+                        dragMode = .cards
+                        pickUp(url, frame: rect, at: value.startLocation)
+                    } else {
+                        dragMode = .marquee
+                        let adding = !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty
+                        marqueeBase = adding ? selection : []
+                    }
+                }
+                if dragMode == .cards {
+                    carry(to: value.location)
+                    return
                 }
                 let rect = CGRect(
                     x: min(value.startLocation.x, value.location.x), y: min(value.startLocation.y, value.location.y),
@@ -340,9 +507,11 @@ struct LibraryView: View {
                 selection = marqueeBase.union(touched)
             }
             .onEnded { _ in
-                guard marquee != nil else { return }
-                marquee = nil
+                let mode = dragMode
+                dragMode = nil
                 dragEnded = Date()
+                if mode == .cards { letGo() }
+                marquee = nil
             }
     }
 
@@ -630,6 +799,10 @@ struct LibraryView: View {
             listing = entry.listing
             hiddenItems = entry.hidden
         }
+        // Cards moved away (by Finder, or another window) are no longer
+        // picked.
+        let shown = Set(entry.listing.folders.map(\.url) + entry.listing.notes.map(\.url))
+        if !selection.isSubset(of: shown) { selection.formIntersection(shown) }
     }
 
     private func watch() {

@@ -343,7 +343,7 @@ struct CardShadow: ViewModifier {
         if colorScheme == .dark {
             content.shadow(color: .black.opacity(0.45), radius: 8, y: 4)
         } else {
-            content.shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+            content.shadow(color: .black.opacity(0.055), radius: 8, y: 4)
         }
     }
 }
@@ -420,9 +420,11 @@ struct NoteCardShape: InsettableShape {
 
 /// Spatial's two shadows under a note, both sized from the card's width:
 /// a wide soft one falling 5% of the width below, and a close, faint one
-/// hugging the edge. Their color is a near-black with a little blue.
+/// hugging the edge. Their color is a near-black with a little blue. On
+/// the pale page they are lighter than Spatial's, which read heavy there.
 struct NoteShadow: ViewModifier {
     @State private var width: CGFloat = 200
+    @Environment(\.colorScheme) private var colorScheme
     private static let ink = Color(.sRGB, red: 0x09 / 255.0, green: 0x0B / 255.0, blue: 0x0D / 255.0)
 
     func body(content: Content) -> some View {
@@ -430,8 +432,8 @@ struct NoteShadow: ViewModifier {
             .background(
                 NoteCard.shape
                     .fill(LibraryPalette.card)
-                    .shadow(color: Self.ink.opacity(0.10), radius: width * 0.06, y: width * 0.05)
-                    .shadow(color: Self.ink.opacity(0.06), radius: width * 0.01)
+                    .shadow(color: Self.ink.opacity(colorScheme == .dark ? 0.10 : 0.065), radius: width * 0.06, y: width * 0.05)
+                    .shadow(color: Self.ink.opacity(colorScheme == .dark ? 0.06 : 0.04), radius: width * 0.01)
             )
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
