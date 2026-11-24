@@ -103,17 +103,19 @@ struct FolderView: View {
         .navigationBarBackButtonHidden(!isRoot)
         .background(SwipeBackEnabler())
         .toolbar {
-            if #available(iOS 26.0, *) {
-                ToolbarItem(placement: .topBarLeading) { brand }
-                    .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .topBarLeading) { brand }
-            }
             if selecting {
+                ToolbarItem(placement: .principal) { selectionTitle }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Done") { selection.removeAll() }
+                    Button("Done", systemImage: "checkmark") { selection.removeAll() }
+                        .labelStyle(.iconOnly)
                 }
             } else {
+                if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .topBarLeading) { brand }
+                        .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .topBarLeading) { brand }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("New Note", systemImage: "square.and.pencil", action: newNote)
                 }
@@ -164,6 +166,26 @@ struct FolderView: View {
     }
 
     private let brandInset: CGFloat = 10
+
+    /// "3 Selected", and what the folder holds beneath it, as in Notes.
+    private var selectionTitle: some View {
+        VStack(spacing: 1) {
+            Text("\(selection.count) Selected")
+                .font(.system(size: 16, weight: .semibold))
+            Text(contentsSummary)
+                .font(.system(size: 13))
+                .foregroundStyle(LibraryPalette.secondaryLabel)
+        }
+    }
+
+    private var contentsSummary: String {
+        let notes = (searching ? results?.count : nil) ?? listing.notes.count
+        var parts = [notes == 1 ? "1 Note" : "\(notes) Notes"]
+        if !searching, !listing.folders.isEmpty {
+            parts.append(listing.folders.count == 1 ? "1 Folder" : "\(listing.folders.count) Folders")
+        }
+        return parts.joined(separator: " · ")
+    }
 
     /// The enso, and inside a folder the folder's name after it, which takes
     /// you back to the root. At the root the enso holds the library's
@@ -489,10 +511,9 @@ private struct BottomSearch: ViewModifier {
             content
                 .searchable(text: $query, prompt: "Search")
                 .toolbar {
-                    if !hidden {
-                        DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                    }
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
                 }
+                .toolbar(hidden ? .hidden : .automatic, for: .bottomBar)
         } else {
             content.searchable(text: $query, prompt: "Search")
         }
@@ -504,6 +525,8 @@ private struct BottomSearch: ViewModifier {
 /// The two glyphs are Spatial's own, copied for this demo build only; they
 /// are placeholders to replace before Paper is distributed.
 private struct SelectionToast: View {
+    /// Spatial's corners: rounded, not a full capsule.
+    static let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
     let count: Int
     let move: () -> Void
     let delete: () -> Void
@@ -517,11 +540,11 @@ private struct SelectionToast: View {
         .padding(.vertical, 6)
         .background {
             // The shadow falls from the capsule alone, not from the glyphs.
-            Capsule()
+            Self.shape
                 .fill(ToastPalette.fill)
                 .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
         }
-        .overlay(Capsule().strokeBorder(ToastPalette.border, lineWidth: 1))
+        .overlay(Self.shape.strokeBorder(ToastPalette.border, lineWidth: 1))
     }
 
     private func button(_ image: String, label: String, action: @escaping () -> Void) -> some View {
