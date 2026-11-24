@@ -18,11 +18,11 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            FolderView(folder: root.url, isRoot: true, cards: cards, open: open)
+            FolderView(folder: root.url, isRoot: true, cards: cards, open: open, home: { path.removeAll() })
                 .navigationDestination(for: LibraryRoute.self) { route in
                     switch route {
                     case .folder(let url):
-                        FolderView(folder: url, isRoot: false, cards: cards, open: open)
+                        FolderView(folder: url, isRoot: false, cards: cards, open: open, home: { path.removeAll() })
                             .navigationTransition(.zoom(sourceID: url, in: cards))
                     case .note(let url):
                         NoteView(url: url)
@@ -46,6 +46,8 @@ struct FolderView: View {
     let isRoot: Bool
     let cards: Namespace.ID
     let open: (LibraryRoute) -> Void
+    /// Back to the root folder.
+    var home: () -> Void = {}
     @ObservedObject private var root = LibraryRoot.shared
     @State private var listing = FolderListing()
     @State private var choosingRoot = false
@@ -72,10 +74,19 @@ struct FolderView: View {
             .padding(.bottom, 32)
         }
         .background(LibraryPalette.background.ignoresSafeArea())
-        // The root has no title; a folder is named in the bar.
-        .navigationTitle(isRoot ? "" : folder.lastPathComponent)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // The enso stands at the top left; inside a folder it is followed
+        // by the folder's name and takes you back to the root.
+        .navigationBarBackButtonHidden(!isRoot)
+        .background(SwipeBackEnabler())
         .toolbar {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarLeading) { brand }
+                    .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarLeading) { brand }
+            }
             if isRoot {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -104,6 +115,30 @@ struct FolderView: View {
         .onReceive(NotificationCenter.default.publisher(for: NoteFile.didSaveNotification)) { _ in
             Task { await reload(); if searching { await search() } }
         }
+    }
+
+    /// The enso, and inside a folder the folder's name after it.
+    private var brand: some View {
+        Button(action: home) {
+            HStack(spacing: 8) {
+                Image("Enso")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                if !isRoot {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(LibraryPalette.secondaryLabel)
+                    Text(folder.lastPathComponent)
+                        .font(.system(size: 15, weight: .medium))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 4)
+            .foregroundStyle(.primary)
+        }
+        .accessibilityLabel(isRoot ? "Paper" : "Paper, \(folder.lastPathComponent)")
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -296,6 +331,8 @@ enum NoteMiniature {
     static let pageWidth: CGFloat = 402
     /// Only the head of a long note can show.
     static let characterLimit = 2400
+    /// A little more room than the phone's page, so the miniature breathes.
+    static let margins = UIEdgeInsets(top: 48, left: 30, bottom: 48, right: 30)
 
     struct Key: Hashable {
         let url: URL
@@ -314,6 +351,7 @@ enum NoteMiniature {
         let editor = MobileTextView()
         editor.overrideUserInterfaceStyle = dark ? .dark : .light
         editor.frame = CGRect(origin: .zero, size: size)
+        editor.pageMargins = margins
         editor.documentURL = note.url
         editor.load(head)
         editor.layoutIfNeeded()
@@ -353,6 +391,21 @@ private struct SearchAndCompose: ViewModifier {
                         Button("New Note", systemImage: "square.and.pencil", action: compose)
                     }
                 }
+        }
+    }
+}
+
+/// Hiding the back button also stops the edge swipe back; this lets the
+/// swipe go on working on screens that hide it.
+private struct SwipeBackEnabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {}
+
+    final class Controller: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+            navigationController?.interactivePopGestureRecognizer?.delegate = nil
         }
     }
 }

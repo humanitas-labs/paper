@@ -43,6 +43,9 @@ final class MobileTextView: UITextView {
     /// narrow column. The top margin is smaller for the same reason.
     static let compactMargin: CGFloat = 20
     static let compactTopMargin: CGFloat = 28
+    /// Fixed margins for a page drawn offscreen, where there is no size
+    /// class to choose them (the library's miniatures).
+    var pageMargins: UIEdgeInsets? { didSet { setNeedsLayout() } }
 
     init() {
         let storage = NSTextStorage()
@@ -189,7 +192,7 @@ final class MobileTextView: UITextView {
         let minimum = compact ? Self.compactMargin : Appearance.minimumHorizontalMargin
         let margin = max(minimum, ((width - Appearance.maximumMeasure) / 2).rounded())
         let top = compact ? Self.compactTopMargin : Appearance.topMargin
-        let inset = UIEdgeInsets(top: top, left: margin, bottom: top * 2, right: margin)
+        let inset = pageMargins ?? UIEdgeInsets(top: top, left: margin, bottom: top * 2, right: margin)
         guard inset != textContainerInset else { return }
         textContainerInset = inset
         // A block image and a table are fitted to the measure when styled.
