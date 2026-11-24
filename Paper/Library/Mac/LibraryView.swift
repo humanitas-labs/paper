@@ -35,6 +35,9 @@ struct LibraryView: View {
     @State private var width: CGFloat = 0
     /// Shown when the library shows hidden items: the ones Finder hides.
     @State private var hiddenItems: Set<URL> = []
+    /// The folder the listing is of; until the new folder's arrives, the
+    /// last folder's cards are not drawn under the new name.
+    @State private var listedFolder: URL?
     @AppStorage(FolderListing.showsHiddenKey) private var showsHidden = false
     @State private var hovered: HoverTarget?
     @State private var renaming = false
@@ -62,6 +65,8 @@ struct LibraryView: View {
             Group {
                 if scrolls {
                     ScrollView { page }
+                        // Each folder opens at its top, on a fresh grid.
+                        .id(folder)
                         // In full screen the system's toolbar is put
                         // away; the same header is drawn on the page.
                         .safeAreaInset(edge: .top, spacing: 0) {
@@ -126,7 +131,7 @@ struct LibraryView: View {
             selection.removeAll()
             cards.rects.removeAll()
             hovered = nil
-            await reload()
+            await reload(arriving: true)
             watch()
         }
         .onDisappear {
@@ -146,13 +151,19 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var contents: some View {
+        if listedFolder == nil || listedFolder == folder {
+            grid
+        }
+    }
+
+    @ViewBuilder private var grid: some View {
         if !listing.folders.isEmpty {
             LazyVGrid(columns: folderColumns, alignment: .leading, spacing: 18) {
                 ForEach(listing.folders) { item in
                     FolderCard(folder: item, selected: selection.contains(item.url))
                         .background(FolderCard.shadow)
                         .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
-                        .modifier(CardClick { click(item.url) { go(to: item.url) } })
+                        .modifier(CardClick(hover: { if $0 { ListingCache.prefetch(item.url, showsHidden: showsHidden) } }) { click(item.url) { go(to: item.url) } })
                         .modifier(CardFrame(url: item.url, frames: cards))
                         .transition(LibraryMotion.itemTransition)
                 }
@@ -399,23 +410,35 @@ struct LibraryView: View {
 
     // MARK: Loading
 
-    private func reload() async {
+    /// Reads the folder and shows what changed. A change in the folder
+    /// shown animates; arriving in a folder does not, and shows the
+    /// folder as last read at once while it is read again, so moving in
+    /// and out never waits on the disk or on hundreds of cards animating.
+    private func reload(arriving: Bool = false) async {
         let folder = folder
         let showsHidden = showsHidden
-        let (fresh, hidden) = await Task.detached {
-            showsHidden ? FolderListing.loadIncludingHidden(folder) : (FolderListing.load(folder, isDefaultRoot: false), [])
-        }.value
-        guard folder == self.folder else { return }
-        if loaded {
-            withAnimation(LibraryMotion.itemSpring) {
-                listing = fresh
-                hiddenItems = hidden
+        if arriving {
+            if let known = ListingCache.get(folder, showsHidden: showsHidden) {
+                show(known, animated: false)
+                listedFolder = folder
             }
-        } else {
-            listing = fresh
-            hiddenItems = hidden
         }
+        let fresh = await ListingCache.read(folder, showsHidden: showsHidden)
+        guard folder == self.folder, showsHidden == self.showsHidden else { return }
+        show(fresh, animated: loaded && !arriving && listedFolder == folder)
+        listedFolder = folder
         loaded = true
+    }
+
+    private func show(_ entry: ListingCache.Entry, animated: Bool) {
+        guard entry.listing.folders != listing.folders || entry.listing.notes != listing.notes
+                || entry.hidden != hiddenItems else { return }
+        var transaction = Transaction(animation: animated ? LibraryMotion.itemSpring : nil)
+        transaction.disablesAnimations = !animated
+        withTransaction(transaction) {
+            listing = entry.listing
+            hiddenItems = entry.hidden
+        }
     }
 
     private func watch() {
@@ -617,5 +640,52 @@ private struct HoverLabel: View {
             )
             .fixedSize()
             .allowsHitTesting(false)
+    }
+}
+
+/// Folders as last read, so going into one, or back out, shows its cards
+/// at once while it is read again. A folder card under the pointer is
+/// read ahead, before the click.
+@MainActor
+enum ListingCache {
+    struct Entry: Sendable {
+        let listing: FolderListing
+        let hidden: Set<URL>
+    }
+
+    private struct Key: Hashable {
+        let folder: URL
+        let showsHidden: Bool
+    }
+
+    private static var entries: [Key: Entry] = [:]
+    private static var order: [Key] = []
+    private static let limit = 64
+
+    static func get(_ folder: URL, showsHidden: Bool) -> Entry? {
+        entries[Key(folder: folder.standardizedFileURL, showsHidden: showsHidden)]
+    }
+
+    /// Reads the folder off the main thread and keeps the result.
+    static func read(_ folder: URL, showsHidden: Bool) async -> Entry {
+        let entry = await Task.detached(priority: .userInitiated) {
+            if showsHidden {
+                let (listing, hidden) = FolderListing.loadIncludingHidden(folder)
+                return Entry(listing: listing, hidden: hidden)
+            }
+            return Entry(listing: FolderListing.load(folder, isDefaultRoot: false), hidden: [])
+        }.value
+        store(entry, Key(folder: folder.standardizedFileURL, showsHidden: showsHidden))
+        return entry
+    }
+
+    static func prefetch(_ folder: URL, showsHidden: Bool) {
+        guard get(folder, showsHidden: showsHidden) == nil else { return }
+        Task { _ = await read(folder, showsHidden: showsHidden) }
+    }
+
+    private static func store(_ entry: Entry, _ key: Key) {
+        if entries.updateValue(entry, forKey: key) == nil { order.append(key) }
+        while order.count > limit { entries[order.removeFirst()] = nil }
     }
 }

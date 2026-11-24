@@ -97,13 +97,17 @@ struct FolderCard: View {
     /// little. Sized from the card (5.6% of its width), so it scales.
     private func label(scale: CGFloat) -> some View {
         let size = 16.3 * scale
-        return VStack(alignment: .leading, spacing: 1.6 * scale) {
+        // The count a step down from the name, so the name leads.
+        let countSize = 13 * scale
+        return VStack(alignment: .leading, spacing: 2.4 * scale) {
             Text(folder.itemCount == 1 ? "1 item" : "\(folder.itemCount) items")
-                .font(.system(size: size, weight: .regular))
-                .tracking(-0.022 * size)
+                .font(.system(size: countSize, weight: .regular))
+                .tracking(-0.01 * countSize)
                 .foregroundStyle(FolderCard.countInk)
+            // Light: at a card's size the regular cut read heavy beside
+            // Spatial's, light text on the dark page most of all.
             Text(folder.name)
-                .font(.system(size: size, weight: .regular))
+                .font(.system(size: size, weight: .light))
                 .tracking(-0.022 * size)
                 .foregroundStyle(FolderCard.nameInk)
                 .lineLimit(1)
