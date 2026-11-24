@@ -3,13 +3,10 @@
 import AppKit
 import SwiftUI
 
-/// A picked card's ring, as Spatial draws it: white, 2.5 pt, with a
-/// hairline of the page between it and the card.
+/// A picked card's ring: the system's blue, 2 pt, on the card's edge.
 enum LibrarySelectionRing {
-    static let color = Color.white
-    static let width: CGFloat = 2.5
-    /// From the card's edge to the ring's centerline.
-    static let outset: CGFloat = 2
+    static let color = Color(nsColor: .systemBlue)
+    static let width: CGFloat = 2
 }
 
 enum LibraryPalette {
@@ -137,13 +134,11 @@ struct FolderCard: View {
                         .padding(.bottom, 22 * scale)
                 }
             }
-            // Picked: Spatial's white ring, 2.5 pt, a hair outside the
-            // folder's silhouette.
+            // Picked: a ring in the system's blue, which reads at once on
+            // the pale page and the dark one.
             .overlay {
                 if selected {
-                    FolderSilhouette()
-                        .stroke(LibrarySelectionRing.color, style: StrokeStyle(lineWidth: LibrarySelectionRing.width, lineJoin: .round))
-                        .padding(-LibrarySelectionRing.outset)
+                    FolderSilhouette().stroke(LibrarySelectionRing.color, style: StrokeStyle(lineWidth: LibrarySelectionRing.width, lineJoin: .round))
                 }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
@@ -404,9 +399,7 @@ struct NoteCard: View {
             }
             .overlay {
                 if selected {
-                    NoteCard.shape
-                        .stroke(LibrarySelectionRing.color, lineWidth: LibrarySelectionRing.width)
-                        .padding(-LibrarySelectionRing.outset)
+                    NoteCard.shape.strokeBorder(LibrarySelectionRing.color, lineWidth: LibrarySelectionRing.width)
                 }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
