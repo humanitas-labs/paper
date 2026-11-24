@@ -199,6 +199,7 @@ struct FolderView: View {
             }
         }
         .padding(.horizontal, searchOpen && !selecting ? 16 : 0)
+        .animation(LibraryBar.grow, value: searchOpen)
         .padding(.bottom, 4)
     }
 
@@ -840,54 +841,71 @@ private struct BarGlyph: View {
 }
 
 /// The library's search, in the system's glass: a small "Search" pill at
-/// the bottom, as on the Home Screen, that opens into a field across the
-/// screen; closing it clears the search.
+/// the bottom, as on the Home Screen, that grows into a field across the
+/// screen as the keyboard rises; closing it clears the search. It is one
+/// glass shape throughout, so opening stretches it rather than swapping it.
 private struct LibraryBar: View {
     @Binding var query: String
     @Binding var searchOpen: Bool
     var searchFocused: FocusState<Bool>.Binding
 
     var body: some View {
-        if searchOpen {
-            HStack(spacing: 0) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 16)
-                TextField("Search", text: $query)
-                    .focused(searchFocused)
-                    .submitLabel(.search)
-                    .autocorrectionDisabled()
-                    .frame(height: 48)
-                    .padding(.horizontal, 8)
-                Button {
-                    withAnimation(FolderView.selectionSpring) {
-                        query = ""
-                        searchOpen = false
-                    }
-                } label: {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: searchOpen ? 17 : 15, weight: .medium))
+                .foregroundStyle(searchOpen ? .secondary : .primary)
+            ZStack(alignment: .leading) {
+                // The pill's word and the field's placeholder sit in the
+                // same place, so the word stays put as the pill grows.
+                if searchOpen {
+                    TextField("Search", text: $query)
+                        .focused(searchFocused)
+                        .submitLabel(.search)
+                        .autocorrectionDisabled()
+                        .font(.system(size: 17))
+                        .transition(.opacity)
+                } else {
+                    Text("Search")
+                        .font(.system(size: 15, weight: .medium))
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: searchOpen ? .infinity : nil, alignment: .leading)
+            if searchOpen {
+                Button(action: close) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 17, weight: .medium))
-                        .frame(width: 52, height: 48)
+                        .font(.system(size: 16, weight: .medium))
+                        .frame(width: 40, height: 40)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close Search")
+                .transition(.opacity.combined(with: .scale(scale: 0.6)))
             }
-            .modifier(GlassCapsule())
-        } else {
-            Button {
-                withAnimation(FolderView.selectionSpring) { searchOpen = true }
-                searchFocused.wrappedValue = true
-            } label: {
-                Label("Search", systemImage: "magnifyingglass")
-                    .font(.system(size: 15, weight: .medium))
-                    .padding(.horizontal, 16)
-                    .frame(height: 38)
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .modifier(GlassCapsule())
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, searchOpen ? 4 : 16)
+        .frame(height: searchOpen ? 48 : 38)
+        .contentShape(Capsule())
+        .onTapGesture { if !searchOpen { open() } }
+        .modifier(GlassCapsule())
+        .accessibilityElement(children: searchOpen ? .contain : .combine)
+        .accessibilityAddTraits(searchOpen ? [] : .isButton)
+    }
+
+    /// The same spring as the keyboard's rise, so the pill grows with it.
+    static let grow = Animation.spring(duration: 0.4, bounce: 0.12)
+
+    private func open() {
+        withAnimation(Self.grow) { searchOpen = true }
+        searchFocused.wrappedValue = true
+    }
+
+    private func close() {
+        searchFocused.wrappedValue = false
+        withAnimation(Self.grow) {
+            query = ""
+            searchOpen = false
         }
     }
 }
