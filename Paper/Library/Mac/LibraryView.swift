@@ -410,12 +410,12 @@ struct LibraryView: View {
 
     /// An empty `Untitled.md`, numbered when the name is taken, opened at
     /// once in its own window.
-    private func newNote() {
+    private func newNote(opening: Bool = true) {
         let url = LibraryNames.unused("Untitled", extension: "md", in: folder)
         guard FileManager.default.createFile(atPath: url.path, contents: Data()) else { return }
         // The card grows into the grid as the note's window opens.
         Task { await reload() }
-        openNote(url)
+        if opening { openNote(url) }
     }
 
     /// `Untitled Folder`, numbered when taken, as Finder names one.
@@ -446,6 +446,11 @@ struct LibraryView: View {
             // steps back, as ⌃T does, after vim's tag stack.
             Button("Deselect or Back") { selection.isEmpty ? stepBack() : deselect() }
                 .keyboardShortcut(.escape, modifiers: [])
+            // ⌘N here makes a blank note in the folder shown, which grows
+            // into the grid, newest first, ready to click into. Elsewhere
+            // ⌘N is File ▸ New as before.
+            Button("New Note Here") { newNote(opening: false) }
+                .keyboardShortcut("n", modifiers: .command)
             Button("Step Back") { stepBack() }
                 .keyboardShortcut("t", modifiers: .control)
             Button("Move to Trash") { trashSelection() }
