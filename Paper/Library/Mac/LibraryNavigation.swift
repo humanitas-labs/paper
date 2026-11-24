@@ -164,6 +164,9 @@ final class LibraryToolbar: NSObject, NSToolbarDelegate {
         for scrollView in Self.descendants(of: content).compactMap({ $0 as? NSScrollView }) {
             scrollView.scrollerStyle = .legacy
             scrollView.autohidesScrollers = true
+            // AppKit sets the pointer over a scroll view's content
+            // itself, and its arrow came back at times.
+            scrollView.documentCursor = LibraryPointer.cursor
         }
     }
 

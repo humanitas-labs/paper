@@ -46,9 +46,43 @@ enum NoteMiniature {
         let key = key(for: url, modified: modified, dark: dark)
         if let cached = cache[key] { return cached }
         guard let text = try? NoteFile.read(url) else { return nil }
-        let image = render(String(text.prefix(characterLimit)), documentURL: url, dark: dark, background: background)
+        let image = thumbnail(render(String(text.prefix(characterLimit)), documentURL: url, dark: dark, background: background))
         store(image, for: key)
         return image
+    }
+
+    /// The page at the size a card shows it. A card is at most 210 pt
+    /// wide, 420 pixels on a Retina screen; the page is drawn at 920, and
+    /// a grid of those costs four times the memory and scales every one
+    /// of them on every frame of a scroll.
+    static let thumbnailPixels = 460
+
+    static func thumbnail(_ page: NSImage) -> NSImage {
+        guard let source = page.representations.first as? NSBitmapImageRep, let cgImage = source.cgImage else { return page }
+        let width = thumbnailPixels
+        let height = Int((CGFloat(width) * CGFloat(source.pixelsHigh) / CGFloat(source.pixelsWide)).rounded())
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return page }
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let small = context.makeImage() else { return page }
+        return NSImage(cgImage: small, size: page.size)
+    }
+
+    private static var tail: Task<Void, Never>?
+
+    /// Waits for this caller's turn to draw: one page at a time, with a
+    /// pause after each so the window can draw a frame between them.
+    static func turn() async {
+        let previous = tail
+        let mine = Task { @MainActor in
+            await previous?.value
+            try? await Task.sleep(for: .milliseconds(6))
+        }
+        tail = mine
+        await mine.value
     }
 
     /// Draws `text` as the editor would, on a page of the miniature's size.

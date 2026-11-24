@@ -58,7 +58,14 @@ enum LibraryWindow {
     private static func dumpFullScreenForDebugging(_ window: NSWindow) {
         guard let path = ProcessInfo.processInfo.environment["PAPER_LIBRARY_FSDUMP"] else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { window.toggleFullScreen(nil) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.6) {
+            func all(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + all($0) } }
+            if let content = window.contentView, let scroll = all(content).compactMap({ $0 as? NSScrollView }).first {
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: 190))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
             var out = ""
             func walk(_ view: NSView, _ depth: Int) {
                 var line = String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame) hidden=\(view.isHidden)"

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The library's header in full screen: back and forward in a capsule,
@@ -24,7 +25,6 @@ struct LibraryHeader: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 52)
-        .background(LibraryPalette.background)
     }
 
     private func arrow(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
@@ -38,4 +38,49 @@ struct LibraryHeader: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
     }
+}
+
+/// What lies behind the library's header, in a window and in full screen:
+/// the cards run on under it, blurred and dimmed, and come clear again
+/// just below, as under the iPhone's bar.
+struct LibraryHeaderShade: View {
+    /// The header's height: the window's toolbar, or the drawn header.
+    static let height: CGFloat = 52
+    /// How far below the header the blur thins out to nothing.
+    static let fade: CGFloat = 28
+
+    var body: some View {
+        ZStack {
+            WindowBlur()
+            // Light enough that the cards still show through.
+            LibraryPalette.background.opacity(0.3)
+        }
+        .frame(height: Self.height + Self.fade)
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0),
+                    .init(color: .black, location: 0.55),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        )
+        .allowsHitTesting(false)
+    }
+}
+
+/// A blur of what lies under it in the same window. SwiftUI's materials
+/// blur what is behind the window on the Mac, which leaves the cards
+/// under the header sharp or hidden.
+private struct WindowBlur: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.blendingMode = .withinWindow
+        view.material = .headerView
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }

@@ -16,7 +16,10 @@ struct LibraryView: View {
     @State private var menu: LibraryMenuRequest?
     /// Where each card on screen is, in the window, to tell what a right
     /// click landed on.
-    @State private var cardFrames: [URL: CGRect] = [:]
+    /// Where the cards are, for clicks and the rubber band to find them.
+    /// Kept out of the view's state: the frames change on every frame of
+    /// a scroll, and nothing is drawn from them.
+    @State private var cards = CardFrames()
     /// The cards picked, by dragging a rectangle across them or by
     /// ⌘-clicking. The toast at the foot of the window acts on them; a
     /// click anywhere else lets go of them.
@@ -30,6 +33,7 @@ struct LibraryView: View {
     /// Where the toast is, so a click on it is not a click off the cards.
     @State private var toastFrame = CGRect.zero
     @State private var width: CGFloat = 0
+    @State private var hovered: HoverTarget?
     @State private var renaming = false
     @State private var renameText = ""
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
@@ -57,6 +61,7 @@ struct LibraryView: View {
                     ScrollView { page }
                         // In full screen the system's toolbar is put
                         // away; the same header is drawn on the page.
+                        .overlay(alignment: .top) { LibraryHeaderShade().ignoresSafeArea() }
                         .safeAreaInset(edge: .top, spacing: 0) {
                             if navigation.fullScreen { LibraryHeader(navigation: navigation) }
                         }
@@ -76,6 +81,10 @@ struct LibraryView: View {
         .contentShape(Rectangle())
         .simultaneousGesture(marqueeGesture)
         .overlay(MarqueeLayer(rect: marquee))
+        // A note's file name under the card the pointer is on. Drawn over
+        // the whole grid: hung from the card itself it fell behind the
+        // row below.
+        .overlay(HoverLabelLayer(target: menu == nil ? hovered : nil))
         .overlay(alignment: .bottom) {
             if !selection.isEmpty {
                 LibrarySelectionToast(
@@ -104,7 +113,8 @@ struct LibraryView: View {
         .background(keyCommands)
         .task(id: folder) {
             selection.removeAll()
-            cardFrames.removeAll()
+            cards.rects.removeAll()
+            hovered = nil
             await reload()
             watch()
         }
@@ -131,7 +141,7 @@ struct LibraryView: View {
                     FolderCard(folder: item, selected: selection.contains(item.url))
                         .background(FolderCard.shadow)
                         .modifier(CardClick { click(item.url) { go(to: item.url) } })
-                        .modifier(CardFrame(url: item.url, frames: $cardFrames))
+                        .modifier(CardFrame(url: item.url, frames: cards))
                         .transition(LibraryMotion.itemTransition)
                 }
             }
@@ -141,8 +151,8 @@ struct LibraryView: View {
                 ForEach(listing.notes) { item in
                     LibraryNoteTile(note: item, selected: selection.contains(item.url))
                         .modifier(NoteShadow())
-                        .modifier(CardClick(label: item.url.lastPathComponent) { click(item.url) { openNote(item.url) } })
-                        .modifier(CardFrame(url: item.url, frames: $cardFrames))
+                        .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
+                        .modifier(CardFrame(url: item.url, frames: cards))
                         .transition(LibraryMotion.itemTransition)
                 }
             }
@@ -152,6 +162,14 @@ struct LibraryView: View {
                 .foregroundStyle(LibraryPalette.secondaryLabel)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 120)
+        }
+    }
+
+    private func hover(_ url: URL, _ on: Bool) {
+        if on, let frame = cards.rects[url] {
+            hovered = HoverTarget(url: url, text: url.lastPathComponent, card: frame)
+        } else if hovered?.url == url {
+            hovered = nil
         }
     }
 
@@ -185,7 +203,7 @@ struct LibraryView: View {
                     width: abs(value.location.x - value.startLocation.x), height: abs(value.location.y - value.startLocation.y)
                 )
                 marquee = rect
-                let touched = cardFrames.filter { $0.value.intersects(rect) }.map(\.key)
+                let touched = cards.rects.filter { $0.value.intersects(rect) }.map(\.key)
                 selection = marqueeBase.union(touched)
             }
             .onEnded { _ in
@@ -204,7 +222,7 @@ struct LibraryView: View {
         guard !selection.isEmpty, menu == nil, !renaming else { return }
         // With ⌘ or ⇧ held, the press may begin a drag that adds to it.
         guard NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty else { return }
-        guard !toastFrame.contains(point), !cardFrames.values.contains(where: { $0.contains(point) }) else { return }
+        guard !toastFrame.contains(point), !cards.rects.values.contains(where: { $0.contains(point) }) else { return }
         deselect()
     }
 
@@ -266,7 +284,7 @@ struct LibraryView: View {
             withAnimation(LibraryMenuLayer.wash) { menu = nil }
             return
         }
-        if let url = cardFrames.first(where: { $0.value.contains(point) })?.key {
+        if let url = cards.rects.first(where: { $0.value.contains(point) })?.key {
             let isFolder = listing.folders.contains { $0.url == url }
             showMenu(at: point, items: items(for: url, isFolder: isFolder))
         } else {
@@ -356,7 +374,7 @@ struct LibraryView: View {
     /// card is on screen.
     private func openNote(_ url: URL) {
         var card: NSRect?
-        if let frame = cardFrames[url], let window = navigation.window, let content = window.contentView {
+        if let frame = cards.rects[url], let window = navigation.window, let content = window.contentView {
             // The card's frame is measured from the content's top left.
             let inContent = NSRect(
                 x: frame.minX, y: content.isFlipped ? frame.minY : content.bounds.height - frame.maxY,
@@ -415,9 +433,11 @@ private struct LibraryNoteTile: View {
                     miniature = cached
                     return
                 }
-                // One card per turn of the run loop, so a folder of many
-                // notes fills in without holding up scrolling.
-                await Task.yield()
+                // A card flung past is never drawn; the rest take turns,
+                // with room between them for the scroll to draw.
+                try? await Task.sleep(for: .milliseconds(70))
+                guard !Task.isCancelled else { return }
+                await NoteMiniature.turn()
                 guard !Task.isCancelled else { return }
                 miniature = NoteMiniature.image(
                     for: note.url, modified: note.modified, dark: colorScheme == .dark,
@@ -431,49 +451,28 @@ private struct LibraryNoteTile: View {
 /// under the pointer and gives a little while pressed, so both the hover
 /// and the click show before anything opens.
 private struct CardClick: ViewModifier {
-    /// Shown in a small pill under the card while the pointer is on it:
-    /// a note's file name, which its page does not say.
-    var label: String?
+    /// Told when the pointer comes onto the card and leaves it, so the
+    /// library can show the card's name under it.
+    var hover: ((Bool) -> Void)?
     let open: () -> Void
     @State private var hovering = false
-    @State private var midX: CGFloat = 0
-    @State private var labelWidth: CGFloat = 0
-    @Environment(\.libraryWidth) private var windowWidth
-    private static let labelMargin: CGFloat = 12
 
-    init(label: String? = nil, open: @escaping () -> Void) {
-        self.label = label
+    init(hover: ((Bool) -> Void)? = nil, open: @escaping () -> Void) {
+        self.hover = hover
         self.open = open
     }
 
     func body(content: Content) -> some View {
         Button(action: open) { content }
             .buttonStyle(PressStyle(hovering: hovering))
-            .onHover { hovering = $0 }
-            // Hung below the card, outside its layout, so nothing moves.
-            .overlay(alignment: .bottom) {
-                if hovering, let label {
-                    // Pushed down by its own height and a gap, so its top
-                    // sits clear of the card's foot.
-                    HoverLabel(text: label, maxWidth: max(120, windowWidth - 2 * Self.labelMargin))
-                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { labelWidth = $0 }
-                        .offset(x: labelShift, y: HoverLabel.height + 10)
-                        .transition(.opacity)
-                }
+            .onHover {
+                hovering = $0
+                hover?($0)
             }
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).midX } action: { midX = $0 }
-            .animation(.easeOut(duration: 0.14), value: hovering)
-            // The grown card and its label draw over their neighbors.
+            // A button would otherwise bring back the system's arrow.
+            .pointerStyle(LibraryPointer.style)
+            // The grown card draws over its neighbors.
             .zIndex(hovering ? 1 : 0)
-    }
-
-    /// A long name is wider than its card; at the window's edge the
-    /// label slides inward rather than run off the side.
-    private var labelShift: CGFloat {
-        guard windowWidth > 0, labelWidth > 0 else { return 0 }
-        let left = midX - labelWidth / 2
-        let clamped = min(max(left, Self.labelMargin), max(Self.labelMargin, windowWidth - Self.labelMargin - labelWidth))
-        return clamped - left
     }
 
     private struct PressStyle: ButtonStyle {
@@ -519,20 +518,62 @@ extension EnvironmentValues {
     }
 }
 
+@MainActor
+final class CardFrames {
+    var rects: [URL: CGRect] = [:]
+}
+
 private struct CardFrame: ViewModifier {
     let url: URL
-    @Binding var frames: [URL: CGRect]
+    let frames: CardFrames
 
     func body(content: Content) -> some View {
         content
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames[url] = $0 }
-            .onDisappear { frames[url] = nil }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.rects[url] = $0 }
+            .onDisappear { frames.rects[url] = nil }
     }
 }
 
 /// A name shown on hover, after Spatial's hint labels: the system
 /// monospace, spaced out, dark on a pale rounded tablet a shade lighter
 /// than the page, with no edge. The name keeps its own case.
+struct HoverTarget: Equatable {
+    let url: URL
+    let text: String
+    /// The card's frame in the window's content, from its top left.
+    let card: CGRect
+}
+
+/// The hovered card's name, centered under the card and kept inside the
+/// window: at an edge it slides inward, and a name wider than the window
+/// is cut in its middle.
+private struct HoverLabelLayer: View {
+    let target: HoverTarget?
+    @State private var labelWidth: CGFloat = 0
+    private static let margin: CGFloat = 12
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let target {
+                let half = labelWidth / 2
+                let low = Self.margin + half
+                let high = max(low, proxy.size.width - Self.margin - half)
+                HoverLabel(text: target.text, maxWidth: max(120, proxy.size.width - 2 * Self.margin))
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { labelWidth = $0 }
+                    .position(
+                        x: min(max(target.card.midX, low), high),
+                        y: target.card.maxY + 12 + HoverLabel.height / 2
+                    )
+                    .transition(.opacity)
+                    .id(target.url)
+            }
+        }
+        .ignoresSafeArea()
+        .animation(.easeOut(duration: 0.14), value: target?.url)
+        .allowsHitTesting(false)
+    }
+}
+
 private struct HoverLabel: View {
     static let height: CGFloat = 24
     static let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
