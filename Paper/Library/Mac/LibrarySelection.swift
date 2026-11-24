@@ -10,16 +10,10 @@ struct MarqueeLayer: View {
     @State private var last = CGRect.zero
     @Environment(\.colorScheme) private var colorScheme
 
-    /// On the dark page, Spatial's white line and wash. On the light page
-    /// the same in black read heavy, and white is lost on the pale cards,
-    /// so it takes the system blue of the picked cards' rings.
-    private static func line(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? .white.opacity(0.9) : Color(nsColor: .systemBlue).opacity(0.85)
-    }
+    /// Spatial's white line and wash, on the light page as on the dark.
+    private static func line(_ scheme: ColorScheme) -> Color { .white.opacity(0.9) }
 
-    private static func wash(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? .white.opacity(0.2) : Color(nsColor: .systemBlue).opacity(0.12)
-    }
+    private static func wash(_ scheme: ColorScheme) -> Color { .white.opacity(0.2) }
 
     var body: some View {
         GeometryReader { _ in

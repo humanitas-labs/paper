@@ -96,11 +96,16 @@ enum NoteMiniature {
         let size = NSSize(width: pageWidth, height: (pageWidth / aspect).rounded())
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
         let textView = PaperTextView()
+        // As the PDF exporter's page: the editor's own window margins (a
+        // wide minimum at the sides, a title band on top) are put back on
+        // every resize, so a margin set on the view does not hold. A print
+        // surface takes its side margin from here and has no band; the
+        // top margin is the page's, below.
+        textView.isPrintSurface = true
+        textView.printHorizontalInset = margins.width
         textView.appearance = appearance
-        textView.frame = NSRect(origin: .zero, size: NSSize(width: size.width, height: size.height))
-        // The editor's own insets are a window's (a title band, a wide
-        // top margin); the card's page has its own.
-        textView.textContainerInset = margins
+        let textSize = NSSize(width: size.width, height: size.height - margins.height)
+        textView.frame = NSRect(origin: .zero, size: textSize)
         textView.documentURL = documentURL
         textView.string = text
         textView.syntaxStyler.apply(to: textView)
@@ -113,8 +118,11 @@ enum NoteMiniature {
         // held at its size, so a short note still fills it and a long one
         // is cut at its foot.
         textView.isVerticallyResizable = false
-        textView.setFrameSize(size)
-        textView.textContainerInset = margins
+        textView.setFrameSize(textSize)
+        let page = Page(frame: NSRect(origin: .zero, size: size), ground: background)
+        page.appearance = appearance
+        textView.setFrameOrigin(NSPoint(x: 0, y: margins.height))
+        page.addSubview(textView)
         let bounds = NSRect(origin: .zero, size: size)
         let image = NSImage(size: size)
         appearance.performAsCurrentDrawingAppearance {
@@ -126,10 +134,26 @@ enum NoteMiniature {
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
             ) else { return }
             rep.size = size
-            textView.cacheDisplay(in: bounds, to: rep)
+            page.cacheDisplay(in: bounds, to: rep)
             image.addRepresentation(rep)
         }
         return image
+    }
+
+    /// The card's page: its ground, with the text view set into it below
+    /// the top margin.
+    private final class Page: NSView {
+        let ground: NSColor
+        init(frame: NSRect, ground: NSColor) {
+            self.ground = ground
+            super.init(frame: frame)
+        }
+        required init?(coder: NSCoder) { nil }
+        override var isFlipped: Bool { true }
+        override func draw(_ dirtyRect: NSRect) {
+            ground.setFill()
+            dirtyRect.fill()
+        }
     }
 
     private static func store(_ image: NSImage, for key: Key) {

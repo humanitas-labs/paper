@@ -158,6 +158,17 @@ struct LibraryTests {
             for x in stride(from: 90, to: 500, by: 2) where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 { inked = true }
         }
         #expect(inked)
+        // The text starts at the preview's own margins, not the editor's
+        // window margins.
+        var left = rep.pixelsWide, top = rep.pixelsHigh
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
+                left = min(left, x)
+                top = min(top, y)
+            }
+        }
+        #expect(Double(left) / 2 >= NoteMiniature.margins.width - 2 && Double(left) / 2 <= NoteMiniature.margins.width + 6)
+        #expect(Double(top) / 2 >= NoteMiniature.margins.height - 2 && Double(top) / 2 <= NoteMiniature.margins.height + 24)
     }
 
     /// The pointer's 2x bitmap must be drawn at full size: ink reaches
