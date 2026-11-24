@@ -35,6 +35,8 @@ struct LibraryView: View {
     @State private var width: CGFloat = 0
     /// Shown when the library shows hidden items: the ones Finder hides.
     @State private var hiddenItems: Set<URL> = []
+    /// The card the rename sheet is for.
+    @State private var renameTarget: URL?
     /// The folder the listing is of; until the new folder's arrives, the
     /// last folder's cards are not drawn under the new name.
     @State private var listedFolder: URL?
@@ -282,15 +284,17 @@ struct LibraryView: View {
         Task { await reload() }
     }
 
-    private func beginRename() {
-        guard let url = selection.first else { return }
+    /// Renames the one picked card, or the card a menu was opened on.
+    private func beginRename(_ target: URL? = nil) {
+        guard let url = target ?? selection.first else { return }
+        renameTarget = url
         let isFolder = listing.folders.contains { $0.url == url }
         renameText = isFolder ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
         renaming = true
     }
 
     private func renameSelection() {
-        guard let url = selection.first else { return }
+        guard let url = renameTarget else { return }
         let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
         guard !name.isEmpty, !name.hasPrefix(".") else { return }
         let isFolder = listing.folders.contains { $0.url == url }
@@ -330,6 +334,7 @@ struct LibraryView: View {
             LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             },
+            LibraryMenuItem(title: "Rename", glyph: PencilGlyph()) { beginRename(url) },
             LibraryMenuItem(title: "Copy Path", glyph: CopyGlyph()) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url.path, forType: .string)
