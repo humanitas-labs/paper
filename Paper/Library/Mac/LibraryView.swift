@@ -491,23 +491,7 @@ struct LibraryView: View {
             LibraryMenuItem(
                 title: showsHidden ? "Hide Hidden Items" : "Show Hidden Items", glyph: EyeGlyph(), hint: "⇧⌘."
             ) { showsHidden.toggle() },
-        ] + shadeItems
-    }
-
-    /// TEMPORARY: the dark card's shade, to compare in place.
-    @Environment(\.colorScheme) private var colorScheme
-    private var shadeItems: [LibraryMenuItem] {
-        guard colorScheme == .dark else { return [] }
-        return LibraryPalette.darkLifts.enumerated().map { index, lift in
-            LibraryMenuItem(
-                title: "Card Shade \(index + 1) (\(String(format: "%g", lift * 100))%)", glyph: FolderGlyph(),
-                hint: abs(LibraryPalette.darkLift - lift) < 0.0001 ? "✓" : ""
-            ) {
-                UserDefaults.standard.set(lift, forKey: LibraryPalette.darkLiftKey)
-                NoteMiniature.invalidate()
-                themeGeneration += 1
-            }
-        }
+        ]
     }
 
     /// An empty `Untitled.md`, numbered when the name is taken, left

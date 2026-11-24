@@ -272,6 +272,19 @@ struct LibraryTests {
         #expect(!LibraryOrganize.matches("emile budget", name: "x.md", title: "Émile's Plan"))
     }
 
+    /// A theme names its library surfaces with `color.surface.*`; left
+    /// out, they derive from its canvas.
+    @Test func themeSurfacesAreNamedOrDerived() {
+        let theme = Theme.user(named: "t", text: "color.canvas.dark = #15181C\ncolor.surface.card.dark = #1A1C1F\ncolor.surface.ground = #EEEEEE\n")
+        let surfaces = Appearance.surfaceHexes(theme.palette)
+        #expect(surfaces.card.dark == "#1A1C1F")
+        #expect(surfaces.ground.light == "#EEEEEE")
+        #expect(surfaces.ground.dark == "#15181C")
+        #expect(surfaces.card.light == theme.palette.canvas)
+        #expect(surfaces.border.dark == HexColor.blend("#FFFFFF", over: "#15181C", alpha: 0.12))
+        #expect(theme.palette.overrides.fileText.contains("color.surface.card.dark = #1A1C1F"))
+    }
+
     private static func samples(_ rep: NSBitmapImageRep) -> [Double] {
         var values: [Double] = []
         let step = 6

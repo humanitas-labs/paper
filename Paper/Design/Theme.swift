@@ -32,6 +32,14 @@ struct Palette: Equatable, Sendable {
     var ruleDark: String?
     var accentDark: String?
     var mathDark: String?
+    /// The library's surfaces: the ground behind the cards, a note card,
+    /// and the card's rim. Unset, each derives from the canvas.
+    var surfaceGround: String?
+    var surfaceCard: String?
+    var surfaceBorder: String?
+    var surfaceGroundDark: String?
+    var surfaceCardDark: String?
+    var surfaceBorderDark: String?
 
     /// The colour keys of a theme file or of the config's overrides: each
     /// value is a `#RRGGBB` string or nil to inherit.
@@ -69,6 +77,12 @@ struct Palette: Equatable, Sendable {
         var ruleDark: String?
         var accentDark: String?
         var mathDark: String?
+        var surfaceGround: String?
+        var surfaceCard: String?
+        var surfaceBorder: String?
+        var surfaceGroundDark: String?
+        var surfaceCardDark: String?
+        var surfaceBorderDark: String?
 
         var isEmpty: Bool { self == Overrides() }
     }
@@ -97,7 +111,13 @@ struct Palette: Equatable, Sendable {
             codeBackgroundDark: o.codeBackgroundDark ?? codeBackgroundDark,
             ruleDark: o.ruleDark ?? ruleDark,
             accentDark: o.accentDark ?? accentDark,
-            mathDark: o.mathDark ?? mathDark
+            mathDark: o.mathDark ?? mathDark,
+            surfaceGround: o.surfaceGround ?? surfaceGround,
+            surfaceCard: o.surfaceCard ?? surfaceCard,
+            surfaceBorder: o.surfaceBorder ?? surfaceBorder,
+            surfaceGroundDark: o.surfaceGroundDark ?? surfaceGroundDark,
+            surfaceCardDark: o.surfaceCardDark ?? surfaceCardDark,
+            surfaceBorderDark: o.surfaceBorderDark ?? surfaceBorderDark
         )
     }
 
@@ -109,7 +129,9 @@ struct Palette: Equatable, Sendable {
             codeBackground: codeBackground, rule: rule, accent: accent, math: math,
             inkMutedDark: inkMutedDark, inkQuoteDark: inkQuoteDark, inkLabelDark: inkLabelDark,
             selectionDark: selectionDark, selectionInkDark: selectionInkDark,
-            codeBackgroundDark: codeBackgroundDark, ruleDark: ruleDark, accentDark: accentDark, mathDark: mathDark
+            codeBackgroundDark: codeBackgroundDark, ruleDark: ruleDark, accentDark: accentDark, mathDark: mathDark,
+            surfaceGround: surfaceGround, surfaceCard: surfaceCard, surfaceBorder: surfaceBorder,
+            surfaceGroundDark: surfaceGroundDark, surfaceCardDark: surfaceCardDark, surfaceBorderDark: surfaceBorderDark
         )
     }
 }

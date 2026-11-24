@@ -197,6 +197,9 @@ enum Appearance {
         let hover: NSColor
         let codeBackground: NSColor
         let hairline: NSColor
+        let surfaceGround: NSColor
+        let surfaceCard: NSColor
+        let surfaceBorder: NSColor
     }
 
     private static var cachedColors: Colors?
@@ -224,6 +227,7 @@ enum Appearance {
                 dark: dark.map(color(hex:)) ?? darkInk.withAlphaComponent(alpha)
             )
         }
+        let surfaces = surfaceHexes(palette)
         let colors = Colors(
             palette: palette,
             canvas: dynamic(light: color(hex: phoneCanvasLight ?? palette.canvas), dark: color(hex: phoneCanvasDark ?? palette.canvasDark)),
@@ -252,11 +256,37 @@ enum Appearance {
             ),
             hover: tone(nil, nil, alpha: 0.038),
             codeBackground: tone(palette.codeBackground, palette.codeBackgroundDark, alpha: 0.055),
-            hairline: tone(palette.rule, palette.ruleDark, alpha: 0.10)
+            hairline: tone(palette.rule, palette.ruleDark, alpha: 0.10),
+            surfaceGround: dynamic(light: color(hex: surfaces.ground.light), dark: color(hex: surfaces.ground.dark)),
+            surfaceCard: dynamic(light: color(hex: surfaces.card.light), dark: color(hex: surfaces.card.dark)),
+            surfaceBorder: dynamic(light: color(hex: surfaces.border.light), dark: color(hex: surfaces.border.dark))
         )
         cachedColors = colors
         return colors
     }
+
+    /// The library's surfaces as the theme names them, else derived from
+    /// its canvas: on the light page a card is the page itself on a ground
+    /// 7% darker, rimmed in white; on the dark page the ground is the
+    /// page and a card is lifted 6% toward white, rimmed at 12%.
+    static func surfaceHexes(_ palette: Palette) -> (
+        ground: (light: String, dark: String), card: (light: String, dark: String), border: (light: String, dark: String)
+    ) {
+        let light = palette.canvas, dark = palette.canvasDark
+        return (
+            (palette.surfaceGround ?? HexColor.blend("#000000", over: light, alpha: 0.07) ?? light,
+             palette.surfaceGroundDark ?? dark),
+            (palette.surfaceCard ?? light,
+             palette.surfaceCardDark ?? HexColor.blend("#FFFFFF", over: dark, alpha: 0.06) ?? dark),
+            (palette.surfaceBorder ?? "#FFFFFF",
+             palette.surfaceBorderDark ?? HexColor.blend("#FFFFFF", over: dark, alpha: 0.12) ?? dark)
+        )
+    }
+
+    /// The library's ground, cards and card rims, from the theme.
+    static var surfaceGround: NSColor { colors.surfaceGround }
+    static var surfaceCard: NSColor { colors.surfaceCard }
+    static var surfaceBorder: NSColor { colors.surfaceBorder }
 
     static func color(hex: String) -> NSColor {
         #if os(macOS)

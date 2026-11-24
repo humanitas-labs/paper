@@ -156,6 +156,12 @@ struct Configuration: Equatable, Sendable {
         ColorKey("color.rule.dark", \.ruleDark),
         ColorKey("color.accent.dark", \.accentDark),
         ColorKey("color.math.dark", \.mathDark),
+        ColorKey("color.surface.ground", \.surfaceGround),
+        ColorKey("color.surface.card", \.surfaceCard),
+        ColorKey("color.surface.border", \.surfaceBorder),
+        ColorKey("color.surface.ground.dark", \.surfaceGroundDark),
+        ColorKey("color.surface.card.dark", \.surfaceCardDark),
+        ColorKey("color.surface.border.dark", \.surfaceBorderDark),
     ]
 
     /// The overrides applied over a resolved theme's palette.
@@ -330,6 +336,17 @@ struct Configuration: Equatable, Sendable {
     color.rule.dark =
     color.accent.dark =
     color.math.dark =
+
+    # The library's surfaces: the ground behind the cards, a note card (and
+    # a folder's front), and the card's rim. Unset, the light ground is the
+    # canvas a shade darker with the card the canvas itself, and the dark
+    # ground is the canvas with the card a shade lighter.
+    color.surface.ground =
+    color.surface.card =
+    color.surface.border =
+    color.surface.ground.dark =
+    color.surface.card.dark =
+    color.surface.border.dark =
 
     """
 

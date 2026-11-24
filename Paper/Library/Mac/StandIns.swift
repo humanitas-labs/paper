@@ -10,44 +10,30 @@ enum LibrarySelectionRing {
 }
 
 enum LibraryPalette {
-    /// From the theme's page color, so the library wears the theme the
-    /// notes do. On the light page a note is the page itself, a card on a
-    /// dimmed ground, as in Spatial. On the dark page the ground is the
-    /// note's own color and a card is lifted a little off it.
-    static let background = themed { canvas, dark in
-        dark ? canvas : canvas.blended(withFraction: 0.07, of: .black) ?? canvas
-    }
-    static let card = themed(cardColor)
-    static func cardColor(canvas: NSColor, dark: Bool) -> NSColor {
-        dark ? canvas.blended(withFraction: darkLift, of: .white) ?? canvas : canvas
-    }
-
-    // TEMPORARY: shades to try for the dark card, picked from the library's
-    // menu, until themes declare their own surface shades.
-    static let darkLiftKey = "libraryDarkSurfaceLift"
-    static let darkLifts: [Double] = [0.06, 0.045, 0.03, 0.015]
-    /// How far the dark card is lifted from the page toward white.
-    static var darkLift: CGFloat {
-        let stored = UserDefaults.standard.double(forKey: darkLiftKey)
-        return stored > 0 ? stored : 0.06
-    }
+    /// The theme's surfaces (`color.surface.*`), so the library wears the
+    /// theme the notes do and a theme can tune its shades. Unset, they
+    /// derive from the canvas: on the light page a note is the page
+    /// itself, a card on a dimmed ground, as in Spatial; on the dark page
+    /// the ground is the page and a card is lifted a little off it.
+    static let background = themed { _ in Appearance.surfaceGround }
+    static let card = themed { _ in Appearance.surfaceCard }
+    static let border = themed { dark in dark ? Appearance.surfaceBorder : .white }
 
     /// The note card's color in an appearance, resolved now.
     @MainActor
     static func resolvedCard(dark: Bool) -> NSColor {
-        var canvas = NSColor.white
+        var card = NSColor.white
         NSAppearance(named: dark ? .darkAqua : .aqua)!.performAsCurrentDrawingAppearance {
-            canvas = Appearance.canvas.usingColorSpace(.sRGB) ?? .white
+            card = Appearance.surfaceCard.usingColorSpace(.sRGB) ?? .white
         }
-        return cardColor(canvas: canvas, dark: dark).usingColorSpace(.sRGB) ?? .white
+        return card
     }
-    static let border = themed { canvas, dark in
-        dark ? canvas.blended(withFraction: darkLift * 2, of: .white) ?? canvas : .white
-    }
+
     /// The folder's fine rim in dark mode: halfway between the card and
-    /// the note card's border, which read harsh around a folder.
-    static let folderRim = themed { canvas, dark in
-        dark ? canvas.blended(withFraction: darkLift * 1.5, of: .white) ?? canvas : .clear
+    /// the border, which read harsh around a folder.
+    static let folderRim = themed { dark in
+        guard dark, let card = Appearance.surfaceCard.usingColorSpace(.sRGB) else { return .clear }
+        return card.blended(withFraction: 0.5, of: Appearance.surfaceBorder) ?? card
     }
     static let secondaryLabel = dynamic(dark: 0x959EAC, light: 0x6B7280)
 
@@ -57,16 +43,16 @@ enum LibraryPalette {
         }
     }
 
-    /// A color worked out from the theme's canvas in each appearance, read
-    /// as it draws, so a theme change shows once the library redraws.
-    private static func themed(_ make: @escaping @Sendable (NSColor, Bool) -> NSColor) -> Color {
+    /// A color from the theme in each appearance, read as it draws, so a
+    /// theme change shows once the library redraws.
+    private static func themed(_ make: @escaping @MainActor (Bool) -> NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            var canvas = NSColor.white
+            var color = NSColor.white
             appearance.performAsCurrentDrawingAppearance {
-                canvas = (MainActor.assumeIsolated { Appearance.canvas }.usingColorSpace(.sRGB)) ?? .white
+                color = MainActor.assumeIsolated { make(dark) }.usingColorSpace(.sRGB) ?? .white
             }
-            return make(canvas, dark)
+            return color
         })
     }
 
