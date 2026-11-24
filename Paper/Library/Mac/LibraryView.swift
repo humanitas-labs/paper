@@ -441,6 +441,10 @@ struct LibraryView: View {
             return
         }
         if let url = cards.rects.first(where: { $0.value.contains(point) })?.key {
+            // As in Spatial, the card asked about is picked, and stays
+            // picked once the menu closes; a card already among those
+            // picked keeps the rest with it.
+            if !selection.contains(url) { selection = [url] }
             let isFolder = listing.folders.contains { $0.url == url }
             showMenu(at: point, items: items(for: url, isFolder: isFolder))
         } else {

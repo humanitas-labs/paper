@@ -35,14 +35,16 @@ struct LibraryMenuLayer: View {
     static let width: CGFloat = 292
     static let rowHeight: CGFloat = 42
     static let inset: CGFloat = 8
-    static let grow = Animation.spring(duration: 0.32, bounce: 0.22)
+    /// Spatial's card is full size about a tenth of a second after the
+    /// click, a touch past it, then settles.
+    static let grow = Animation.spring(duration: 0.22, bounce: 0.25)
     static let wash = Animation.easeOut(duration: 0.22)
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 if let request {
-                    LibraryPalette.background.opacity(0.72)
+                    LibraryPalette.background.opacity(0.6)
                         .contentShape(Rectangle())
                         .onTapGesture { close() }
                         .transition(.opacity.animation(Self.wash))
@@ -52,7 +54,7 @@ struct LibraryMenuLayer: View {
                         // Out from the pointer: the click stays put while
                         // the card grows away from it.
                         .transition(
-                            .scale(scale: 0.4, anchor: place.anchor).combined(with: .opacity)
+                            .scale(scale: 0.3, anchor: place.anchor).combined(with: .opacity)
                                 .animation(Self.grow)
                         )
                         .id(request.id)
@@ -89,7 +91,7 @@ struct LibraryMenuLayer: View {
 private struct LibraryMenuCard: View {
     let items: [LibraryMenuItem]
     let close: () -> Void
-    static let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+    static let shape = RoundedRectangle(cornerRadius: 21, style: .continuous)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -133,12 +135,15 @@ private struct LibraryMenuRow: View {
                 }
             }
             .foregroundStyle(MenuPalette.ink)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 18)
             .frame(height: LibraryMenuLayer.rowHeight)
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(MenuPalette.hover.opacity(hovering ? 1 : 0))
-            )
+            .background {
+                // The line under the pointer: a lighter tile with a rim.
+                let tile = RoundedRectangle(cornerRadius: 14, style: .continuous)
+                tile.fill(MenuPalette.hover)
+                    .overlay(tile.strokeBorder(MenuPalette.hoverRim, lineWidth: 1))
+                    .opacity(hovering ? 1 : 0)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -149,11 +154,13 @@ private struct LibraryMenuRow: View {
 
 @MainActor
 enum MenuPalette {
-    static let fill = color(dark: 0x1D1F20, light: 0xF3F4F5)
-    static let rim = color(dark: 0x2B2D2F, light: 0xF8F9FA)
+    // Dark tones sampled from Spatial's menu.
+    static let fill = color(dark: 0x1B1E20, light: 0xF3F4F5)
+    static let rim = color(dark: 0x27292C, light: 0xF8F9FA)
     static let ink = color(dark: 0xECEDEE, light: 0x1D2023)
     static let hint = color(dark: 0x8A8F96, light: 0x86898D)
-    static let hover = color(dark: 0x2A2C2E, light: 0xE7E9EB)
+    static let hover = color(dark: 0x2E3033, light: 0xE7E9EB)
+    static let hoverRim = color(dark: 0x3C3E41, light: 0xDDE0E2)
     static var shadowOpacity: Double { 0.28 }
 
     private static func color(dark: UInt32, light: UInt32) -> Color {
