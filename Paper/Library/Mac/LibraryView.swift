@@ -480,23 +480,28 @@ private struct CardFrame: ViewModifier {
     }
 }
 
-/// A small pill of quiet monospaced type, for a name shown on hover.
+/// A name shown on hover, after Spatial's hint labels: capitals in the
+/// system monospace, spaced out, dark on a pale rounded tablet a shade
+/// lighter than the page, with no edge.
 private struct HoverLabel: View {
-    static let height: CGFloat = 22
+    static let height: CGFloat = 24
+    static let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
     let text: String
 
     var body: some View {
-        Text(text)
-            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-            .tracking(0.4)
-            .foregroundStyle(ToastPalette.glyph)
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .regular, design: .monospaced))
+            .tracking(0.9)
+            .foregroundStyle(MenuPalette.ink)
             .lineLimit(1)
             .truncationMode(.middle)
-            .padding(.horizontal, 9)
+            .padding(.horizontal, 10)
             .frame(height: Self.height)
-            .background(Capsule().fill(ToastPalette.fill))
-            .overlay(Capsule().strokeBorder(ToastPalette.border, lineWidth: 1))
-            .frame(maxWidth: 260)
+            .background(
+                Self.shape
+                    .fill(MenuPalette.fill)
+                    .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
+            )
             .fixedSize()
             .allowsHitTesting(false)
     }
