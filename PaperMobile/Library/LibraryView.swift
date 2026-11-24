@@ -909,21 +909,19 @@ private struct LibraryBar: View {
     }
 }
 
-/// The folder glyph with a plus badge at its top right, as the
-/// system's folder-plus has: the badge is cut out of the folder's corner
-/// so the two never touch.
+/// The folder glyph at full size with a plus badge in the clear space
+/// above its top right corner, as the system's folder-plus has: the
+/// badge's ring is cut out of the corner so the two never touch.
 private struct FolderPlusGlyph: View {
     /// Badge centre and the clear ring around it, on the 24 pt grid.
-    private static let badge = CGPoint(x: 19.5, y: 5)
-    private static let clearance: CGFloat = 4.6
-    private static let arm: CGFloat = 2.7
+    private static let badge = CGPoint(x: 20.5, y: 3.5)
+    private static let clearance: CGFloat = 4.2
+    private static let arm: CGFloat = 2.4
 
     var body: some View {
         FolderGlyph()
             .stroke(.foreground, style: BarGlyph<FolderGlyph>.style)
-            // The folder gives up a little room at the top right to the badge.
-            .frame(width: 19, height: 19)
-            .frame(width: 22, height: 22, alignment: .bottomLeading)
+            .frame(width: 22, height: 22)
             .mask {
                 Canvas { context, size in
                     let s = size.width / 24
