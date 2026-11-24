@@ -579,6 +579,8 @@ private struct MoveSheet: View {
     let choose: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var folders: [URL] = []
+    @State private var naming = false
+    @State private var name = ""
 
     var body: some View {
         NavigationStack {
@@ -595,12 +597,33 @@ private struct MoveSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New Folder", systemImage: "folder.badge.plus") { name = ""; naming = true }
+                }
+            }
+            // A new folder is made beside the notes, in the folder being
+            // viewed, and the notes go straight into it.
+            .alert("New Folder", isPresented: $naming) {
+                TextField("Name", text: $name)
+                Button("Create and Move", action: createAndMove)
+                Button("Cancel", role: .cancel) {}
             }
         }
         .task {
             let root = root, isDefault = isDefaultRoot
             folders = await Task.detached { [root] + FolderListing.allFolders(under: root, isDefaultRoot: isDefault) }.value
         }
+    }
+
+    private func createAndMove() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
+        guard !trimmed.isEmpty, !trimmed.hasPrefix(".") else { return }
+        let folder = current.appendingPathComponent(trimmed, isDirectory: true)
+        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)) != nil
+            || FileManager.default.fileExists(atPath: folder.path)
+        else { return }
+        choose(folder)
+        dismiss()
     }
 
     /// The path below the root, `Paper` for the root itself.
