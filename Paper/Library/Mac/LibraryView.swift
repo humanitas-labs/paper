@@ -380,16 +380,7 @@ struct LibraryView: View {
     /// Opens a note in its own window, grown out of its card when the
     /// card is on screen.
     private func openNote(_ url: URL) {
-        var card: NSRect?
-        if let frame = cards.rects[url], let window = navigation.window, let content = window.contentView {
-            // The card's frame is measured from the content's top left.
-            let inContent = NSRect(
-                x: frame.minX, y: content.isFlipped ? frame.minY : content.bounds.height - frame.maxY,
-                width: frame.width, height: frame.height
-            )
-            card = window.convertToScreen(content.convert(inContent, to: nil))
-        }
-        NoteOpenAnimation.open(url, from: card, cardColor: NSColor(LibraryPalette.card), library: navigation.window)
+        LibraryOpening.open([url])
     }
 
     // MARK: Loading
