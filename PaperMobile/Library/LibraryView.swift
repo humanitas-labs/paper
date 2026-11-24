@@ -58,6 +58,9 @@ struct FolderView: View {
     /// opens and after changes, so search runs in memory as you type.
     @State private var searchIndex: FolderListing.SearchIndex?
     @Environment(\.scenePhase) private var scenePhase
+    /// A renamed item keeps the identity it was shown with, so its card
+    /// stays put and retitles rather than shrinking out and growing back.
+    @State private var renamed: [String: URL] = [:]
     /// Notes and folders picked while selecting.
     @State private var selection: Set<URL> = []
     /// Select mode, as in Files: a hold on a card or on empty space starts
@@ -308,7 +311,7 @@ struct FolderView: View {
 
     private func noteGrid(_ notes: [FolderListing.Note]) -> some View {
         LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(notes) { item in
+            ForEach(notes.map { (identity(of: $0.url), $0) }, id: \.0) { _, item in
                 NoteCard(note: item, selected: selection.contains(item.url))
                     .matchedTransitionSource(id: item.url, in: cards) { source in
                         source.clipShape(NoteCard.shape)
@@ -317,6 +320,7 @@ struct FolderView: View {
                         tap: { if selecting { toggle(item.url) } else { open(.note(item.url)) } },
                         pick: { changeSelection { $0.insert(item.url) } }
                     ))
+                    .transition(Self.itemTransition)
             }
         }
     }
@@ -324,13 +328,14 @@ struct FolderView: View {
     @ViewBuilder private var contents: some View {
                 if !listing.folders.isEmpty {
                     LazyVGrid(columns: folderColumns, spacing: 12) {
-                        ForEach(listing.folders) { item in
+                        ForEach(listing.folders.map { (identity(of: $0.url), $0) }, id: \.0) { _, item in
                             FolderCard(folder: item, selected: selection.contains(item.url))
                                 .matchedTransitionSource(id: item.url, in: cards)
                                 .modifier(PickGesture(
                                     tap: { if selecting { toggle(item.url) } else { open(.folder(item.url)) } },
                                     pick: { changeSelection { $0.insert(item.url) } }
                                 ))
+                                .transition(Self.itemTransition)
                         }
                     }
                 }
@@ -345,10 +350,25 @@ struct FolderView: View {
                 }
     }
 
-    private func reload() async {
+    /// Cards grow in as they arrive and shrink out as they go; the rest
+    /// slide to close or open the gap.
+    static let itemTransition = AnyTransition.scale(scale: 0.6).combined(with: .opacity)
+    static let itemSpring = Animation.spring(duration: 0.4, bounce: 0.18)
+
+    /// What a card is known by: its first URL, carried across renames.
+    private func identity(of url: URL) -> URL { renamed[url.standardizedFileURL.path] ?? url }
+
+    /// `animated` after the library's own changes (delete, move, rename, a
+    /// new folder); refreshes from elsewhere land without animation.
+    private func reload(animated: Bool = false) async {
         let folder = folder
         let isDefault = isRoot && root.isDefault
-        listing = await Task.detached { FolderListing.load(folder, isDefaultRoot: isDefault) }.value
+        let loaded = await Task.detached { FolderListing.load(folder, isDefaultRoot: isDefault) }.value
+        if animated {
+            withAnimation(Self.itemSpring) { listing = loaded }
+        } else {
+            listing = loaded
+        }
         searchIndex = await Task.detached { FolderListing.index(under: folder, isDefaultRoot: isDefault) }.value
         if searching { await search() }
     }
@@ -400,7 +420,7 @@ struct FolderView: View {
             try? NoteFile.move(url, into: destination)
         }
         endSelecting()
-        Task { await reload() }
+        Task { await reload(animated: true) }
     }
 
     private func deleteSelection() {
@@ -408,7 +428,7 @@ struct FolderView: View {
             try? NoteFile.delete(url)
         }
         endSelecting()
-        Task { await reload() }
+        Task { await reload(animated: true) }
     }
 
     private var selectedFolders: [URL] {
@@ -439,9 +459,12 @@ struct FolderView: View {
         guard let url = selection.first else { return }
         let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
         guard !name.isEmpty, !name.hasPrefix(".") else { return }
-        try? NoteFile.rename(url, to: name, isFolder: selectedFolders.contains(url))
+        let isFolder = selectedFolders.contains(url)
+        if let renamedTo = try? NoteFile.rename(url, to: name, isFolder: isFolder) {
+            renamed[renamedTo.standardizedFileURL.path] = identity(of: url)
+        }
         endSelecting()
-        Task { await reload() }
+        Task { await reload(animated: true) }
     }
 
     private func createFolder() {
@@ -451,7 +474,7 @@ struct FolderView: View {
         try? FileManager.default.createDirectory(at: folder.appendingPathComponent(name, isDirectory: true), withIntermediateDirectories: false)
         // Making a folder finishes the task, as moving or deleting does.
         endSelecting()
-        Task { await reload() }
+        Task { await reload(animated: true) }
     }
 
     /// An empty `Untitled.md` (numbered when taken), opened at once.
