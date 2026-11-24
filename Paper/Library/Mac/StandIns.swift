@@ -252,7 +252,7 @@ enum LibraryMotion {
 
 struct NoteCard: View {
     static let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-    static let aspect: CGFloat = 3.0 / 4.0
+    static let aspect: CGFloat = 470.0 / 668.0
     let note: FolderListing.Note
     var selected = false
     var miniature: Image?
