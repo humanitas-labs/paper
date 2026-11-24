@@ -183,7 +183,7 @@ struct LibraryView: View {
                         .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
                         .modifier(CardClick(hover: { if $0 { ListingCache.prefetch(item.url, showsHidden: showsHidden) } }) { click(item.url) { go(to: item.url) } })
                         .modifier(CardFrame(url: item.url, frames: cards))
-                        .transition(LibraryMotion.itemTransition)
+                        .transition(Self.cardTransition)
                 }
             }
         }
@@ -195,7 +195,7 @@ struct LibraryView: View {
                         .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
                         .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
                         .modifier(CardFrame(url: item.url, frames: cards))
-                        .transition(LibraryMotion.itemTransition)
+                        .transition(Self.cardTransition)
                 }
             }
         }
@@ -281,9 +281,34 @@ struct LibraryView: View {
     }
 
     /// To the Trash, recoverable; the folder watcher takes the cards away.
+    /// Spatial's create and delete: a new card grows out of a point with a
+    /// little spring; a deleted one shrinks to its center as it fades,
+    /// quickly, and the grid closes up behind it.
+    static let cardTransition = AnyTransition.asymmetric(
+        insertion: .scale(scale: 0.05).combined(with: .opacity)
+            .animation(.spring(duration: 0.45, bounce: 0.28)),
+        removal: .scale(scale: 0.05).combined(with: .opacity)
+            .animation(.timingCurve(0.4, 0, 0.7, 1, duration: 0.28))
+    )
+
+    /// To the Trash, so it can be put back, and off the grid at once
+    /// rather than when the folder watcher next hears of it.
+    private func trash(_ urls: [URL]) {
+        NSWorkspace.shared.recycle(urls) { moved, _ in
+            let gone = Set(moved.keys)
+            Task { @MainActor in
+                guard !gone.isEmpty else { return }
+                withAnimation(.spring(duration: 0.4, bounce: 0.12)) {
+                    listing.folders.removeAll { gone.contains($0.url) }
+                    listing.notes.removeAll { gone.contains($0.url) }
+                }
+            }
+        }
+    }
+
     private func trashSelection() {
         guard !selection.isEmpty else { return }
-        NSWorkspace.shared.recycle(Array(selection)) { _, _ in }
+        trash(Array(selection))
         deselect()
     }
 
@@ -365,7 +390,7 @@ struct LibraryView: View {
             },
             LibraryMenuItem(title: "Move to Trash", glyph: TrashGlyph()) {
                 // Recoverable; the folder watcher takes the card away.
-                NSWorkspace.shared.recycle([url]) { _, _ in }
+                trash([url])
             },
         ]
     }
@@ -388,13 +413,16 @@ struct LibraryView: View {
     private func newNote() {
         let url = LibraryNames.unused("Untitled", extension: "md", in: folder)
         guard FileManager.default.createFile(atPath: url.path, contents: Data()) else { return }
+        // The card grows into the grid as the note's window opens.
+        Task { await reload() }
         openNote(url)
     }
 
     /// `Untitled Folder`, numbered when taken, as Finder names one.
     private func newFolder() {
         let url = LibraryNames.unused("Untitled Folder", extension: "", in: folder)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        guard (try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)) != nil else { return }
+        Task { await reload() }
     }
 
     /// ⌘↑ to the enclosing folder, ⌘[ back and ⌘] forward, as in Finder.
