@@ -6,20 +6,23 @@ import SwiftUI
 struct MarqueeLayer: View {
     /// In the window's content, from its top left; nil when not dragging.
     let rect: CGRect?
+    /// The rectangle last dragged, kept so it can fade where it was let go.
+    @State private var last = CGRect.zero
 
     var body: some View {
         GeometryReader { _ in
-            if let rect {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.28), lineWidth: 1)
-                    )
-                    .frame(width: rect.width, height: rect.height)
-                    .offset(x: rect.minX, y: rect.minY)
-            }
+            // Square-cornered, a light wash inside a crisp line, as
+            // Spatial draws its rubber band.
+            Rectangle()
+                .fill(Color.primary.opacity(0.2))
+                .overlay(Rectangle().strokeBorder(Color.primary.opacity(0.9), lineWidth: 1.5))
+                .frame(width: (rect ?? last).width, height: (rect ?? last).height)
+                .offset(x: (rect ?? last).minX, y: (rect ?? last).minY)
+                .opacity(rect == nil ? 0 : 1)
+                // It appears at once and fades when let go.
+                .animation(rect == nil ? .easeOut(duration: 0.22) : nil, value: rect == nil)
         }
+        .onChange(of: rect) { _, new in if let new { last = new } }
         .ignoresSafeArea()
         .allowsHitTesting(false)
     }
