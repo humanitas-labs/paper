@@ -50,22 +50,20 @@ enum LibraryWindow {
         NSApp.activate()
     }
 
-
-
     /// The open libraries, for agent apps: each with its window.
     static func openLibraries() -> [LibraryNavigation] {
         Array(navigations.values)
     }
 
-    /// Whether a window is one of the library's, so other window rules
-    /// (the welcome window's, new-window placement) can leave it alone.
-    static func isLibraryWindow(_ window: NSWindow) -> Bool {
+    /// Whether a window is one of the library's.
+    private static func isLibraryWindow(_ window: NSWindow) -> Bool {
         windows.values.contains { $0 === window }
     }
 
     /// Note windows opened over a library in full screen, set to float in
     /// its space rather than take a full screen of their own.
-    private static var floating: [ObjectIdentifier: NSWindow] = [:]
+    /// Held weakly: a note closed while floating is let go.
+    private static let floating = NSHashTable<NSWindow>.weakObjects()
     private static var exitObserver: NSObjectProtocol?
 
     /// Whether a library is in full screen on the space in front.
@@ -82,22 +80,28 @@ enum LibraryWindow {
         guard !isLibraryWindow(window) else { return }
         window.collectionBehavior.remove(.fullScreenPrimary)
         window.collectionBehavior.insert(.fullScreenAuxiliary)
-        floating[ObjectIdentifier(window)] = window
+        floating.add(window)
         guard exitObserver == nil else { return }
         exitObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didExitFullScreenNotification, object: nil, queue: .main
         ) { note in
             let number = (note.object as? NSWindow)?.windowNumber
             MainActor.assumeIsolated {
-                guard let number, let library = NSApp.window(withWindowNumber: number), isLibraryWindow(library),
-                      !windows.values.contains(where: { $0.styleMask.contains(.fullScreen) }) else { return }
-                for window in floating.values {
-                    window.collectionBehavior.remove(.fullScreenAuxiliary)
-                    window.collectionBehavior.insert(.fullScreenPrimary)
-                }
-                floating.removeAll()
+                guard let number, let library = NSApp.window(withWindowNumber: number), isLibraryWindow(library) else { return }
+                unfloatIfNoFullScreen()
             }
         }
+    }
+
+    /// Once no library is in full screen, floated notes may take a full
+    /// screen of their own again.
+    private static func unfloatIfNoFullScreen() {
+        guard !windows.values.contains(where: { $0.styleMask.contains(.fullScreen) }) else { return }
+        for window in floating.allObjects {
+            window.collectionBehavior.remove(.fullScreenAuxiliary)
+            window.collectionBehavior.insert(.fullScreenPrimary)
+        }
+        floating.removeAllObjects()
     }
 
     private static func frameName(_ folder: URL) -> String { "Library \(folder.path)" }
@@ -108,6 +112,8 @@ enum LibraryWindow {
         delegates[folder] = nil
         toolbars[folder]?.stop()
         toolbars[folder] = nil
+        // A library closed while in full screen never reports leaving it.
+        unfloatIfNoFullScreen()
     }
 
     private final class Closer: NSObject, NSWindowDelegate {

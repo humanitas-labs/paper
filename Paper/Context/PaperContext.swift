@@ -57,9 +57,10 @@ final class PaperContext: ContextProvider {
     private func surfaces() -> [Surface] {
         let order = NSApp.orderedWindows
         func rank(_ window: NSWindow?) -> Int { window.flatMap { order.firstIndex(of: $0) } ?? Int.max }
-        let all = textViews().enumerated().map { (rank($0.element.window), $0.offset, Surface.editor($0.element)) }
-            + libraries().enumerated().map { (rank($0.element.window), 100_000 + $0.offset, Surface.library($0.element)) }
-        return all.sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
+        // By window, then editors before libraries, then each in its own order.
+        let all = textViews().enumerated().map { (rank($0.element.window), 0, $0.offset, Surface.editor($0.element)) }
+            + libraries().enumerated().map { (rank($0.element.window), 1, $0.offset, Surface.library($0.element)) }
+        return all.sorted { ($0.0, $0.1, $0.2) < ($1.0, $1.1, $1.2) }.map(\.3)
     }
 
     // MARK: - Lifecycle

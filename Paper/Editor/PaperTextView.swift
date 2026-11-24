@@ -1793,6 +1793,9 @@ extension NSTextView: StyledSurface {
         (self as? PaperTextView)?.clearCheckingMarksInCode(in: range)
     }
     func surfaceWatchImages(_ urls: Set<URL>) {
-        (self as? PaperTextView)?.watchImages(urls)
+        // A page drawn once, for a PDF or a library card, reads its images
+        // as they are and has nothing to watch them for.
+        guard let view = self as? PaperTextView, !view.isPrintSurface else { return }
+        view.watchImages(urls)
     }
 }

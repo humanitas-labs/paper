@@ -120,8 +120,9 @@ final class LibraryContextTree {
 
     func locate(_ id: String) -> ContextLocation? {
         guard let ref = issued[id] else { return nil }
-        guard let navigation = ref.navigation, let window = navigation.window, window.isVisible else { return .gone(id) }
-        guard !window.isMiniaturized else { return ContextLocation(id: id, state: .offscreen, window: window.windowNumber) }
+        guard let navigation = ref.navigation, let window = navigation.window else { return .gone(id) }
+        // Minimized or on another space, the window is there but not seen.
+        guard window.isVisible, !window.isMiniaturized else { return ContextLocation(id: id, state: .offscreen, window: window.windowNumber) }
         if id.hasPrefix("libwin-") || id.hasPrefix("folder-") {
             if id.hasPrefix("folder-"), ref.url != navigation.folder { return .gone(id) }
             return ContextLocation(

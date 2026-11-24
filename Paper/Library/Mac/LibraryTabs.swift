@@ -15,15 +15,19 @@ struct LibraryTabBar: View {
     /// late: bringing a tab forward swaps the whole grid in one heavy
     /// frame, and a slide begun in that frame stuttered. Begun after it,
     /// the slide runs on quiet frames, as Marina's does.
-    @State private var lit: Int?
+    @State private var lit: UUID?
     /// The tab a carried card is held over.
     var dropTab: UUID?
     static let slide = Animation.spring(duration: 0.2, bounce: 0.15)
 
+    private var frontID: UUID? {
+        navigation.tabs.indices.contains(navigation.front) ? navigation.tabs[navigation.front].id : nil
+    }
+
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Array(navigation.tabs.enumerated()), id: \.element.id) { index, tab in
-                let inFront = index == (lit ?? navigation.front)
+                let inFront = tab.id == (lit ?? frontID)
                 Button { navigation.showTab(index) } label: {
                     HStack(spacing: 5) {
                         if index < 9 {
@@ -62,10 +66,11 @@ struct LibraryTabBar: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.6, anchor: .leading)))
             }
         }
-        .onChange(of: navigation.front) { _, front in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-                withAnimation(Self.slide) { lit = front }
-            }
+        // A newer switch cancels a slide still waiting.
+        .task(id: frontID) {
+            try? await Task.sleep(for: .milliseconds(20))
+            guard !Task.isCancelled else { return }
+            withAnimation(Self.slide) { lit = frontID }
         }
         .animation(.spring(duration: 0.28, bounce: 0.15), value: navigation.tabs.count)
         .padding(3)

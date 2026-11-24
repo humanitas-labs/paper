@@ -250,6 +250,9 @@ final class LibraryToolbar: NSObject, NSToolbarDelegate {
     private func refresh() {
         window?.title = navigation.folder.lastPathComponent
         window?.representedURL = navigation.folder
+        // A new folder brings a new scroll view, which takes the
+        // library's scroller and pointer again once it is made.
+        DispatchQueue.main.async { [weak self] in self?.styleScroller() }
         guard let group else { return }
         let enabled = [navigation.canGoBack, navigation.canGoForward]
         for (index, item) in group.subitems.enumerated() where index < enabled.count {

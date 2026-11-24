@@ -32,8 +32,11 @@ final class FolderWatcher {
         self.stream = stream
     }
 
-    /// Stops watching. Must be called before the watcher is released: the
-    /// stream holds an unretained pointer to it.
+    /// A watcher let go without `cancel()` stops too: the stream holds an
+    /// unretained pointer to it.
+    isolated deinit { cancel() }
+
+    /// Stops watching.
     func cancel() {
         guard let stream else { return }
         FSEventStreamStop(stream)

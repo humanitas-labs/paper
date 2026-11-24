@@ -17,7 +17,7 @@ enum LibraryPalette {
     /// the ground is the page and a card is lifted a little off it.
     static let background = themed { _ in Appearance.surfaceGround }
     static let card = themed { _ in Appearance.surfaceCard }
-    static let border = themed { dark in dark ? Appearance.surfaceBorder : .white }
+    static let border = themed { _ in Appearance.surfaceBorder }
 
     /// The note card's color in an appearance, resolved now.
     @MainActor

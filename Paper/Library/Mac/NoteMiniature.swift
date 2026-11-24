@@ -50,7 +50,11 @@ enum NoteMiniature {
         // or save of the note, which itself waits on the main thread, and
         // the app hangs. A preview read mid-save is redrawn when the save
         // lands.
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        // Only the head shows: enough bytes for `characterLimit`
+        // characters, not the whole of a long note.
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: characterLimit * 4) else { return nil }
         let text = String(decoding: data, as: UTF8.self)
         let image = thumbnail(render(String(text.prefix(characterLimit)), documentURL: url, dark: dark, background: background))
         store(image, for: key)

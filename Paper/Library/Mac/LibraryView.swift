@@ -14,8 +14,6 @@ struct LibraryView: View {
     @State private var watcher: FolderWatcher?
     /// The menu a right click opened, while it is up.
     @State private var menu: LibraryMenuRequest?
-    /// Where each card on screen is, in the window, to tell what a right
-    /// click landed on.
     /// Where the cards are, for clicks and the rubber band to find them.
     /// Kept out of the view's state: the frames change on every frame of
     /// a scroll, and nothing is drawn from them.
@@ -32,6 +30,7 @@ struct LibraryView: View {
     @State private var dragEnded = Date.distantPast
     /// Where the toast is, so a click on it is not a click off the cards.
     @State private var toastFrame = CGRect.zero
+    /// The library's width, to keep the band off the scroller.
     @State private var width: CGFloat = 0
     /// Shown when the library shows hidden items: the ones Finder hides.
     @State private var hiddenItems: Set<URL> = []
@@ -51,7 +50,7 @@ struct LibraryView: View {
     @State private var dropTab: UUID?
     /// What the drag in progress does, decided as it begins.
     @State private var dragMode: DragMode?
-    private enum DragMode { case marquee, cards }
+    private enum DragMode { case marquee, cards, ignored }
     /// The cards lifted out of the grid and following the pointer.
     @State private var carried: CarriedCards?
     /// Cards leaving or rejoining the grid by the drag: they fly, and do
@@ -170,7 +169,6 @@ struct LibraryView: View {
         .onReceive(navigation.primaryClicks) { primaryClick(at: $0) }
         // Spatial's style of pointer over the whole library.
         .pointerStyle(LibraryPointer.style)
-        .environment(\.libraryWidth, width)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(keyCommands)
         .onAppear {
@@ -499,6 +497,8 @@ struct LibraryView: View {
                     if let (url, rect) = cards.rects.first(where: { $0.value.contains(value.startLocation) }) {
                         dragMode = .cards
                         pickUp(url, frame: rect, at: value.startLocation)
+                    } else if onChrome(value.startLocation) {
+                        dragMode = .ignored
                     } else {
                         dragMode = .marquee
                         let adding = !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty
@@ -509,6 +509,7 @@ struct LibraryView: View {
                     carry(to: value.location)
                     return
                 }
+                guard dragMode == .marquee else { return }
                 let rect = CGRect(
                     x: min(value.startLocation.x, value.location.x), y: min(value.startLocation.y, value.location.y),
                     width: abs(value.location.x - value.startLocation.x), height: abs(value.location.y - value.startLocation.y)
@@ -528,6 +529,13 @@ struct LibraryView: View {
 
     private func deselect() { selection.removeAll() }
 
+    /// The scroller at the right edge, the toast and the tab bar take
+    /// their own drags; none draws the band.
+    private func onChrome(_ point: CGPoint) -> Bool {
+        point.x > width - 16 || toastFrame.contains(point)
+            || LibraryDrag.shared.tabFrames.values.contains { $0.insetBy(dx: -6, dy: -6).contains(point) }
+    }
+
     /// A click on empty space lets go of what is picked. Cards and the
     /// toast answer their own clicks; a menu or a dialog that is up takes
     /// the click for itself.
@@ -543,7 +551,6 @@ struct LibraryView: View {
         selection = Set(visibleFolders.map(\.url) + visibleNotes.map(\.url))
     }
 
-    /// To the Trash, recoverable; the folder watcher takes the cards away.
     /// Spatial's create and delete: a new card grows out of a point with a
     /// little spring; a deleted one shrinks to its center as it fades,
     /// quickly, and the grid closes up behind it.
@@ -565,6 +572,8 @@ struct LibraryView: View {
                     listing.folders.removeAll { gone.contains($0.url) }
                     listing.notes.removeAll { gone.contains($0.url) }
                 }
+                selection.subtract(gone)
+                if let url = hovered?.url, gone.contains(url) { hovered = nil }
             }
         }
     }
@@ -586,11 +595,9 @@ struct LibraryView: View {
         panel.prompt = "Move"
         panel.message = selection.count == 1 ? "Move this item to:" : "Move \(selection.count) items to:"
         guard panel.runModal() == .OK, let destination = panel.url?.standardizedFileURL else { return }
-        let moving = selection.filter { url in
-            // A folder cannot go into itself or below itself.
-            let path = url.standardizedFileURL.path
-            return destination.path != path && !destination.path.hasPrefix(path + "/")
-        }
+        // Not a folder into itself or below itself, and not an item into
+        // the folder it is already in, which would only renumber it.
+        let moving = LibraryDrag.movable(Array(selection), into: destination)
         deselect()
         // Off the main thread: a coordinated move waits on any window
         // showing the note, and that window answers on the main thread.
@@ -702,11 +709,12 @@ struct LibraryView: View {
         Task { await reload() }
     }
 
-    /// ⌘↑ to the enclosing folder, ⌘[ back and ⌘] forward, as in Finder.
-    /// The buttons are hidden; only their keys act.
     /// Hidden items show faintly, as a hint that they are usually away.
     private static let hiddenOpacity: Double = 0.4
 
+    /// ⌘↑ to the enclosing folder, ⌘[ back and ⌘] forward, as in Finder,
+    /// and the library's other keys. The buttons are hidden; only their
+    /// keys act, and none while a menu or the rename dialog is up.
     private var keyCommands: some View {
         ZStack {
             Button("Show Hidden Items") { showsHidden.toggle() }
@@ -717,11 +725,11 @@ struct LibraryView: View {
                 .keyboardShortcut("[", modifiers: .command)
             Button("Forward") { goForward() }
                 .keyboardShortcut("]", modifiers: .command)
-            Button("Select All") { selectAll() }
+            Button("Select All") { if idle { selectAll() } }
                 .keyboardShortcut("a", modifiers: .command)
             // Escape lets go of what is picked; with nothing picked it
             // steps back, as ⌃T does, after vim's tag stack.
-            Button("Deselect or Back") { selection.isEmpty ? stepBack() : deselect() }
+            Button("Deselect or Back") { if idle { selection.isEmpty ? stepBack() : deselect() } }
                 .keyboardShortcut(.escape, modifiers: [])
             // ⌘N here makes a blank note in the folder shown, which grows
             // into the grid, newest first, ready to click into. Elsewhere
@@ -743,17 +751,20 @@ struct LibraryView: View {
             }
             Button("Step Back") { stepBack() }
                 .keyboardShortcut("t", modifiers: .control)
-            Button("Move to Trash") { trashSelection() }
+            Button("Move to Trash") { if idle { trashSelection() } }
                 .keyboardShortcut(.delete, modifiers: .command)
             // Delete alone does the same: to the Trash, so it can be put
             // back, never removed outright.
-            Button("Delete") { if !renaming && menu == nil { trashSelection() } }
+            Button("Delete") { if idle { trashSelection() } }
                 .keyboardShortcut(.delete, modifiers: [])
         }
         .opacity(0)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+
+    /// No menu and no dialog up: the grid's keys may act.
+    private var idle: Bool { menu == nil && !renaming }
 
     // MARK: Navigation
 
@@ -769,8 +780,7 @@ struct LibraryView: View {
     private func goBack() { navigation.goBack() }
     private func goForward() { navigation.goForward() }
 
-    /// Opens a note in its own window, grown out of its card when the
-    /// card is on screen.
+    /// Opens a note in its own window.
     private func openNote(_ url: URL) {
         LibraryOpening.open([url])
     }
@@ -795,11 +805,23 @@ struct LibraryView: View {
         // An untitled note that has been given a title takes its name;
         // the folder watcher then reads the folder again.
         let untitled = fresh.listing.notes.filter { NoteNaming.isUntitled($0.url) }
-        if !untitled.isEmpty { Task.detached { NoteNaming.nameFromTitles(untitled.map(\.url)) } }
+        // One rename at a time per note: reloads come in bursts, and two
+        // passes over the same note would race to the same new name.
+        let naming = untitled.map(\.url).filter { !Self.naming.contains($0) }
+        if !naming.isEmpty {
+            Self.naming.formUnion(naming)
+            Task.detached {
+                NoteNaming.nameFromTitles(naming)
+                await MainActor.run { Self.naming.subtract(naming) }
+            }
+        }
         show(fresh, animated: loaded && !arriving && listedFolder == folder)
         listedFolder = folder
         loaded = true
     }
+
+    /// Untitled notes being named from their titles now.
+    private static var naming = Set<URL>()
 
     private func show(_ entry: ListingCache.Entry, animated: Bool) {
         guard entry.listing.folders != listing.folders || entry.listing.notes != listing.notes
@@ -814,6 +836,7 @@ struct LibraryView: View {
         // picked.
         let shown = Set(entry.listing.folders.map(\.url) + entry.listing.notes.map(\.url))
         if !selection.isSubset(of: shown) { selection.formIntersection(shown) }
+        if let url = hovered?.url, !shown.contains(url) { hovered = nil }
     }
 
     private func watch() {
@@ -905,36 +928,6 @@ private struct CardClick: ViewModifier {
     }
 }
 
-/// Names for new notes and folders: the plain name, then numbered.
-enum LibraryNames {
-    static func unused(_ base: String, extension ext: String, in folder: URL) -> URL {
-        func url(_ name: String) -> URL {
-            let url = folder.appendingPathComponent(name, isDirectory: ext.isEmpty)
-            return ext.isEmpty ? url : url.appendingPathExtension(ext)
-        }
-        var candidate = url(base)
-        var index = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = url("\(base) \(index)")
-            index += 1
-        }
-        return candidate
-    }
-}
-
-/// Reports a card's place in the window while it is on screen.
-private struct LibraryWidthKey: EnvironmentKey {
-    static let defaultValue: CGFloat = 0
-}
-
-extension EnvironmentValues {
-    /// The library's width, so a card's label can stay inside it.
-    fileprivate var libraryWidth: CGFloat {
-        get { self[LibraryWidthKey.self] }
-        set { self[LibraryWidthKey.self] = newValue }
-    }
-}
-
 @MainActor
 final class CardFrames {
     var rects: [URL: CGRect] = [:]
@@ -948,127 +941,5 @@ private struct CardFrame: ViewModifier {
         content
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.rects[url] = $0 }
             .onDisappear { frames.rects[url] = nil }
-    }
-}
-
-/// A name shown on hover, after Spatial's hint labels: the system
-/// monospace, spaced out, dark on a pale rounded tablet a shade lighter
-/// than the page, with no edge. The name keeps its own case.
-struct HoverTarget: Equatable {
-    let url: URL
-    let text: String
-    /// The card's frame in the window's content, from its top left.
-    let card: CGRect
-}
-
-/// The hovered card's name, centered under the card and kept inside the
-/// window: at an edge it slides inward, and a name wider than the window
-/// is cut in its middle.
-private struct HoverLabelLayer: View {
-    let target: HoverTarget?
-    @State private var labelWidth: CGFloat = 0
-    private static let margin: CGFloat = 12
-
-    var body: some View {
-        GeometryReader { proxy in
-            if let target {
-                let half = labelWidth / 2
-                let low = Self.margin + half
-                let high = max(low, proxy.size.width - Self.margin - half)
-                HoverLabel(text: target.text, maxWidth: max(120, proxy.size.width - 2 * Self.margin))
-                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { labelWidth = $0 }
-                    .position(
-                        x: min(max(target.card.midX, low), high),
-                        y: target.card.maxY + 12 + HoverLabel.height / 2
-                    )
-                    .transition(.opacity)
-                    .id(target.url)
-            }
-        }
-        .ignoresSafeArea()
-        .animation(.easeOut(duration: 0.14), value: target?.url)
-        .allowsHitTesting(false)
-    }
-}
-
-private struct HoverLabel: View {
-    static let height: CGFloat = 22
-    static let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-    let text: String
-    /// The widest the label may be; a longer name is cut in its middle.
-    var maxWidth: CGFloat = .infinity
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 10, weight: .regular, design: .monospaced))
-            .tracking(0.3)
-            .foregroundStyle(MenuPalette.ink)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(maxWidth: maxWidth - 18)
-            .padding(.horizontal, 9)
-            .frame(height: Self.height)
-            .background(
-                Self.shape
-                    .fill(MenuPalette.fill)
-                    .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
-            )
-            .fixedSize()
-            .allowsHitTesting(false)
-    }
-}
-
-/// Folders as last read, so going into one, or back out, shows its cards
-/// at once while it is read again. A folder card under the pointer is
-/// read ahead, before the click.
-@MainActor
-enum ListingCache {
-    struct Entry: Sendable {
-        let listing: FolderListing
-        let hidden: Set<URL>
-    }
-
-    private struct Key: Hashable {
-        let folder: URL
-        let showsHidden: Bool
-    }
-
-    private static var entries: [Key: Entry] = [:]
-    private static var order: [Key] = []
-    private static let limit = 64
-
-    static func get(_ folder: URL, showsHidden: Bool) -> Entry? {
-        entries[Key(folder: folder.standardizedFileURL, showsHidden: showsHidden)]
-    }
-
-    /// Reads the folder off the main thread and keeps the result.
-    static func read(_ folder: URL, showsHidden: Bool) async -> Entry {
-        let read = await Task.detached(priority: .userInitiated) {
-            if showsHidden {
-                let (listing, hidden) = FolderListing.loadIncludingHidden(folder)
-                return Entry(listing: listing, hidden: hidden)
-            }
-            return Entry(listing: FolderListing.load(folder, isDefaultRoot: false), hidden: [])
-        }.value
-        // An untitled note waits at the end of the notes, where a new one
-        // appears, until its title names it.
-        var listing = read.listing
-        let untitled = listing.notes.filter { NoteNaming.isUntitled($0.url) }
-        if !untitled.isEmpty {
-            listing.notes = listing.notes.filter { !NoteNaming.isUntitled($0.url) } + untitled.reversed()
-        }
-        let entry = Entry(listing: listing, hidden: read.hidden)
-        store(entry, Key(folder: folder.standardizedFileURL, showsHidden: showsHidden))
-        return entry
-    }
-
-    static func prefetch(_ folder: URL, showsHidden: Bool) {
-        guard get(folder, showsHidden: showsHidden) == nil else { return }
-        Task { _ = await read(folder, showsHidden: showsHidden) }
-    }
-
-    private static func store(_ entry: Entry, _ key: Key) {
-        if entries.updateValue(entry, forKey: key) == nil { order.append(key) }
-        while order.count > limit { entries[order.removeFirst()] = nil }
     }
 }

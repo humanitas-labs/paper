@@ -302,6 +302,19 @@ struct LibraryTests {
         return values.reduce(0, +) / Double(max(values.count, 1))
     }
 
+    @Test func movesSkipTheirOwnFolderAndFoldersIntoThemselves() {
+        let root = URL(fileURLWithPath: "/tmp/library")
+        let note = root.appendingPathComponent("a.md")
+        let folder = root.appendingPathComponent("Inbox", isDirectory: true)
+        let inner = folder.appendingPathComponent("Deep", isDirectory: true)
+        // Into the folder it is already in: nothing, not "a 2.md".
+        #expect(LibraryDrag.movable([note, folder], into: root).isEmpty)
+        // A folder not into itself or below itself; a note into it is fine.
+        #expect(LibraryDrag.movable([note, folder], into: folder) == [note])
+        #expect(LibraryDrag.movable([folder], into: inner).isEmpty)
+        #expect(LibraryDrag.movable([inner], into: root) == [inner])
+    }
+
     private static func distinctBrightness(_ rep: NSBitmapImageRep) -> Int {
         Set(samples(rep).map { Int($0 * 255) }).count
     }
