@@ -72,7 +72,7 @@ struct FolderCard: View {
                 if selected {
                     // Picked: a white ring in both themes, as in Spatial,
                     // with a faint shadow so it reads on the pale page.
-                    FolderSilhouette().stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineJoin: .round))
+                    FolderSilhouette().stroke(Color.white, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
                         .shadow(color: .black.opacity(0.14), radius: 3, y: 1)
                 }
             }
@@ -289,7 +289,7 @@ struct NoteCard: View {
             }
             .overlay {
                 if selected {
-                    NoteCard.shape.strokeBorder(Color.white, lineWidth: 3)
+                    NoteCard.shape.strokeBorder(Color.white, lineWidth: 2)
                         .shadow(color: .black.opacity(0.14), radius: 3, y: 1)
                 }
             }
