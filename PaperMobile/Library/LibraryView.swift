@@ -316,6 +316,8 @@ struct FolderView: View {
                     .matchedTransitionSource(id: item.url, in: cards) { source in
                         source.clipShape(NoteCard.shape)
                     }
+                    // Outside the zoom's source, whose clip would cut it off.
+                    .modifier(CardShadow())
                     .modifier(PickGesture(
                         tap: { if selecting { toggle(item.url) } else { open(.note(item.url)) } },
                         pick: { changeSelection { $0.insert(item.url) } }
@@ -616,7 +618,6 @@ struct NoteCard: View {
             .overlay {
                 if colorScheme == .dark { NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1) }
             }
-            .modifier(CardShadow())
             // Picked, as in Spatial: a bright ring around the card.
             .overlay {
                 if selected { NoteCard.shape.strokeBorder(Color.white, lineWidth: 3) }
