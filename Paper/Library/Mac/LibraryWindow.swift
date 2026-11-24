@@ -9,6 +9,7 @@ import SwiftUI
 enum LibraryWindow {
     private static var windows: [URL: NSWindow] = [:]
     private static var delegates: [URL: Closer] = [:]
+    private static var toolbars: [URL: LibraryToolbar] = [:]
 
     static func open(_ folder: URL) {
         let folder = folder.standardizedFileURL
@@ -25,11 +26,12 @@ enum LibraryWindow {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
-        window.contentView = NSHostingView(rootView: LibraryView(root: folder))
+        let navigation = LibraryNavigation(root: folder)
+        window.contentView = NSHostingView(rootView: LibraryView(navigation: navigation))
         window.isReleasedWhenClosed = false
         window.applyPaperChrome(minSize: NSSize(width: 520, height: 420))
-        window.title = folder.lastPathComponent
-        window.representedURL = folder
+        // Finder's back and forward, then the folder's name, in the bar.
+        toolbars[folder] = LibraryToolbar(navigation: navigation, window: window)
         window.tabbingMode = .disallowed
         // Each folder keeps the size and place it was last given.
         if !window.setFrameUsingName(frameName(folder)) { window.centerExactly() }
@@ -50,7 +52,7 @@ enum LibraryWindow {
     /// light and dark, where screen capture is not permitted.
     private static func snapshotForDebugging(_ window: NSWindow) {
         guard let dir = ProcessInfo.processInfo.environment["PAPER_LIBRARY_SNAPSHOT"],
-              let folder = window.representedURL else { return }
+              let folder = windows.first(where: { $0.value === window })?.key else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             let listing = FolderListing.load(folder, isDefaultRoot: false)
             for dark in [false, true] {
@@ -62,7 +64,7 @@ enum LibraryWindow {
                             background: NSColor(LibraryPalette.card)
                         )
                     }
-                    let view = LibraryView(root: folder, listing: listing, scrolls: false)
+                    let view = LibraryView(navigation: LibraryNavigation(root: folder), listing: listing, scrolls: false)
                         .frame(width: 1280, height: 820)
                         .environment(\.colorScheme, dark ? .dark : .light)
                     let renderer = ImageRenderer(content: view)
@@ -87,6 +89,8 @@ enum LibraryWindow {
     fileprivate static func closed(_ folder: URL) {
         windows[folder] = nil
         delegates[folder] = nil
+        toolbars[folder]?.stop()
+        toolbars[folder] = nil
     }
 
     private final class Closer: NSObject, NSWindowDelegate {

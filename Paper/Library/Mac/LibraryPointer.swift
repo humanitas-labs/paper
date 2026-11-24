@@ -6,8 +6,20 @@ import SwiftUI
 /// Drawn here on a 24 pt grid; nothing is taken from another app.
 @MainActor
 enum LibraryPointer {
-    static let cursor: NSCursor = {
-        let size = NSSize(width: 24, height: 25)
+    static let size = NSSize(width: 24, height: 25)
+    /// The tip, measured from the top left.
+    static let hotSpot = NSPoint(x: 5, y: 4.5)
+
+    /// For SwiftUI, which sets the pointer itself and overrides AppKit's
+    /// cursor rects over its views.
+    static let style: PointerStyle = .image(
+        Image(nsImage: image), hotSpot: UnitPoint(x: hotSpot.x / size.width, y: hotSpot.y / size.height)
+    )
+
+    /// For AppKit views that set the cursor themselves.
+    static let cursor = NSCursor(image: image, hotSpot: hotSpot)
+
+    static let image: NSImage = {
         let image = NSImage(size: size, flipped: true) { _ in
             let head = arrowhead()
             NSGraphicsContext.saveGraphicsState()
@@ -34,8 +46,7 @@ enum LibraryPointer {
             head.stroke()
             return true
         }
-        // The hot spot is the tip, measured from the top left.
-        return NSCursor(image: image, hotSpot: NSPoint(x: 5, y: 4.5))
+        return image
     }()
 
     /// Tip at the top left; one wing to the right, one below, and a
@@ -54,19 +65,5 @@ enum LibraryPointer {
         path.line(to: bottom)
         path.close()
         return path
-    }
-}
-
-/// Lays the library's pointer over the view's whole area.
-struct LibraryPointerArea: NSViewRepresentable {
-    func makeNSView(context: Context) -> PointerView { PointerView() }
-    func updateNSView(_ view: PointerView, context: Context) {}
-
-    final class PointerView: NSView {
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: LibraryPointer.cursor)
-        }
-
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
