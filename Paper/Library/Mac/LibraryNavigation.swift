@@ -22,6 +22,9 @@ final class LibraryNavigation: ObservableObject {
     /// when a click lands on empty space, which the scroll view would
     /// otherwise keep to itself.
     let primaryClicks = PassthroughSubject<CGPoint, Never>()
+    /// Whether the window is in full screen, where the system's toolbar
+    /// is put away and the grid draws the header itself.
+    @Published var fullScreen = false
     /// The library's window, for placing what opens from it on screen.
     weak var window: NSWindow?
 
@@ -89,6 +92,19 @@ final class LibraryToolbar: NSObject, NSToolbarDelegate {
             self?.refresh()
         }
         refresh()
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setFullScreen(true) }
+            },
+            center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setFullScreen(false) }
+            },
+            center.addObserver(forName: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.styleScroller() }
+            },
+        ]
+        DispatchQueue.main.async { [weak self] in self?.styleScroller() }
         // A mouse's side buttons go back and forward, as in a browser:
         // button 3 is "back" (mouse 4) and button 4 "forward" (mouse 5).
         sideButtons = NSEvent.addLocalMonitorForEvents(
@@ -133,6 +149,35 @@ final class LibraryToolbar: NSObject, NSToolbarDelegate {
         if let sideButtons { NSEvent.removeMonitor(sideButtons) }
         sideButtons = nil
         watching = nil
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+    }
+
+    private var observers: [NSObjectProtocol] = []
+
+    /// The document's scroller: the wide one with a track under it,
+    /// hidden while everything fits. SwiftUI owns the scroll view, so
+    /// the style is set on it here and again whenever the system would
+    /// change it (a mouse coming or going).
+    private func styleScroller() {
+        guard let content = window?.contentView else { return }
+        for scrollView in Self.descendants(of: content).compactMap({ $0 as? NSScrollView }) {
+            scrollView.scrollerStyle = .legacy
+            scrollView.autohidesScrollers = true
+        }
+    }
+
+    /// In full screen the system moves the toolbar to a window of its
+    /// own and paints an opaque band and a hairline behind it, which no
+    /// setting takes away. The toolbar is put away there instead, and the
+    /// grid draws the same header on its own page.
+    private func setFullScreen(_ full: Bool) {
+        window?.toolbar?.isVisible = !full
+        navigation.fullScreen = full
+    }
+
+    private static func descendants(of view: NSView) -> [NSView] {
+        view.subviews.flatMap { [$0] + descendants(of: $0) }
     }
 
     private var sideButtons: Any?

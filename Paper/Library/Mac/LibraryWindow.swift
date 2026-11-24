@@ -48,8 +48,47 @@ enum LibraryWindow {
         NSApp.activate()
         #if DEBUG
         snapshotForDebugging(window)
+        dumpFullScreenForDebugging(window)
         #endif
     }
+
+    #if DEBUG
+    /// DEBUG-SNAPSHOT (temporary): enters full screen and writes the
+    /// windows' view trees to a file.
+    private static func dumpFullScreenForDebugging(_ window: NSWindow) {
+        guard let path = ProcessInfo.processInfo.environment["PAPER_LIBRARY_FSDUMP"] else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { window.toggleFullScreen(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            var out = ""
+            func walk(_ view: NSView, _ depth: Int) {
+                var line = String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame) hidden=\(view.isHidden)"
+                if let effect = view as? NSVisualEffectView { line += " material=\(effect.material.rawValue) state=\(effect.state.rawValue)" }
+                if let color = view.layer?.backgroundColor { line += " bg=\(color.components ?? [])" }
+                out += line + "\n"
+                if depth < 9 { view.subviews.forEach { walk($0, depth + 1) } }
+            }
+            for other in NSApp.windows {
+                out += "WINDOW \(type(of: other)) \(other.frame) visible=\(other.isVisible) bg=\(other.backgroundColor.description) opaque=\(other.isOpaque)\n"
+                if let frame = other.contentView?.superview { walk(frame, 1) }
+            }
+            try? out.write(toFile: path, atomically: true, encoding: .utf8)
+            // The app's own windows, composited, where screen capture of
+            // the whole screen is not permitted.
+            typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+            if let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") {
+                let capture = unsafeBitCast(symbol, to: Capture.self)
+                for other in NSApp.windows where other.isVisible && other.frame.width > 500 {
+                    // 1 << 3: this window alone; 1: bounds ignore framing.
+                    if let image = capture(.null, 1 << 3, UInt32(other.windowNumber), 1)?.takeRetainedValue() {
+                        let url = URL(fileURLWithPath: path + ".\(type(of: other)).png")
+                        try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
+                    }
+                }
+            }
+            window.toggleFullScreen(nil)
+        }
+    }
+    #endif
 
     #if DEBUG
     /// DEBUG-SNAPSHOT (temporary): draws the library offscreen to PNGs,

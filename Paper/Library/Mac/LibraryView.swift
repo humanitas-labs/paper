@@ -55,6 +55,11 @@ struct LibraryView: View {
             Group {
                 if scrolls {
                     ScrollView { page }
+                        // In full screen the system's toolbar is put
+                        // away; the same header is drawn on the page.
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            if navigation.fullScreen { LibraryHeader(navigation: navigation) }
+                        }
                 } else {
                     page.frame(maxHeight: .infinity, alignment: .top)
                 }
