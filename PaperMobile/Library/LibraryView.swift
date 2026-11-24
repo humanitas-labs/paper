@@ -576,7 +576,7 @@ struct FolderCard: View {
             }
             // Picked: a bright outline around the folder's silhouette.
             .overlay {
-                if selected { FolderSilhouette().stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
+                if selected { FolderSilhouette().stroke(Color.primary, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(Rectangle())
@@ -637,7 +637,9 @@ struct NoteCard: View {
             }
             // Picked, as in Spatial: a bright ring around the card.
             .overlay {
-                if selected { NoteCard.shape.strokeBorder(Color.white, lineWidth: 3) }
+                // The ink's color: white on dark cards, near-black on the
+                // white light cards, where a white ring would vanish.
+                if selected { NoteCard.shape.strokeBorder(Color.primary, lineWidth: 3) }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(NoteCard.shape)
@@ -697,8 +699,8 @@ enum NoteMiniature {
 }
 
 /// The toast while selecting, after Spatial's: a dark capsule with a new
-/// folder always, and, once something is picked, a folder to move it, a
-/// pencil to rename it (one item only) and a bin to delete it.
+/// folder while nothing is picked, and, once something is, a folder to
+/// move it, a pencil to rename it (one item only) and a bin to delete it.
 private struct SelectionToast: View {
     /// Spatial's corners: rounded, not a full capsule.
     static let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -711,14 +713,15 @@ private struct SelectionToast: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Button(action: newFolder) {
-                FolderPlusGlyph()
-                    .frame(width: 56, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("New Folder")
-            if count > 0 {
+            if count == 0 {
+                Button(action: newFolder) {
+                    FolderPlusGlyph()
+                        .frame(width: 56, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New Folder")
+            } else {
                 button(FolderGlyph(), label: "Move", action: move)
                 if let rename { button(PencilGlyph(), label: "Rename", action: rename) }
                 button(TrashGlyph(), label: "Delete", action: delete)
