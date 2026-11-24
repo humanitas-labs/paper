@@ -15,7 +15,7 @@ enum NoteMiniature {
     static let characterLimit = 2400
     /// The page's margins inside the card: enough to breathe, little
     /// enough that the text fills the card.
-    static let margins = NSSize(width: 24, height: 28)
+    static let margins = NSSize(width: 32, height: 38)
     /// Enough miniatures for a few full folders; the oldest go first.
     static let cacheLimit = 400
 
