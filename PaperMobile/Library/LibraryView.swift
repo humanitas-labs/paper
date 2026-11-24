@@ -173,24 +173,10 @@ struct FolderView: View {
 
     private let brandInset: CGFloat = 10
 
-    /// "3 Selected", and what the folder holds beneath it, as in Notes.
+    /// "3 Selected": the grid already shows what the folder holds.
     private var selectionTitle: some View {
-        VStack(spacing: 1) {
-            Text("\(selection.count) Selected")
-                .font(.system(size: 16, weight: .semibold))
-            Text(contentsSummary)
-                .font(.system(size: 13))
-                .foregroundStyle(LibraryPalette.secondaryLabel)
-        }
-    }
-
-    private var contentsSummary: String {
-        let notes = (searching ? results?.count : nil) ?? listing.notes.count
-        var parts = [notes == 1 ? "1 Note" : "\(notes) Notes"]
-        if !searching, !listing.folders.isEmpty {
-            parts.append(listing.folders.count == 1 ? "1 Folder" : "\(listing.folders.count) Folders")
-        }
-        return parts.joined(separator: " · ")
+        Text("\(selection.count) Selected")
+            .font(.system(size: 16, weight: .semibold))
     }
 
     /// The enso, and inside a folder the folder's name after it, which takes
