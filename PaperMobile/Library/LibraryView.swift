@@ -449,6 +449,8 @@ struct FolderView: View {
             .replacingOccurrences(of: "/", with: "-")
         guard !name.isEmpty, !name.hasPrefix(".") else { return }
         try? FileManager.default.createDirectory(at: folder.appendingPathComponent(name, isDirectory: true), withIntermediateDirectories: false)
+        // Making a folder finishes the task, as moving or deleting does.
+        endSelecting()
         Task { await reload() }
     }
 
