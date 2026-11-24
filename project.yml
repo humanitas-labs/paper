@@ -36,6 +36,8 @@ targets:
         buildPhase: resources
       - path: Paper/Resources/enso-wide.png
         buildPhase: resources
+      # TEMPORARY until DL-01 moves it to Paper/Library/ on feat/ios.
+      - PaperMobile/Library/Library.swift
     dependencies:
       - sdk: Quartz.framework
       - package: SwiftMath
