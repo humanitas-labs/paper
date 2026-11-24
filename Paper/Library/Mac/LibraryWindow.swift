@@ -8,6 +8,7 @@ import SwiftUI
 @MainActor
 enum LibraryWindow {
     private static var windows: [URL: NSWindow] = [:]
+    private static var navigations: [URL: LibraryNavigation] = [:]
     private static var delegates: [URL: Closer] = [:]
     private static var toolbars: [URL: LibraryToolbar] = [:]
 
@@ -28,6 +29,7 @@ enum LibraryWindow {
         )
         let navigation = LibraryNavigation(root: folder)
         navigation.window = window
+        navigations[folder] = navigation
         window.contentView = NSHostingView(rootView: LibraryView(navigation: navigation))
         window.isReleasedWhenClosed = false
         window.applyPaperChrome(minSize: NSSize(width: 520, height: 420))
@@ -156,6 +158,11 @@ enum LibraryWindow {
     }
     #endif
 
+    /// The open libraries, for agent apps: each with its window.
+    static func openLibraries() -> [LibraryNavigation] {
+        Array(navigations.values)
+    }
+
     /// Whether a window is one of the library's, so other window rules
     /// (the welcome window's, new-window placement) can leave it alone.
     static func isLibraryWindow(_ window: NSWindow) -> Bool {
@@ -203,6 +210,7 @@ enum LibraryWindow {
 
     fileprivate static func closed(_ folder: URL) {
         windows[folder] = nil
+        navigations[folder] = nil
         delegates[folder] = nil
         toolbars[folder]?.stop()
         toolbars[folder] = nil

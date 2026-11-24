@@ -25,6 +25,15 @@ final class LibraryNavigation: ObservableObject {
     /// Whether the window is in full screen, where the system's toolbar
     /// is put away and the grid draws the header itself.
     @Published var fullScreen = false
+    /// What the grid shows, for agent apps (LibraryContext.swift).
+    var snapshot = LibrarySnapshot() {
+        didSet {
+            guard snapshot != oldValue else { return }
+            NotificationCenter.default.post(name: Self.contextDidChange, object: self)
+        }
+    }
+    /// Where the grid's cards are, for agent apps asking where one is.
+    var frames: CardFrames?
     /// The library's window, for placing what opens from it on screen.
     weak var window: NSWindow?
 

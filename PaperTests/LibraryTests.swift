@@ -48,6 +48,33 @@ struct LibraryTests {
         #expect(listing.notes.count == 3)
     }
 
+    /// Agent apps see the folder shown as a list of rows, the picked
+    /// ones selected, with Paper's own line for it.
+    @Test func libraryIsReportedToAgentApps() throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let navigation = LibraryNavigation(root: root)
+        let listing = FolderListing.load(root, isDefaultRoot: false)
+        let picked = try #require(listing.notes.first).url
+        navigation.snapshot = LibrarySnapshot(
+            folders: listing.folders, notes: listing.notes, selection: [picked], hovered: listing.folders.first?.url
+        )
+        let context = PaperContext(textViews: { [] }, libraries: { [navigation] })
+        let window = try #require(context.current().children.first)
+        #expect(window.role == .window && window.subrole == "library" && window.focused)
+        let list = try #require(window.children.first)
+        #expect(list.role == .list && list.subrole == "folder" && list.title == root.lastPathComponent)
+        #expect(list.children.map(\.subrole) == ["folder", "folder", "note", "note"])
+        #expect(list.children.filter(\.selected).map(\.url) == [picked.absoluteString])
+        #expect(list.children.filter(\.hovered).count == 1)
+        #expect(context.display()?.title == root.lastPathComponent)
+        #expect(context.display()?.detail == picked.lastPathComponent)
+        // Ids hold from one answer to the next.
+        #expect(context.current().children.first?.children.first?.children.map(\.id) == list.children.map(\.id))
+        // A card's place is asked of the grid; with no window it is gone.
+        #expect(context.locate(list.children[0].id)?.state == .gone)
+    }
+
     @Test func foldersAreToldFromFilesAndPackages() throws {
         let root = try makeTree()
         defer { try? FileManager.default.removeItem(at: root) }

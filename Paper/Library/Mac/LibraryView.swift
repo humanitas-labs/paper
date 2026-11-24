@@ -130,6 +130,16 @@ struct LibraryView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(keyCommands)
         .onChange(of: showsHidden) { Task { await reload() } }
+        // What agent apps are told the library shows.
+        .onChange(of: listing.folders) { publishContext() }
+        .onChange(of: listing.notes) { publishContext() }
+        .onChange(of: hiddenItems) { publishContext() }
+        .onChange(of: selection) { publishContext() }
+        .onChange(of: hovered?.url) { publishContext() }
+        .onAppear {
+            navigation.frames = cards
+            publishContext()
+        }
         // A theme change redraws the library in the theme's colors.
         .id(themeGeneration)
         .onReceive(NotificationCenter.default.publisher(for: Configuration.didChangeNotification)) { _ in
@@ -195,6 +205,14 @@ struct LibraryView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 120)
         }
+    }
+
+    private func publishContext() {
+        navigation.snapshot = LibrarySnapshot(
+            folders: listedFolder == nil || listedFolder == folder ? listing.folders : [],
+            notes: listedFolder == nil || listedFolder == folder ? listing.notes : [],
+            hidden: hiddenItems, selection: selection, hovered: hovered?.url
+        )
     }
 
     private func hover(_ url: URL, _ on: Bool) {

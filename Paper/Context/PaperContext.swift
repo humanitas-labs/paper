@@ -18,6 +18,9 @@ final class PaperContext: ContextProvider {
 
     /// The open editors, front to back.
     private let textViews: @MainActor () -> [PaperTextView]
+    /// The open library windows, in no order; their windows place them.
+    private let libraries: @MainActor () -> [LibraryNavigation]
+    private let libraryTree = LibraryContextTree()
     private var counter = 0
     /// Every id issued this run and the editor it belongs to. An id whose
     /// editor has closed is gone; an id not here was never issued.
@@ -35,8 +38,28 @@ final class PaperContext: ContextProvider {
         init(_ view: PaperTextView) { self.view = view }
     }
 
-    init(textViews: @escaping @MainActor () -> [PaperTextView] = PaperContext.openTextViews) {
+    init(
+        textViews: @escaping @MainActor () -> [PaperTextView] = PaperContext.openTextViews,
+        libraries: @escaping @MainActor () -> [LibraryNavigation] = LibraryWindow.openLibraries
+    ) {
         self.textViews = textViews
+        self.libraries = libraries
+    }
+
+    /// What is open, front to back: editors and libraries, placed by
+    /// where their windows stand. One with no window on screen goes after
+    /// those that have, editors keeping their own order.
+    private enum Surface {
+        case editor(PaperTextView)
+        case library(LibraryNavigation)
+    }
+
+    private func surfaces() -> [Surface] {
+        let order = NSApp.orderedWindows
+        func rank(_ window: NSWindow?) -> Int { window.flatMap { order.firstIndex(of: $0) } ?? Int.max }
+        let all = textViews().enumerated().map { (rank($0.element.window), $0.offset, Surface.editor($0.element)) }
+            + libraries().enumerated().map { (rank($0.element.window), 100_000 + $0.offset, Surface.library($0.element)) }
+        return all.sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
     }
 
     // MARK: - Lifecycle
@@ -90,6 +113,7 @@ final class PaperContext: ContextProvider {
             NSWindow.didBecomeMainNotification,
             NSWindow.didBecomeKeyNotification,
             NSWindow.willCloseNotification,
+            LibraryNavigation.contextDidChange,
         ]
         changeObservers = names.map { name in
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak server] _ in
@@ -120,14 +144,21 @@ final class PaperContext: ContextProvider {
     /// caret ends it. A window that is minimized or behind another tab
     /// is marked not visible.
     func current() -> ContextElement {
-        let views = textViews()
         documents.removeAll { $0.editor.view == nil }
         windows.removeAll { $0.editor.view == nil }
         carets.removeAll { $0.editor.view == nil }
 
         var root = ContextElement(id: "app", role: .application, title: "Paper")
-        for (index, view) in views.enumerated() {
+        for (index, surface) in surfaces().enumerated() {
             let front = index == 0
+            let view: PaperTextView
+            switch surface {
+            case .library(let navigation):
+                root.children.append(libraryTree.element(for: navigation, front: front))
+                continue
+            case .editor(let editor):
+                view = editor
+            }
             var document = ContextElement(
                 id: documentID(for: view), role: .document, subrole: "markdown", title: Self.title(of: view),
                 url: view.documentURL?.absoluteString, focused: front
@@ -151,7 +182,12 @@ final class PaperContext: ContextProvider {
     ///
     /// Nil with nothing open, which leaves the wording to the host.
     func display() -> ContextDisplay? {
-        guard let front = textViews().first else { return nil }
+        guard let first = surfaces().first else { return nil }
+        let front: PaperTextView
+        switch first {
+        case .library(let navigation): return libraryTree.display(for: navigation)
+        case .editor(let view): front = view
+        }
         var detail = Self.selectedLines(in: front).map { lines in
             lines.start == lines.end ? "line \(lines.start)" : "lines \(lines.start)–\(lines.end)"
         }
@@ -234,6 +270,7 @@ final class PaperContext: ContextProvider {
     // MARK: - locate
 
     func locate(_ id: String) -> ContextLocation? {
+        if libraryTree.owns(id) { return libraryTree.locate(id) }
         guard let editor = issued[id] else { return nil }
         guard let view = editor.view, let window = view.window else { return .gone(id) }
         let onScreen = window.isVisible && !window.isMiniaturized
