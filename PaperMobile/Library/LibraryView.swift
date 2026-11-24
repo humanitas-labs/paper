@@ -1014,7 +1014,7 @@ private struct PickGesture: ViewModifier {
 /// recognizer sees the touch at once. It also reports the press as it
 /// starts and ends, and a tap when the finger lifts before the hold.
 private struct QuickPress: UIGestureRecognizerRepresentable {
-    static let duration: TimeInterval = 0.25
+    static let duration: TimeInterval = 0.35
     var onPressing: (Bool) -> Void = { _ in }
     var onTap: (() -> Void)?
     let onHold: () -> Void
