@@ -62,6 +62,11 @@ struct FolderView: View {
     @State private var confirmingDelete = false
     @State private var namingFolder = false
     @State private var folderName = ""
+    @State private var renaming = false
+    @State private var renameText = ""
+    /// The bottom capsule opens into a search field.
+    @State private var searchOpen = false
+    @FocusState private var searchFocused: Bool
     /// The scroll view's height, so empty space below the grid still takes
     /// the long press that makes a folder.
     @State private var viewport: CGFloat = 0
@@ -76,6 +81,10 @@ struct FolderView: View {
     private let folderColumns = [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 12)]
 
     var body: some View {
+        attachDialogs(page)
+    }
+
+    private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 if searching {
@@ -85,7 +94,7 @@ struct FolderView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 32)
+            .padding(.bottom, 24)
             .frame(maxWidth: .infinity, minHeight: viewport, alignment: .top)
             .contentShape(Rectangle())
             // A hold on empty space makes a folder; cards take their own.
@@ -123,40 +132,10 @@ struct FolderView: View {
                 }
             }
         }
-        .modifier(BottomSearch(query: $query, hidden: selecting))
-        .overlay(alignment: .bottom) {
-            if selecting {
-                SelectionToast(count: selection.count, move: { movingSelection = true }, delete: { confirmingDelete = true })
-                    .padding(.bottom, 12)
-                    // As in Spatial: the search bar drops out of the way,
-                    // then the toast rises; leaving, the toast drops first.
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity)
-                            .animation(Self.selectionSpring.delay(0.12)),
-                        removal: .move(edge: .bottom).combined(with: .opacity)
-                            .animation(Self.selectionSpring)
-                    ))
-            }
-        }
-        .sheet(isPresented: $movingSelection) {
-            MoveSheet(root: root.url, current: folder, isDefaultRoot: root.isDefault) { destination in
-                moveSelection(to: destination)
-            }
-            .presentationDetents([.medium, .large])
-        }
-        .confirmationDialog(
-            selection.count == 1 ? "Delete this note?" : "Delete \(selection.count) notes?",
-            isPresented: $confirmingDelete, titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive, action: deleteSelection)
-        } message: {
-            Text("The files are removed from the folder.")
-        }
-        .alert("New Folder", isPresented: $namingFolder) {
-            TextField("Name", text: $folderName)
-            Button("Create", action: createFolder)
-            Button("Cancel", role: .cancel) {}
-        }
+        // One floating capsule at the bottom, as the system's apps now do:
+        // search and a new folder, or, while items are picked, what can be
+        // done to them. The grid scrolls beneath it.
+        .safeAreaInset(edge: .bottom) { bottomBar }
         .fileImporter(isPresented: $choosingRoot, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { root.choose(url) }
         }
@@ -175,6 +154,69 @@ struct FolderView: View {
 
     private let brandInset: CGFloat = 10
 
+    /// One floating capsule at the bottom, as the system's apps now do:
+    /// search and a new folder, or, while items are picked, what can be
+    /// done to them. The grid scrolls beneath it.
+    private var bottomBar: some View {
+        ZStack {
+            if selecting {
+                SelectionToast(
+                    count: selection.count,
+                    move: { movingSelection = true },
+                    rename: renameAction,
+                    delete: { confirmingDelete = true }
+                )
+                // As in Spatial: the bar drops out of the way, then the
+                // toast rises; leaving, the toast drops first.
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity)
+                        .animation(Self.selectionSpring.delay(0.12)),
+                    removal: .move(edge: .bottom).combined(with: .opacity)
+                        .animation(Self.selectionSpring)
+                ))
+            } else {
+                LibraryBar(
+                    query: $query, searchOpen: $searchOpen, searchFocused: $searchFocused,
+                    newFolder: { folderName = ""; namingFolder = true }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, searchOpen && !selecting ? 16 : 0)
+        .padding(.bottom, 8)
+    }
+
+    /// Renaming is offered when one item is picked.
+    private var renameAction: (() -> Void)? {
+        guard selection.count == 1 else { return nil }
+        return { beginRename() }
+    }
+
+    private func attachDialogs<Content: View>(_ content: Content) -> some View {
+        content
+            .sheet(isPresented: $movingSelection) {
+                MoveSheet(root: root.url, current: folder, isDefaultRoot: root.isDefault, moving: selection) { destination in
+                    moveSelection(to: destination)
+                }
+                .presentationDetents([.medium, .large])
+            }
+            .confirmationDialog("Delete \(selectionDescription)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                Button("Delete", role: .destructive, action: deleteSelection)
+            } message: {
+                Text(selectedFolders.isEmpty ? "The files are removed from the folder." : "Folders are deleted with everything in them.")
+            }
+            .alert("Rename", isPresented: $renaming) {
+                TextField("Name", text: $renameText)
+                Button("Rename", action: renameSelection)
+                Button("Cancel", role: .cancel) {}
+            }
+            .alert("New Folder", isPresented: $namingFolder) {
+                TextField("Name", text: $folderName)
+                Button("Create", action: createFolder)
+                Button("Cancel", role: .cancel) {}
+            }
+    }
+
     /// "3 Selected": the grid already shows what the folder holds.
     private var selectionTitle: some View {
         Text("\(selection.count) Selected")
@@ -187,8 +229,6 @@ struct FolderView: View {
     @ViewBuilder private var brand: some View {
         if isRoot {
             Menu {
-                Button("New Folder", systemImage: "folder.badge.plus") { folderName = ""; namingFolder = true }
-                Divider()
                 Button("Choose Root Folder…", systemImage: "folder") { choosingRoot = true }
                 if !root.isDefault {
                     Button("Use Paper's Folder", systemImage: "arrow.uturn.backward") { root.reset() }
@@ -264,10 +304,16 @@ struct FolderView: View {
                 if !listing.folders.isEmpty {
                     LazyVGrid(columns: folderColumns, spacing: 12) {
                         ForEach(listing.folders) { item in
-                            NavigationLink(value: LibraryRoute.folder(item.url)) {
-                                FolderCard(folder: item).matchedTransitionSource(id: item.url, in: cards)
-                            }
-                                .buttonStyle(.plain)
+                            FolderCard(folder: item, selected: selection.contains(item.url))
+                                .matchedTransitionSource(id: item.url, in: cards)
+                                .onTapGesture {
+                                    if selecting { toggle(item.url) } else { open(.folder(item.url)) }
+                                }
+                                .onLongPressGesture(minimumDuration: 0.25) {
+                                    Haptics.press()
+                                    changeSelection { $0.insert(item.url) }
+                                }
+                                .accessibilityAddTraits(.isButton)
                         }
                     }
                 }
@@ -331,6 +377,39 @@ struct FolderView: View {
         Task { await reload(); if searching { await search() } }
     }
 
+    private var selectedFolders: [URL] {
+        listing.folders.map(\.url).filter(selection.contains)
+    }
+
+    /// "this note", "this folder", "3 notes", "2 items".
+    private var selectionDescription: String {
+        let folders = selectedFolders.count
+        let notes = selection.count - folders
+        switch (notes, folders) {
+        case (1, 0): return "this note"
+        case (0, 1): return "this folder"
+        case (_, 0): return "\(notes) notes"
+        case (0, _): return "\(folders) folders"
+        default: return "\(selection.count) items"
+        }
+    }
+
+    private func beginRename() {
+        guard let url = selection.first else { return }
+        let isFolder = selectedFolders.contains(url)
+        renameText = isFolder ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
+        renaming = true
+    }
+
+    private func renameSelection() {
+        guard let url = selection.first else { return }
+        let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
+        guard !name.isEmpty, !name.hasPrefix(".") else { return }
+        try? NoteFile.rename(url, to: name, isFolder: selectedFolders.contains(url))
+        changeSelection { $0.removeAll() }
+        Task { await reload(); if searching { await search() } }
+    }
+
     private func createFolder() {
         let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
@@ -381,6 +460,7 @@ private extension UIColor {
 /// and the name at its lower left.
 struct FolderCard: View {
     let folder: FolderListing.Folder
+    var selected = false
 
     var body: some View {
         Image("FolderShape")
@@ -399,8 +479,14 @@ struct FolderCard: View {
                         .padding(.bottom, proxy.size.height * 42.5 / 226.45)
                 }
             }
+            // Picked: a bright outline around the folder's silhouette.
+            .overlay {
+                if selected { FolderSilhouette().stroke(Color.primary, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
+            }
+            .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(Rectangle())
             .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var label: some View {
@@ -508,42 +594,26 @@ enum NoteMiniature {
     }
 }
 
-/// Search at the bottom of the screen, as in Notes, on iOS 26; at the top
-/// on earlier systems. New notes are made from the top right.
-private struct BottomSearch: ViewModifier {
-    @Binding var query: String
-    /// While picking notes, the toast takes the bottom of the screen.
-    var hidden = false
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .searchable(text: $query, prompt: "Search")
-                .toolbar {
-                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                }
-                .toolbar(hidden ? .hidden : .automatic, for: .bottomBar)
-        } else {
-            content.searchable(text: $query, prompt: "Search")
-        }
-    }
-}
-
 /// The toast while notes are picked, after Spatial's: a dark capsule with
 /// a folder to move them and a bin to delete them.
 /// The two glyphs are Spatial's own, copied for this demo build only; they
 /// are placeholders to replace before Paper is distributed.
-private struct SelectionToast: View {
+struct SelectionToast: View {
     /// Spatial's corners: rounded, not a full capsule.
     static let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
     let count: Int
     let move: () -> Void
+    /// Offered when one item is picked.
+    let rename: (() -> Void)?
     let delete: () -> Void
 
     var body: some View {
         HStack(spacing: 4) {
-            button("SpatialFolder", label: "Move \(count == 1 ? "Note" : "\(count) Notes")", action: move)
-            button("SpatialTrash", label: "Delete \(count == 1 ? "Note" : "\(count) Notes")", action: delete)
+            button(Image("SpatialFolder"), label: "Move", action: move)
+            if let rename {
+                button(Image(systemName: "pencil"), label: "Rename", action: rename)
+            }
+            button(Image("SpatialTrash"), label: "Delete", action: delete)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -556,23 +626,14 @@ private struct SelectionToast: View {
         .overlay(Self.shape.strokeBorder(ToastPalette.border, lineWidth: 1))
     }
 
-    private func button(_ image: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(image)
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 22, height: 22)
-                .foregroundStyle(ToastPalette.glyph)
-                .frame(width: 56, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+    private func button(_ image: Image, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { BarGlyph(image: image) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
     }
 }
 
-private enum ToastPalette {
+enum ToastPalette {
     static let fill = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x212426) : UIColor(hex: 0xF1F1F0) })
     static let border = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x2E3133) : UIColor(hex: 0xDEDEDC) })
     static let glyph = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0xB9BEC4) : UIColor(hex: 0x4B5057) })
@@ -583,6 +644,8 @@ private struct MoveSheet: View {
     let root: URL
     let current: URL
     let isDefaultRoot: Bool
+    /// What is being moved: a folder cannot go into itself or below itself.
+    var moving: Set<URL> = []
     let choose: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var folders: [URL] = []
@@ -598,7 +661,7 @@ private struct MoveSheet: View {
                 } label: {
                     Label(name(of: folder), systemImage: "folder")
                 }
-                .disabled(folder.standardizedFileURL == current.standardizedFileURL)
+                .disabled(!canMove(into: folder))
             }
             .navigationTitle("Move to")
             .navigationBarTitleDisplayMode(.inline)
@@ -619,6 +682,15 @@ private struct MoveSheet: View {
         .task {
             let root = root, isDefault = isDefaultRoot
             folders = await Task.detached { [root] + FolderListing.allFolders(under: root, isDefaultRoot: isDefault) }.value
+        }
+    }
+
+    private func canMove(into folder: URL) -> Bool {
+        let target = folder.standardizedFileURL.path
+        if target == current.standardizedFileURL.path { return false }
+        return !moving.contains { item in
+            let path = item.standardizedFileURL.path
+            return target == path || target.hasPrefix(path + "/")
         }
     }
 
@@ -660,5 +732,101 @@ private struct SwipeBackEnabler: UIViewControllerRepresentable {
             navigationController?.interactivePopGestureRecognizer?.isEnabled = true
             navigationController?.interactivePopGestureRecognizer?.delegate = nil
         }
+    }
+}
+
+/// The folder artwork's outline (its back panel and tab), scaled from the
+/// artwork's 312 × 226 canvas, for the picked state's ring.
+struct FolderSilhouette: Shape {
+    func path(in rect: CGRect) -> Path {
+        let sx = rect.width / 312.054, sy = rect.height / 226.45
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * sx, y: rect.minY + y * sy) }
+        var path = Path()
+        path.move(to: p(10.5, 22.844))
+        path.addCurve(to: p(28.844, 4.5), control1: p(10.5, 10.615), control2: p(16.615, 4.5))
+        path.addLine(to: p(104.665, 4.5))
+        path.addCurve(to: p(121.785, 11.837), control1: p(111.187, 4.5), control2: p(116.894, 6.946))
+        path.addLine(to: p(136.46, 26.512))
+        path.addCurve(to: p(151.135, 31.404), control1: p(139.722, 29.774), control2: p(144.613, 31.404))
+        path.addLine(to: p(283.21, 31.404))
+        path.addCurve(to: p(301.554, 49.748), control1: p(295.44, 31.404), control2: p(301.554, 37.519))
+        path.addLine(to: p(301.554, 191.606))
+        path.addCurve(to: p(283.21, 209.95), control1: p(301.554, 203.835), control2: p(295.44, 209.95))
+        path.addLine(to: p(28.844, 209.95))
+        path.addCurve(to: p(10.5, 191.606), control1: p(16.615, 209.95), control2: p(10.5, 203.835))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A glyph in a bottom capsule: one size and color for every button.
+private struct BarGlyph: View {
+    let image: Image
+
+    var body: some View {
+        image
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 22, height: 22)
+            .foregroundStyle(ToastPalette.glyph)
+            .frame(width: 56, height: 44)
+            .contentShape(Rectangle())
+    }
+}
+
+/// The library's bottom capsule: search and a new folder. Search opens a
+/// field across the capsule; clearing it closes the field.
+private struct LibraryBar: View {
+    @Binding var query: String
+    @Binding var searchOpen: Bool
+    var searchFocused: FocusState<Bool>.Binding
+    let newFolder: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if searchOpen {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(ToastPalette.glyph)
+                    .padding(.leading, 14)
+                TextField("Search", text: $query)
+                    .focused(searchFocused)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .frame(height: 44)
+                Button {
+                    withAnimation(FolderView.selectionSpring) {
+                        query = ""
+                        searchOpen = false
+                    }
+                } label: {
+                    BarGlyph(image: Image(systemName: "xmark"))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close Search")
+            } else {
+                Button {
+                    withAnimation(FolderView.selectionSpring) { searchOpen = true }
+                    searchFocused.wrappedValue = true
+                } label: {
+                    BarGlyph(image: Image(systemName: "magnifyingglass"))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Search")
+                Button(action: newFolder) {
+                    BarGlyph(image: Image(systemName: "folder.badge.plus"))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New Folder")
+            }
+        }
+        .padding(.horizontal, searchOpen ? 0 : 10)
+        .padding(.vertical, 6)
+        .background {
+            SelectionToast.shape
+                .fill(ToastPalette.fill)
+                .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        }
+        .overlay(SelectionToast.shape.strokeBorder(ToastPalette.border, lineWidth: 1))
     }
 }

@@ -153,3 +153,27 @@ struct LibraryFileTests {
         #expect(names == ["a", "a/b"])
     }
 }
+
+struct RenameTests {
+    @Test func renamingANoteKeepsItsExtensionAndAFolderHasNone() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("old folder"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "x".write(to: root.appendingPathComponent("old.md"), atomically: true, encoding: .utf8)
+        try NoteFile.rename(root.appendingPathComponent("old.md"), to: "new", isFolder: false)
+        try NoteFile.rename(root.appendingPathComponent("old folder"), to: "new folder", isFolder: true)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("new.md").path))
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("new folder").path, isDirectory: &isDirectory) && isDirectory.boolValue)
+    }
+
+    @Test func renamingOntoATakenNameFails() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "a".write(to: root.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
+        try "b".write(to: root.appendingPathComponent("b.md"), atomically: true, encoding: .utf8)
+        #expect(throws: (any Error).self) { try NoteFile.rename(root.appendingPathComponent("a.md"), to: "b", isFolder: false) }
+        #expect(try String(contentsOf: root.appendingPathComponent("b.md"), encoding: .utf8) == "b")
+    }
+}

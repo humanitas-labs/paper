@@ -213,6 +213,27 @@ enum NoteFile {
         try result.get()
     }
 
+    /// Renames a note (keeping its extension) or a folder in place.
+    static func rename(_ url: URL, to name: String, isFolder: Bool) throws {
+        let parent = url.deletingLastPathComponent()
+        var destination = parent.appendingPathComponent(name, isDirectory: isFolder)
+        if !isFolder, !url.pathExtension.isEmpty { destination.appendPathExtension(url.pathExtension) }
+        guard destination.standardizedFileURL != url.standardizedFileURL else { return }
+        guard !FileManager.default.fileExists(atPath: destination.path) else {
+            throw CocoaError(.fileWriteFileExists)
+        }
+        var result: Result<Void, Error> = .success(())
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(
+            writingItemAt: url, options: .forMoving, writingItemAt: destination, options: .forReplacing,
+            error: &coordinationError
+        ) { from, to in
+            result = Result { try FileManager.default.moveItem(at: from, to: to) }
+        }
+        if let coordinationError { throw coordinationError }
+        try result.get()
+    }
+
     static func delete(_ url: URL) throws {
         var result: Result<Void, Error> = .success(())
         var coordinationError: NSError?
