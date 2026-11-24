@@ -53,7 +53,7 @@ struct LibraryView: View {
         }
         .background(LibraryPalette.background.ignoresSafeArea())
         // Spatial's style of pointer over the whole window.
-        .overlay(LibraryPointerArea().ignoresSafeArea())
+        .overlay(LibraryPointerArea().allowsHitTesting(false).ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
         .background(keyCommands)
         .task(id: folder) {
@@ -228,6 +228,11 @@ private struct LibraryNavigationBar: View {
         .buttonStyle(.plain)
         .foregroundStyle(enabled ? Color.primary : LibraryPalette.secondaryLabel.opacity(0.6))
         .disabled(!enabled)
+        // The bar sits in the window's title band, where a click on a
+        // SwiftUI button drags the window instead of pressing it. An
+        // AppKit view over the arrow takes the click, as the file badge's
+        // does in a document window.
+        .overlay { if enabled { TitleBandClick(action: action) } }
         .accessibilityLabel(label)
     }
 }
@@ -298,6 +303,34 @@ private struct CardClick: ViewModifier {
                 .scaleEffect(configuration.isPressed ? 0.98 : 1)
                 .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
                 .contentShape(Rectangle())
+        }
+    }
+}
+
+/// A click target that works in the window's title band: it takes the
+/// mouse itself and never lets the click move the window.
+private struct TitleBandClick: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> ClickView {
+        let view = ClickView()
+        view.action = action
+        return view
+    }
+
+    func updateNSView(_ view: ClickView, context: Context) { view.action = action }
+
+    final class ClickView: NSView {
+        var action: (() -> Void)?
+        private var pressed = false
+
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func mouseDown(with event: NSEvent) { pressed = true }
+        override func mouseUp(with event: NSEvent) {
+            defer { pressed = false }
+            guard pressed, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+            action?()
         }
     }
 }

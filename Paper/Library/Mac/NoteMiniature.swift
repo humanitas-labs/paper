@@ -6,8 +6,9 @@ import AppKit
 /// the same way with its own editor.
 @MainActor
 enum NoteMiniature {
-    /// The card's shape: a page, three wide by four tall.
-    static let aspect: CGFloat = 3.0 / 4.0
+    /// The card's shape: a page a little taller than three by four, the
+    /// proportion of Spatial's note card (about 7 to 10).
+    static let aspect: CGFloat = 470.0 / 668.0
     /// Wide enough that a card shows the note's head at a legible scale.
     static let pageWidth: CGFloat = 460
     /// Only the head of a long note can show.
