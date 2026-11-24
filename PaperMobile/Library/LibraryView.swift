@@ -343,6 +343,8 @@ struct FolderView: View {
                         ForEach(listing.folders.map { (identity(of: $0.url), $0) }, id: \.0) { _, item in
                             FolderCard(folder: item, selected: selection.contains(item.url))
                                 .matchedTransitionSource(id: item.url, in: cards)
+                                // Outside the zoom's source, whose clip would cut it off.
+                                .background(FolderCard.shadow)
                                 .modifier(PickGesture(
                                     tap: { if selecting { toggle(item.url) } else { open(.folder(item.url)) } },
                                     pick: { changeSelection { $0.insert(item.url) } }
@@ -545,12 +547,9 @@ struct FolderCard: View {
     static let shape = CGRect(x: 10.5, y: 4.5, width: 291.054, height: 205.45)
 
     var body: some View {
-        // The shadow falls from a plain silhouette under the artwork, as a
-        // note card's does: the artwork's own SVG shadow does not render,
-        // and a shadow traced from the artwork caught the tab's corner hard.
-        FolderSilhouette()
-            .fill(LibraryPalette.background)
-            .modifier(CardShadow())
+        // The shadow is the grid's, cast by `FolderCard.shadow` outside the
+        // zoom source, whose clip hid it around a zoom.
+        Color.clear
             .aspectRatio(Self.shape.width / Self.shape.height, contentMode: .fit)
             .overlay {
                 GeometryReader { proxy in
@@ -582,6 +581,15 @@ struct FolderCard: View {
             .contentShape(Rectangle())
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// The folder's shadow, from a plain silhouette laid under the card:
+    /// the artwork's own SVG shadow does not render, and a shadow traced
+    /// from the artwork caught the tab's corner hard.
+    static var shadow: some View {
+        FolderSilhouette()
+            .fill(LibraryPalette.background)
+            .modifier(CardShadow())
     }
 
     private var label: some View {
