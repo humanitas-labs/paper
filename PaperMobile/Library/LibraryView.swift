@@ -634,6 +634,9 @@ enum NoteMiniature {
         editor.pageMargins = margins
         editor.documentURL = note.url
         editor.load(head)
+        // The miniature keeps the card's color; the page opens onto the
+        // darker library background.
+        editor.backgroundColor = UIColor(LibraryPalette.card)
         editor.layoutIfNeeded()
         let format = UIGraphicsImageRendererFormat()
         format.scale = 2
