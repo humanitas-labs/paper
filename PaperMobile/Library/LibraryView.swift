@@ -54,6 +54,9 @@ struct FolderView: View {
     @State private var query = ""
     /// Notes under this folder matching `query`; nil until a search ran.
     @State private var results: [FolderListing.Note]?
+    /// Every note under this folder, read in the background when the folder
+    /// opens and after changes, so search runs in memory as you type.
+    @State private var searchIndex: FolderListing.SearchIndex?
     @Environment(\.scenePhase) private var scenePhase
     /// Notes picked with a long press; while any are picked, taps pick
     /// rather than open and the toast replaces the bottom bar.
@@ -89,7 +92,7 @@ struct FolderView: View {
     private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                if searching {
+                if searching, results != nil {
                     searchResults
                 } else {
                     contents
@@ -155,7 +158,7 @@ struct FolderView: View {
         .onAppear { Task { await reload() } }
         // A note's last save lands as the library reappears; reload after it.
         .onReceive(NotificationCenter.default.publisher(for: NoteFile.didSaveNotification)) { _ in
-            Task { await reload(); if searching { await search() } }
+            Task { await reload() }
         }
     }
 
@@ -219,15 +222,10 @@ struct FolderView: View {
         .accessibilityLabel("New Note")
     }
 
-    /// Ends picking: a checkmark in the compose glyph's line style, in the
-    /// bar's glass circle.
+    /// Ends picking: the system's checkmark in the bar's glass circle.
     private var doneButton: some View {
-        Button { changeSelection { $0.removeAll() } } label: {
-            CheckGlyph()
-                .stroke(Color.primary, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                .frame(width: 20, height: 20)
-        }
-        .accessibilityLabel("Done")
+        Button("Done", systemImage: "checkmark") { changeSelection { $0.removeAll() } }
+            .labelStyle(.iconOnly)
     }
 
     /// Renaming is offered when one item is picked.
@@ -365,14 +363,20 @@ struct FolderView: View {
         let folder = folder
         let isDefault = isRoot && root.isDefault
         listing = await Task.detached { FolderListing.load(folder, isDefaultRoot: isDefault) }.value
+        searchIndex = await Task.detached { FolderListing.index(under: folder, isDefaultRoot: isDefault) }.value
+        if searching { await search() }
     }
 
     /// Waits for typing to pause, then searches this folder and everything
     /// under it.
+    /// Searches the in-memory index at once; until the index is built, the
+    /// disk, without clearing what is shown in the meantime.
     private func search() async {
         guard searching else { results = nil; return }
-        try? await Task.sleep(for: .milliseconds(250))
-        guard !Task.isCancelled else { return }
+        if let searchIndex {
+            results = searchIndex.search(query)
+            return
+        }
         let folder = folder, query = query
         let isDefault = isRoot && root.isDefault
         let found = await Task.detached { FolderListing.search(query, under: folder, isDefaultRoot: isDefault) }.value
@@ -402,7 +406,7 @@ struct FolderView: View {
             try? NoteFile.move(url, into: destination)
         }
         changeSelection { $0.removeAll() }
-        Task { await reload(); if searching { await search() } }
+        Task { await reload() }
     }
 
     private func deleteSelection() {
@@ -410,7 +414,7 @@ struct FolderView: View {
             try? NoteFile.delete(url)
         }
         changeSelection { $0.removeAll() }
-        Task { await reload(); if searching { await search() } }
+        Task { await reload() }
     }
 
     private var selectedFolders: [URL] {
@@ -443,7 +447,7 @@ struct FolderView: View {
         guard !name.isEmpty, !name.hasPrefix(".") else { return }
         try? NoteFile.rename(url, to: name, isFolder: selectedFolders.contains(url))
         changeSelection { $0.removeAll() }
-        Task { await reload(); if searching { await search() } }
+        Task { await reload() }
     }
 
     private func createFolder() {
@@ -850,9 +854,9 @@ private struct LibraryBar: View {
     var searchFocused: FocusState<Bool>.Binding
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: searchOpen ? 6 : 5) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: searchOpen ? 17 : 15, weight: .medium))
+                .font(.system(size: searchOpen ? 17 : 13, weight: .medium))
                 .foregroundStyle(searchOpen ? .secondary : .primary)
             ZStack(alignment: .leading) {
                 // The pill's word and the field's placeholder sit in the
@@ -866,7 +870,7 @@ private struct LibraryBar: View {
                         .transition(.opacity)
                 } else {
                     Text("Search")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .transition(.opacity)
                 }
             }
@@ -883,9 +887,10 @@ private struct LibraryBar: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
             }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, searchOpen ? 4 : 16)
-        .frame(height: searchOpen ? 48 : 38)
+        // Closed, the Home Screen's size: about 30 pt tall.
+        .padding(.leading, searchOpen ? 16 : 12)
+        .padding(.trailing, searchOpen ? 4 : 13)
+        .frame(height: searchOpen ? 48 : 30)
         .contentShape(Capsule())
         .onTapGesture { if !searchOpen { open() } }
         .modifier(GlassCapsule())
@@ -1010,19 +1015,6 @@ struct ComposeGlyph: Shape {
         // The pen: a stroke from the top right into the page.
         path.move(to: p(19.5, 4.5))
         path.addLine(to: p(11, 13))
-        return path
-    }
-}
-
-/// A check on the compose glyph's 24 pt grid, in the same 2 pt line.
-struct CheckGlyph: Shape {
-    func path(in rect: CGRect) -> Path {
-        let s = min(rect.width, rect.height) / 24
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
-        var path = Path()
-        path.move(to: p(4.5, 12.5))
-        path.addLine(to: p(9.5, 17.5))
-        path.addLine(to: p(19.5, 6.5))
         return path
     }
 }

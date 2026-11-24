@@ -96,16 +96,34 @@ struct FolderListing: Sendable {
         return listing
     }
 
-    /// Notes under `folder`, at any depth, whose title, file name or text
-    /// contains `query`, newest first.
-    static func search(_ query: String, under folder: URL, isDefaultRoot: Bool) -> [Note] {
-        let needle = query.trimmingCharacters(in: .whitespaces)
-        guard !needle.isEmpty else { return [] }
-        let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
+    /// Every note under a folder with the text it is searched by, read
+    /// once so each keystroke searches memory, not the disk.
+    struct SearchIndex: Sendable {
+        struct Entry: Sendable {
+            let note: Note
+            /// Title, file name and text, case- and accent-folded.
+            let haystack: String
+        }
+        var entries: [Entry] = []
+
+        static func fold(_ text: String) -> String {
+            text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+        }
+
+        /// Matches newest first, as the listing orders notes.
+        func search(_ query: String) -> [Note] {
+            let needle = Self.fold(query.trimmingCharacters(in: .whitespaces))
+            guard !needle.isEmpty else { return [] }
+            return entries.lazy.filter { $0.haystack.contains(needle) }.map(\.note)
+        }
+    }
+
+    static func index(under folder: URL, isDefaultRoot: Bool) -> SearchIndex {
+        let keys: [URLResourceKey] = [.contentModificationDateKey]
         guard let walker = FileManager.default.enumerator(
             at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return [] }
-        var found: [Note] = []
+        ) else { return SearchIndex() }
+        var entries: [SearchIndex.Entry] = []
         for case let entry as URL in walker {
             if isDefaultRoot, walker.level == 1, hiddenAtDefaultRoot.contains(entry.lastPathComponent) {
                 walker.skipDescendants()
@@ -113,14 +131,21 @@ struct FolderListing: Sendable {
             }
             guard noteExtensions.contains(entry.pathExtension.lowercased()) else { continue }
             let title = title(of: entry)
-            let matches = title.localizedStandardContains(needle)
-                || entry.lastPathComponent.localizedStandardContains(needle)
-                || ((try? String(contentsOf: entry, encoding: .utf8))?.localizedStandardContains(needle) ?? false)
-            guard matches else { continue }
+            let text = (try? String(contentsOf: entry, encoding: .utf8)) ?? ""
             let modified = (try? entry.resourceValues(forKeys: Set(keys)))?.contentModificationDate ?? .distantPast
-            found.append(Note(url: entry, title: title, modified: modified))
+            entries.append(SearchIndex.Entry(
+                note: Note(url: entry, title: title, modified: modified),
+                haystack: SearchIndex.fold(title + "\n" + entry.lastPathComponent + "\n" + text)
+            ))
         }
-        return found.sorted { $0.modified > $1.modified }
+        entries.sort { $0.note.modified > $1.note.modified }
+        return SearchIndex(entries: entries)
+    }
+
+    /// Notes under `folder`, at any depth, whose title, file name or text
+    /// contains `query`, newest first.
+    static func search(_ query: String, under folder: URL, isDefaultRoot: Bool) -> [Note] {
+        index(under: folder, isDefaultRoot: isDefaultRoot).search(query)
     }
 
     /// Every folder under `root`, at any depth, in path order.

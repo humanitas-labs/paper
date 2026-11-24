@@ -1,7 +1,7 @@
 import UIKit
 
-/// The bar above the keyboard: the Mac's Format menu, a task, list indent,
-/// and a key to put the keyboard away. It floats over the page as a glass
+/// The bar above the keyboard: the Mac's Format menu, a task, and list
+/// indent. The keyboard goes away with a drag down the page. It floats over the page as a glass
 /// capsule, as the system's own editors do, with clear space around it.
 final class KeyboardRow: UIView {
     private weak var textView: MobileTextView?
@@ -27,7 +27,6 @@ final class KeyboardRow: UIView {
             ("checklist", "Task", #selector(task)),
             ("decrease.indent", "Outdent", #selector(outdent)),
             ("increase.indent", "Indent", #selector(indent)),
-            ("keyboard.chevron.compact.down", "Hide Keyboard", #selector(dismiss)),
         ]
         let stack = UIStackView(arrangedSubviews: items.map { item in
             let button = UIButton(type: .system)
@@ -122,7 +121,6 @@ final class KeyboardRow: UIView {
     @objc private func task() { textView?.toggleTaskLine() }
     @objc private func outdent() { textView?.indentListItem(outdent: true) }
     @objc private func indent() { textView?.indentListItem(outdent: false) }
-    @objc private func dismiss() { _ = textView?.resignFirstResponder() }
 }
 
 extension MobileTextView {
