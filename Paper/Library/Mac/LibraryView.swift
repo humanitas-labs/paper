@@ -98,6 +98,17 @@ struct LibraryView: View {
                 .padding(.leading, navigation.fullScreen ? 94 : 181)
                 .ignoresSafeArea()
         }
+        // How many cards are picked, across from the folder's name.
+        .overlay(alignment: .topTrailing) {
+            if !selection.isEmpty {
+                LibraryTitlePill(title: selection.count == 1 ? "1 selected" : "\(selection.count) selected")
+                    .monospacedDigit()
+                    .frame(height: 52)
+                    .padding(.trailing, 20)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
+        }
         .overlay(MarqueeLayer(rect: marquee))
         // Tabs, once there are two, at the foot of the window.
         .overlay(alignment: .bottom) {
@@ -115,7 +126,7 @@ struct LibraryView: View {
         .overlay(alignment: .bottom) {
             if !selection.isEmpty {
                 LibrarySelectionToast(
-                    count: selection.count, move: moveSelection,
+                    move: moveSelection,
                     rename: selection.count == 1 ? { beginRename() } : nil,
                     trash: trashSelection
                 )

@@ -35,14 +35,14 @@ struct MarqueeLayer: View {
 }
 
 /// The toast while cards are picked, after the iPhone library's: a rounded
-/// bar at the foot of the window with how many are picked, then a folder to
-/// move them, a pencil to rename (one card only) and a bin to move them to
-/// the Trash. A click anywhere off the toast lets go of them.
+/// bar at the foot of the window with a folder to move the picked cards, a
+/// pencil to rename (one card only) and a bin to move them to the Trash.
+/// How many are picked shows at the top right. A click anywhere off the
+/// toast lets go of them.
 struct LibrarySelectionToast: View {
     /// Spatial's desktop bar, measured from its toolbar: about 44 pt
     /// tall with a 14 pt corner, tighter than the iPhone toast's 24.
     static let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-    let count: Int
     let move: () -> Void
     /// Offered when one card is picked.
     let rename: (() -> Void)?
@@ -50,18 +50,11 @@ struct LibrarySelectionToast: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            Text(count == 1 ? "1 selected" : "\(count) selected")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(ToastPalette.glyph)
-                .monospacedDigit()
-                .padding(.leading, 12)
-                .padding(.trailing, 8)
             button(FolderGlyph(), label: "Move to…", action: move)
             if let rename { button(PencilGlyph(), label: "Rename", action: rename) }
             button(TrashGlyph(), label: "Move to Trash", action: trash)
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 6)
+        .padding(.horizontal, 6)
         .padding(.vertical, 6)
         .background {
             Self.shape

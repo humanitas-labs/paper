@@ -44,8 +44,11 @@ struct LibraryTitlePill: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(Color.primary.opacity(0.88))
+            // Set as a folder card's name: regular weight, drawn in a
+            // little, in the name's ink.
+            .font(.system(size: 14, weight: .regular))
+            .tracking(-0.022 * 14)
+            .foregroundStyle(FolderCard.nameInk)
             .lineLimit(1)
             .padding(.horizontal, 9)
             .frame(height: 24)

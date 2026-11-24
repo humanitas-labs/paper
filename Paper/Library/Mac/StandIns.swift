@@ -11,8 +11,19 @@ enum LibraryPalette {
     static let background = themed { canvas, dark in
         dark ? canvas : canvas.blended(withFraction: 0.07, of: .black) ?? canvas
     }
-    static let card = themed { canvas, dark in
+    static let card = themed(cardColor)
+    static func cardColor(canvas: NSColor, dark: Bool) -> NSColor {
         dark ? canvas.blended(withFraction: 0.06, of: .white) ?? canvas : canvas
+    }
+
+    /// The note card's color in an appearance, resolved now.
+    @MainActor
+    static func resolvedCard(dark: Bool) -> NSColor {
+        var canvas = NSColor.white
+        NSAppearance(named: dark ? .darkAqua : .aqua)!.performAsCurrentDrawingAppearance {
+            canvas = Appearance.canvas.usingColorSpace(.sRGB) ?? .white
+        }
+        return cardColor(canvas: canvas, dark: dark).usingColorSpace(.sRGB) ?? .white
     }
     static let border = themed { canvas, dark in
         dark ? canvas.blended(withFraction: 0.12, of: .white) ?? canvas : .white
@@ -57,11 +68,9 @@ struct FolderCard: View {
     var selected = false
     @Environment(\.colorScheme) private var colorScheme
 
-    /// The artwork draws the folder inside a larger canvas (room for its
-    /// shadow): the shape spans x 10.5–301.6 and y 4.5–210 of 312 × 226.
-    /// The card is sized by the shape, so its edges meet the grid's like a
-    /// note card's, and the artwork overhangs it by the shadow's margin.
-    static let canvas = CGSize(width: 312.054, height: 226.45)
+    /// The folder in the iPhone artwork's coordinates: x 10.5–301.6 and
+    /// y 4.5–210. The card is sized by it, so its edges meet the grid's
+    /// like a note card's.
     static let shape = CGRect(x: 10.5, y: 4.5, width: 291.054, height: 205.45)
 
     var body: some View {
@@ -72,14 +81,17 @@ struct FolderCard: View {
             .overlay {
                 GeometryReader { proxy in
                     let scale = proxy.size.width / Self.shape.width
-                    Image("FolderShape")
-                        .resizable()
-                        // The dark art was drawn for a near-black page; on
-                        // the theme's page it is lifted to sit level with
-                        // the note cards.
-                        .brightness(colorScheme == .dark ? 0.07 : 0)
-                        .frame(width: Self.canvas.width * scale, height: Self.canvas.height * scale)
-                        .offset(x: -Self.shape.minX * scale, y: -Self.shape.minY * scale)
+                    // Drawn, not an image, so the front is the note
+                    // card's own color in every theme.
+                    let colors = FolderCard.colors(dark: colorScheme == .dark)
+                    ZStack {
+                        FolderSilhouette().fill(Color(nsColor: colors.back))
+                        FolderSilhouette(panel: .paper).fill(Color(nsColor: colors.paper))
+                        FolderSilhouette(panel: .front).fill(Color(nsColor: colors.front))
+                            // The front's lip casts up onto the back.
+                            .shadow(color: .black.opacity(0.09 * scale), radius: 2 * scale, y: -2 * scale)
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }
             .overlay(alignment: .bottomLeading) {
@@ -140,13 +152,29 @@ struct FolderCard: View {
         }
     }
 
+    /// The folder's panels from the note card's color: the front is the
+    /// card, the back a step darker, the paper inside a step lighter, as
+    /// in the iPhone's artwork (#ECEEEF, #F8F9FA, #F3F4F5 in light).
+    static func colors(dark: Bool) -> (back: NSColor, paper: NSColor, front: NSColor) {
+        let card = LibraryPalette.resolvedCard(dark: dark)
+        return (
+            card.blended(withFraction: dark ? 0.12 : 0.03, of: .black) ?? card,
+            card.blended(withFraction: dark ? 0.03 : 0.02, of: .white) ?? card,
+            card
+        )
+    }
+
     static let countInk = Color(nsColor: LibraryPalette.nsColor(dark: 0x959EAC, light: 0x6E7073))
     static let nameInk = Color(nsColor: LibraryPalette.nsColor(dark: 0xF2F3F4, light: 0x1A1C1F))
 }
 
-/// The folder artwork's outline (its back panel and tab), fitted to the
-/// card, which is the shape's own box, for the picked state's ring.
+/// The folder's panels from the iPhone's artwork, fitted to the card,
+/// which is the shape's own box. The back (with the tab) is the whole
+/// outline, for the picked state's ring too.
 struct FolderSilhouette: Shape {
+    enum Panel { case back, paper, front }
+    var panel = Panel.back
+
     func path(in rect: CGRect) -> Path {
         // Artwork coordinates, measured from the shape's own top left.
         let box = FolderCard.shape
@@ -155,6 +183,33 @@ struct FolderSilhouette: Shape {
             CGPoint(x: rect.minX + (x - box.minX) * sx, y: rect.minY + (y - box.minY) * sy)
         }
         var path = Path()
+        switch panel {
+        case .back: break
+        case .paper:
+            path.move(to: p(96.7076, 35.4909))
+            path.addLine(to: p(221.403, 32.2257))
+            path.addCurve(to: p(231.439, 41.7492), control1: p(226.804, 32.0842), control2: p(231.297, 36.3481))
+            path.addLine(to: p(232.207, 71.0892))
+            path.addCurve(to: p(222.683, 81.1259), control1: p(232.348, 76.4913), control2: p(228.085, 80.9845))
+            path.addLine(to: p(97.9881, 84.3911))
+            path.addCurve(to: p(87.9524, 74.8666), control1: p(92.587, 84.5326), control2: p(88.0938, 80.2687))
+            path.addLine(to: p(87.1841, 45.5266))
+            path.addCurve(to: p(96.7076, 35.4909), control1: p(87.0427, 40.1255), control2: p(91.3065, 35.6323))
+            path.closeSubpath()
+            return path
+        case .front:
+            path.move(to: p(27.621, 43.633))
+            path.addLine(to: p(284.433, 43.633))
+            path.addCurve(to: p(301.554, 60.754), control1: p(293.889, 43.633), control2: p(301.554, 51.298))
+            path.addLine(to: p(301.554, 192.829))
+            path.addCurve(to: p(284.433, 209.95), control1: p(301.554, 202.284), control2: p(293.889, 209.95))
+            path.addLine(to: p(27.621, 209.95))
+            path.addCurve(to: p(10.5, 192.829), control1: p(18.165, 209.95), control2: p(10.5, 202.284))
+            path.addLine(to: p(10.5, 60.754))
+            path.addCurve(to: p(27.621, 43.633), control1: p(10.5, 51.298), control2: p(18.165, 43.633))
+            path.closeSubpath()
+            return path
+        }
         path.move(to: p(10.5, 22.844))
         path.addCurve(to: p(28.844, 4.5), control1: p(10.5, 10.615), control2: p(16.615, 4.5))
         path.addLine(to: p(104.665, 4.5))

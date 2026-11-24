@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import Paper
 
@@ -199,6 +200,27 @@ struct LibraryTests {
         #expect(first === again)
         let changed = NoteMiniature.image(for: note, modified: date.addingTimeInterval(1), dark: false, background: .white)
         #expect(changed !== first)
+    }
+
+    /// The folder's front panel is the note card's color in the theme, in
+    /// both appearances. Both are drawn by the same renderer and read
+    /// back the same way, so they compare like for like.
+    @Test(arguments: [false, true]) func folderFrontMatchesTheNoteCard(dark: Bool) throws {
+        let scheme: ColorScheme = dark ? .dark : .light
+        let folder = FolderListing.Folder(url: URL(fileURLWithPath: "/tmp/x"), name: "", itemCount: 0)
+        let front = try Self.pixel(FolderCard(folder: folder).frame(width: 291, height: 205.45).environment(\.colorScheme, scheme), x: 0.75, y: 0.75)
+        let card = try Self.pixel(Rectangle().fill(LibraryPalette.card).frame(width: 40, height: 40).environment(\.colorScheme, scheme), x: 0.5, y: 0.5)
+        let tolerance: CGFloat = 2 / 255
+        #expect(abs(front.redComponent - card.redComponent) <= tolerance)
+        #expect(abs(front.greenComponent - card.greenComponent) <= tolerance)
+        #expect(abs(front.blueComponent - card.blueComponent) <= tolerance)
+    }
+
+    private static func pixel(_ view: some View, x: CGFloat, y: CGFloat) throws -> NSColor {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        let rep = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        return try #require(rep.colorAt(x: Int(CGFloat(rep.pixelsWide) * x), y: Int(CGFloat(rep.pixelsHigh) * y)))
     }
 
     private static func samples(_ rep: NSBitmapImageRep) -> [Double] {
