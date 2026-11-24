@@ -334,14 +334,18 @@ struct LibraryView: View {
         panel.prompt = "Move"
         panel.message = selection.count == 1 ? "Move this item to:" : "Move \(selection.count) items to:"
         guard panel.runModal() == .OK, let destination = panel.url?.standardizedFileURL else { return }
-        for url in selection {
+        let moving = selection.filter { url in
             // A folder cannot go into itself or below itself.
             let path = url.standardizedFileURL.path
-            guard destination.path != path, !destination.path.hasPrefix(path + "/") else { continue }
-            try? NoteFile.move(url, into: destination)
+            return destination.path != path && !destination.path.hasPrefix(path + "/")
         }
         deselect()
-        Task { await reload() }
+        // Off the main thread: a coordinated move waits on any window
+        // showing the note, and that window answers on the main thread.
+        Task {
+            await Task.detached { for url in moving { try? NoteFile.move(url, into: destination) } }.value
+            await reload()
+        }
     }
 
     /// Renames the one picked card, or the card a menu was opened on.
@@ -358,9 +362,12 @@ struct LibraryView: View {
         let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
         guard !name.isEmpty, !name.hasPrefix(".") else { return }
         let isFolder = listing.folders.contains { $0.url == url }
-        _ = try? NoteFile.rename(url, to: name, isFolder: isFolder)
         deselect()
-        Task { await reload() }
+        // Off the main thread, as a move is.
+        Task {
+            await Task.detached { _ = try? NoteFile.rename(url, to: name, isFolder: isFolder) }.value
+            await reload()
+        }
     }
 
     // MARK: Menu

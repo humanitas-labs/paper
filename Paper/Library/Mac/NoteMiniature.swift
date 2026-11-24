@@ -45,7 +45,13 @@ enum NoteMiniature {
     static func image(for url: URL, modified: Date, dark: Bool, background: NSColor) -> NSImage? {
         let key = key(for: url, modified: modified, dark: dark)
         if let cached = cache[key] { return cached }
-        guard let text = try? NoteFile.read(url) else { return nil }
+        // Read plainly, not through file coordination: this runs on the
+        // main thread, and a coordinated read there waits behind any move
+        // or save of the note, which itself waits on the main thread, and
+        // the app hangs. A preview read mid-save is redrawn when the save
+        // lands.
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let text = String(decoding: data, as: UTF8.self)
         let image = thumbnail(render(String(text.prefix(characterLimit)), documentURL: url, dark: dark, background: background))
         store(image, for: key)
         return image
