@@ -408,14 +408,14 @@ struct LibraryView: View {
         ]
     }
 
-    /// An empty `Untitled.md`, numbered when the name is taken, opened at
-    /// once in its own window.
-    private func newNote(opening: Bool = true) {
+    /// An empty `Untitled.md`, numbered when the name is taken, left
+    /// closed: it shows in the grid first, and a click opens it. Once it
+    /// has a title it takes its name from it (NoteNaming).
+    private func newNote() {
         let url = LibraryNames.unused("Untitled", extension: "md", in: folder)
         guard FileManager.default.createFile(atPath: url.path, contents: Data()) else { return }
-        // The card grows into the grid as the note's window opens.
+        // The card grows into the grid; a click opens it.
         Task { await reload() }
-        if opening { openNote(url) }
     }
 
     /// `Untitled Folder`, numbered when taken, as Finder names one.
@@ -449,7 +449,7 @@ struct LibraryView: View {
             // ⌘N here makes a blank note in the folder shown, which grows
             // into the grid, newest first, ready to click into. Elsewhere
             // ⌘N is File ▸ New as before.
-            Button("New Note Here") { newNote(opening: false) }
+            Button("New Note Here") { newNote() }
                 .keyboardShortcut("n", modifiers: .command)
             Button("Step Back") { stepBack() }
                 .keyboardShortcut("t", modifiers: .control)
@@ -502,6 +502,10 @@ struct LibraryView: View {
         }
         let fresh = await ListingCache.read(folder, showsHidden: showsHidden)
         guard folder == self.folder, showsHidden == self.showsHidden else { return }
+        // An untitled note that has been given a title takes its name;
+        // the folder watcher then reads the folder again.
+        let untitled = fresh.listing.notes.filter { NoteNaming.isUntitled($0.url) }
+        if !untitled.isEmpty { Task.detached { NoteNaming.nameFromTitles(untitled.map(\.url)) } }
         show(fresh, animated: loaded && !arriving && listedFolder == folder)
         listedFolder = folder
         loaded = true

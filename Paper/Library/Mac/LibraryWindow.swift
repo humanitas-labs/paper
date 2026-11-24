@@ -71,7 +71,7 @@ enum LibraryWindow {
                 scroll.reflectScrolledClipView(scroll.contentView)
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
             var out = ""
             func walk(_ view: NSView, _ depth: Int) {
                 var line = String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame) hidden=\(view.isHidden)"
@@ -81,7 +81,7 @@ enum LibraryWindow {
                 if depth < 9 { view.subviews.forEach { walk($0, depth + 1) } }
             }
             for other in NSApp.windows {
-                out += "WINDOW \(type(of: other)) full=\(other.styleMask.contains(.fullScreen)) aux=\(other.collectionBehavior.contains(.fullScreenAuxiliary)) space=\(other.isOnActiveSpace) \(other.frame) visible=\(other.isVisible) bg=\(other.backgroundColor.description) opaque=\(other.isOpaque)\n"
+                out += "WINDOW title=\(other.title) rep=\(other.representedURL?.lastPathComponent ?? "-") \(type(of: other)) full=\(other.styleMask.contains(.fullScreen)) aux=\(other.collectionBehavior.contains(.fullScreenAuxiliary)) space=\(other.isOnActiveSpace) \(other.frame) visible=\(other.isVisible) bg=\(other.backgroundColor.description) opaque=\(other.isOpaque)\n"
                 if let frame = other.contentView?.superview { walk(frame, 1) }
             }
             if let content = window.contentView {

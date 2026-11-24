@@ -75,6 +75,28 @@ struct LibraryTests {
         #expect(context.locate(list.children[0].id)?.state == .gone)
     }
 
+    @Test func untitledNotesTakeTheirNameFromAFinishedTitle() throws {
+        #expect(NoteNaming.kebab("Where to Begin?") == "where-to-begin")
+        #expect(NoteNaming.kebab("Café  Société — Notes") == "cafe-societe-notes")
+        #expect(NoteNaming.finishedTitle(in: "# Half typ") == nil)
+        #expect(NoteNaming.finishedTitle(in: "# Where to Begin?\n") == "Where to Begin?")
+        #expect(NoteNaming.finishedTitle(in: "---\ntitle: x\n---\n# Plan\nText") == "Plan")
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let named = root.appendingPathComponent("Untitled.md")
+        let half = root.appendingPathComponent("Untitled 2.md")
+        let byHand = root.appendingPathComponent("mine.md")
+        try "# Where to Begin?\n\nText".write(to: named, atomically: true, encoding: .utf8)
+        try "# Still typ".write(to: half, atomically: true, encoding: .utf8)
+        try "# Something Else\n".write(to: byHand, atomically: true, encoding: .utf8)
+        NoteNaming.nameFromTitles([named, half, byHand])
+        let names = Set(try FileManager.default.contentsOfDirectory(atPath: root.path))
+        #expect(names.contains("where-to-begin.md"))
+        #expect(!names.contains("Untitled.md"))
+        #expect(names.contains("Untitled 2.md"))
+        #expect(names.contains("mine.md"))
+    }
+
     @Test func foldersAreToldFromFilesAndPackages() throws {
         let root = try makeTree()
         defer { try? FileManager.default.removeItem(at: root) }
