@@ -72,6 +72,8 @@ struct FolderView: View {
 
     /// Three columns on a phone, as many as fit at that size on wider screens.
     private let columns = [GridItem(.adaptive(minimum: 100, maximum: 160), spacing: 12)]
+    /// Folders keep the design's proportions and type at two columns.
+    private let folderColumns = [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 12)]
 
     var body: some View {
         ScrollView {
@@ -260,7 +262,7 @@ struct FolderView: View {
 
     @ViewBuilder private var contents: some View {
                 if !listing.folders.isEmpty {
-                    LazyVGrid(columns: columns, spacing: 12) {
+                    LazyVGrid(columns: folderColumns, spacing: 12) {
                         ForEach(listing.folders) { item in
                             NavigationLink(value: LibraryRoute.folder(item.url)) {
                                 FolderCard(folder: item).matchedTransitionSource(id: item.url, in: cards)
@@ -384,14 +386,17 @@ struct FolderCard: View {
         Image("FolderShape")
             .resizable()
             .aspectRatio(312.054 / 226.45, contentMode: .fit)
-            .overlay(alignment: .topLeading) {
-                // The label sits 26 pt in and 147 pt down on the 293.5 pt
-                // card, which the artwork draws 9.3 pt into its 312 pt
-                // canvas; as fractions so it scales with the column.
+            .overlay(alignment: .bottomLeading) {
+                // The label sits 26 pt in from the card's left and ends
+                // about 26 pt above its bottom on the 293.5 pt design card,
+                // which the artwork draws 9.3 pt into a 312 × 226 canvas.
+                // Anchored at the bottom, it cannot run past the card.
                 GeometryReader { proxy in
                     label
                         .frame(width: proxy.size.width * 0.78, alignment: .leading)
-                        .offset(x: proxy.size.width * 35.7 / 312.054, y: proxy.size.height * 150.2 / 226.45)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        .padding(.leading, proxy.size.width * 35.7 / 312.054)
+                        .padding(.bottom, proxy.size.height * 42.5 / 226.45)
                 }
             }
             .contentShape(Rectangle())
@@ -399,13 +404,13 @@ struct FolderCard: View {
     }
 
     private var label: some View {
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(folder.itemCount == 1 ? "1 item" : "\(folder.itemCount) items")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundStyle(LibraryPalette.secondaryLabel)
                     Text(folder.name)
-                        .font(.system(size: 12, weight: .medium))
-                        .tracking(-0.06)
+                        .font(.system(size: 14, weight: .medium))
+                        .tracking(-0.07)
                         .foregroundStyle(.white)
                         .lineLimit(1)
                 }
