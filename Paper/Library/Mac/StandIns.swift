@@ -292,3 +292,10 @@ struct NoteCard: View {
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
+
+@MainActor
+enum ToastPalette {
+    static let fill = Color(nsColor: LibraryPalette.nsColor(dark: 0x212426, light: 0xF1F1F0))
+    static let border = Color(nsColor: LibraryPalette.nsColor(dark: 0x2E3133, light: 0xDEDEDC))
+    static let glyph = Color(nsColor: LibraryPalette.nsColor(dark: 0xB9BEC4, light: 0x4B5057))
+}
