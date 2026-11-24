@@ -57,7 +57,8 @@ enum LibraryWindow {
     /// windows' view trees to a file.
     private static func dumpFullScreenForDebugging(_ window: NSWindow) {
         guard let path = ProcessInfo.processInfo.environment["PAPER_LIBRARY_FSDUMP"] else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { window.toggleFullScreen(nil) }
+        let windowed = ProcessInfo.processInfo.environment["PAPER_LIBRARY_WINDOWED"] != nil
+        if !windowed { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { window.toggleFullScreen(nil) } }
         DispatchQueue.main.asyncAfter(deadline: .now() + 6.6) {
             func all(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + all($0) } }
             if let content = window.contentView, let scroll = all(content).compactMap({ $0 as? NSScrollView }).first {
@@ -102,7 +103,7 @@ enum LibraryWindow {
                     }
                 }
             }
-            window.toggleFullScreen(nil)
+            if !windowed { window.toggleFullScreen(nil) }
         }
     }
     #endif

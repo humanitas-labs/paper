@@ -85,7 +85,8 @@ final class LibraryToolbar: NSObject, NSToolbarDelegate {
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
         window.toolbarStyle = .unified
-        window.titleVisibility = .visible
+        // The grid draws the name itself, in a pill of the page's color.
+        window.titleVisibility = .hidden
         // After each change settles, so the arrows and the title read
         // the new place.
         watching = navigation.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in

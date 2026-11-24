@@ -61,7 +61,6 @@ struct LibraryView: View {
                     ScrollView { page }
                         // In full screen the system's toolbar is put
                         // away; the same header is drawn on the page.
-                        .overlay(alignment: .top) { LibraryHeaderShade().ignoresSafeArea() }
                         .safeAreaInset(edge: .top, spacing: 0) {
                             if navigation.fullScreen { LibraryHeader(navigation: navigation) }
                         }
@@ -80,6 +79,14 @@ struct LibraryView: View {
         // A drag anywhere below the toolbar draws the rubber band.
         .contentShape(Rectangle())
         .simultaneousGesture(marqueeGesture)
+        // The folder's name, after the arrows: the toolbar's in a window,
+        // the drawn header's in full screen.
+        .overlay(alignment: .topLeading) {
+            LibraryTitlePill(title: folder.lastPathComponent)
+                .frame(height: 52)
+                .padding(.leading, navigation.fullScreen ? 94 : 181)
+                .ignoresSafeArea()
+        }
         .overlay(MarqueeLayer(rect: marquee))
         // A note's file name under the card the pointer is on. Drawn over
         // the whole grid: hung from the card itself it fell behind the
