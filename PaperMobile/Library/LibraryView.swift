@@ -106,11 +106,11 @@ struct FolderView: View {
             // A hold on empty space starts selecting with nothing picked,
             // where a folder can still be made. Cards take their own
             // touches first.
-            .onLongPressGesture(minimumDuration: 0.3) {
+            .gesture(QuickPress {
                 guard !selecting else { return }
                 Haptics.press()
                 withAnimation(Self.selectionSpring) { selecting = true }
-            }
+            })
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
         .background(LibraryPalette.background.ignoresSafeArea())
@@ -986,9 +986,9 @@ struct ComposeGlyph: Shape {
     }
 }
 
-/// A card's touch: a tap opens it (or picks it while picking), and a short
-/// hold picks it. The card gives under the finger at once, so the hold
-/// shows it has registered before it completes.
+/// A card's touch: a tap opens it (or picks it while selecting), and a
+/// short hold picks it. The card gives under the finger at once, so the
+/// hold shows it has registered before it completes.
 private struct PickGesture: ViewModifier {
     let tap: () -> Void
     let pick: () -> Void
@@ -998,15 +998,63 @@ private struct PickGesture: ViewModifier {
         content
             .scaleEffect(pressing ? 0.97 : 1)
             .animation(.easeOut(duration: 0.15), value: pressing)
-            .onTapGesture(perform: tap)
-            // The scroll view holds a touch ~0.15 s before the card sees it;
-            // 0.2 s more lands the pick at about a third of a second.
-            .onLongPressGesture(minimumDuration: 0.2) {
+            .gesture(QuickPress(onPressing: { pressing = $0 }, onTap: tap) {
                 Haptics.press()
                 pick()
-            } onPressingChanged: { pressing = $0 }
+            })
             .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, tap)
             .accessibilityAction(named: "Select", pick)
+    }
+}
+
+/// A hold that counts from the moment the finger lands. SwiftUI's long
+/// press inside a scroll view only hears the touch once the scroll view
+/// has held it back (about 0.15 s), so its holds run long; a UIKit
+/// recognizer sees the touch at once. It also reports the press as it
+/// starts and ends, and a tap when the finger lifts before the hold.
+private struct QuickPress: UIGestureRecognizerRepresentable {
+    static let duration: TimeInterval = 0.25
+    var onPressing: (Bool) -> Void = { _ in }
+    var onTap: (() -> Void)?
+    let onHold: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> Recognizer {
+        let recognizer = Recognizer()
+        recognizer.minimumPressDuration = Self.duration
+        recognizer.allowableMovement = 10
+        return recognizer
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: Recognizer, context: Context) {
+        recognizer.onPressing = onPressing
+        recognizer.onTap = onTap
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: Recognizer, context: Context) {
+        if recognizer.state == .began { onHold() }
+    }
+
+    final class Recognizer: UILongPressGestureRecognizer {
+        var onPressing: (Bool) -> Void = { _ in }
+        var onTap: (() -> Void)?
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+            super.touchesBegan(touches, with: event)
+            if state == .possible { onPressing(true) }
+        }
+
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+            // Lifted before the hold, without wandering off: a tap.
+            let early = state == .possible
+            super.touchesEnded(touches, with: event)
+            if early { onTap?() }
+        }
+
+        override func reset() {
+            super.reset()
+            onPressing(false)
+        }
     }
 }
 
