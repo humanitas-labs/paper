@@ -122,9 +122,11 @@ struct FolderView: View {
             }
             if selecting {
                 ToolbarItem(placement: .principal) { selectionTitle }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Done", systemImage: "checkmark") { changeSelection { $0.removeAll() } }
-                        .labelStyle(.iconOnly)
+                if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .primaryAction) { doneButton }
+                        .sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .primaryAction) { doneButton }
                 }
             } else if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .primaryAction) { composeButton }
@@ -201,6 +203,20 @@ struct FolderView: View {
         // Mirror of the enso's inset, so the glyph lines up with the grid.
         .offset(x: brandInset)
         .accessibilityLabel("New Note")
+    }
+
+    /// Ends picking: a checkmark in the compose glyph's line style.
+    private var doneButton: some View {
+        Button { changeSelection { $0.removeAll() } } label: {
+            CheckGlyph()
+                .stroke(Color.primary, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .frame(width: 22, height: 22)
+                .padding(8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .offset(x: brandInset)
+        .accessibilityLabel("Done")
     }
 
     /// Renaming is offered when one item is picked.
@@ -302,17 +318,10 @@ struct FolderView: View {
                     .matchedTransitionSource(id: item.url, in: cards) { source in
                         source.clipShape(NoteCard.shape)
                     }
-                    // A tap opens, or picks while picking; a hold starts picking.
-                    .onTapGesture {
-                        if selecting { toggle(item.url) } else { open(.note(item.url)) }
-                    }
-                    // The scroll view holds a touch ~0.15 s before the card
-                    // sees it, so 0.25 s here feels like the system's hold.
-                    .onLongPressGesture(minimumDuration: 0.25) {
-                        Haptics.press()
-                        changeSelection { $0.insert(item.url) }
-                    }
-                    .accessibilityAddTraits(.isButton)
+                    .modifier(PickGesture(
+                        tap: { if selecting { toggle(item.url) } else { open(.note(item.url)) } },
+                        pick: { changeSelection { $0.insert(item.url) } }
+                    ))
             }
         }
     }
@@ -323,14 +332,10 @@ struct FolderView: View {
                         ForEach(listing.folders) { item in
                             FolderCard(folder: item, selected: selection.contains(item.url))
                                 .matchedTransitionSource(id: item.url, in: cards)
-                                .onTapGesture {
-                                    if selecting { toggle(item.url) } else { open(.folder(item.url)) }
-                                }
-                                .onLongPressGesture(minimumDuration: 0.25) {
-                                    Haptics.press()
-                                    changeSelection { $0.insert(item.url) }
-                                }
-                                .accessibilityAddTraits(.isButton)
+                                .modifier(PickGesture(
+                                    tap: { if selecting { toggle(item.url) } else { open(.folder(item.url)) } },
+                                    pick: { changeSelection { $0.insert(item.url) } }
+                                ))
                         }
                     }
                 }
@@ -895,5 +900,42 @@ struct ComposeGlyph: Shape {
         path.move(to: p(19.5, 4.5))
         path.addLine(to: p(11, 13))
         return path
+    }
+}
+
+/// A check on the compose glyph's 24 pt grid, in the same 2 pt line.
+struct CheckGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+        var path = Path()
+        path.move(to: p(4.5, 12.5))
+        path.addLine(to: p(9.5, 17.5))
+        path.addLine(to: p(19.5, 6.5))
+        return path
+    }
+}
+
+/// A card's touch: a tap opens it (or picks it while picking), and a short
+/// hold picks it. The card gives under the finger at once, so the hold
+/// shows it has registered before it completes.
+private struct PickGesture: ViewModifier {
+    let tap: () -> Void
+    let pick: () -> Void
+    @State private var pressing = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(pressing ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.15), value: pressing)
+            .onTapGesture(perform: tap)
+            // The scroll view holds a touch ~0.15 s before the card sees it;
+            // 0.2 s more lands the pick at about a third of a second.
+            .onLongPressGesture(minimumDuration: 0.2) {
+                Haptics.press()
+                pick()
+            } onPressingChanged: { pressing = $0 }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: "Select", pick)
     }
 }
