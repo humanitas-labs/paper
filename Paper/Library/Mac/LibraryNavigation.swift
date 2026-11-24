@@ -17,6 +17,11 @@ final class LibraryNavigation: ObservableObject {
     /// in its content from the top left. The window hears them, so no view
     /// has to sit over the cards to catch them.
     let secondaryClicks = PassthroughSubject<CGPoint, Never>()
+    /// Plain clicks in the window's content, reported the same way and
+    /// passed on untouched: the grid uses them to let go of what is picked
+    /// when a click lands on empty space, which the scroll view would
+    /// otherwise keep to itself.
+    let primaryClicks = PassthroughSubject<CGPoint, Never>()
     /// The library's window, for placing what opens from it on screen.
     weak var window: NSWindow?
 
@@ -99,18 +104,28 @@ final class LibraryToolbar: NSObject, NSToolbarDelegate {
                 }
                 return nil
             case .leftMouseDown where !event.modifierFlags.contains(.control):
+                if let point = self.contentPoint(of: event, in: window) {
+                    self.navigation.primaryClicks.send(point)
+                }
                 return event
             default:
                 // A right click, or a Control-click, below the toolbar.
-                guard let content = window.contentView else { return event }
-                let point = content.convert(event.locationInWindow, from: nil)
-                let fromTop = content.isFlipped ? point.y : content.bounds.height - point.y
-                let toolbarHeight = content.bounds.height - window.contentLayoutRect.height
-                guard content.bounds.contains(point), fromTop > toolbarHeight else { return event }
-                self.navigation.secondaryClicks.send(CGPoint(x: point.x, y: fromTop))
+                guard let point = self.contentPoint(of: event, in: window) else { return event }
+                self.navigation.secondaryClicks.send(point)
                 return nil
             }
         }
+    }
+
+    /// Where a click landed in the window's content, from its top left;
+    /// nil in the toolbar or outside the content.
+    private func contentPoint(of event: NSEvent, in window: NSWindow) -> CGPoint? {
+        guard let content = window.contentView else { return nil }
+        let point = content.convert(event.locationInWindow, from: nil)
+        let fromTop = content.isFlipped ? point.y : content.bounds.height - point.y
+        let toolbarHeight = content.bounds.height - window.contentLayoutRect.height
+        guard content.bounds.contains(point), fromTop > toolbarHeight else { return nil }
+        return CGPoint(x: point.x, y: fromTop)
     }
 
     /// Stops listening for the side buttons. Called as the window closes.

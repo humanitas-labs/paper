@@ -27,6 +27,8 @@ struct LibraryView: View {
     @State private var marqueeBase: Set<URL> = []
     /// A drag that ends over a card must not also click it.
     @State private var dragEnded = Date.distantPast
+    /// Where the toast is, so a click on it is not a click off the cards.
+    @State private var toastFrame = CGRect.zero
     @State private var renaming = false
     @State private var renameText = ""
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
@@ -75,6 +77,7 @@ struct LibraryView: View {
                     rename: selection.count == 1 ? { beginRename() } : nil,
                     trash: trashSelection
                 )
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { toastFrame = $0 }
                 .padding(.bottom, 22)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -87,6 +90,7 @@ struct LibraryView: View {
         }
         .overlay(LibraryMenuLayer(request: $menu))
         .onReceive(navigation.secondaryClicks) { secondaryClick(at: $0) }
+        .onReceive(navigation.primaryClicks) { primaryClick(at: $0) }
         // Spatial's style of pointer over the whole library.
         .pointerStyle(LibraryPointer.style)
         .background(keyCommands)
@@ -184,6 +188,17 @@ struct LibraryView: View {
     }
 
     private func deselect() { selection.removeAll() }
+
+    /// A click on empty space lets go of what is picked. Cards and the
+    /// toast answer their own clicks; a menu or a dialog that is up takes
+    /// the click for itself.
+    private func primaryClick(at point: CGPoint) {
+        guard !selection.isEmpty, menu == nil, !renaming else { return }
+        // With ⌘ or ⇧ held, the press may begin a drag that adds to it.
+        guard NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty else { return }
+        guard !toastFrame.contains(point), !cardFrames.values.contains(where: { $0.contains(point) }) else { return }
+        deselect()
+    }
 
     private func selectAll() {
         selection = Set(listing.folders.map(\.url) + listing.notes.map(\.url))
