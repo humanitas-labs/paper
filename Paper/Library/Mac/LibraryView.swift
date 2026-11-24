@@ -229,7 +229,23 @@ struct LibraryView: View {
     @ViewBuilder private var grid: some View {
         let folders = visibleFolders
         let groups = noteGroups
-        if !folders.isEmpty {
+        // Both grids stay in place, empty or not: a card arriving in a
+        // grid that arrives with it does not grow in, so the first note or
+        // folder in an empty folder would just appear.
+        VStack(alignment: .leading, spacing: 0) {
+            folderGrid(folders)
+            noteGrids(groups)
+                .padding(.top, folders.isEmpty || groups.isEmpty ? 0 : 32)
+        }
+        if loaded, folders.isEmpty, groups.isEmpty {
+            Text(isFiltering ? "Nothing matches “\(query.trimmingCharacters(in: .whitespaces))”." : "No notes here yet.")
+                .foregroundStyle(LibraryPalette.secondaryLabel)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 120)
+        }
+    }
+
+    private func folderGrid(_ folders: [FolderListing.Folder]) -> some View {
             LazyVGrid(columns: folderColumns, alignment: .leading, spacing: 18) {
                 ForEach(folders) { item in
                     FolderCard(folder: item, selected: selection.contains(item.url) || dropTarget == item.url)
@@ -246,13 +262,14 @@ struct LibraryView: View {
                         .transition(inFlight.contains(item.url) ? .identity : Self.cardTransition)
                 }
             }
-        }
-        if groups.count == 1, groups[0].title.isEmpty {
-            // Ungrouped: one grid straight in the page, as before grouping
-            // came; a grid inside the groups' loop dropped the cards'
-            // grow-in.
+    }
+
+    @ViewBuilder private func noteGrids(_ groups: [NoteGroup]) -> some View {
+        if groups.count <= 1, groups.first?.title.isEmpty ?? true {
+            // Ungrouped: one grid straight in the page; a grid inside the
+            // groups' loop dropped the cards' grow-in.
             LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
-                ForEach(groups[0].notes) { item in noteCard(item) }
+                ForEach(groups.first?.notes ?? []) { item in noteCard(item) }
             }
         } else {
             ForEach(groups) { group in
@@ -263,12 +280,6 @@ struct LibraryView: View {
                     }
                 }
             }
-        }
-        if loaded, folders.isEmpty, groups.isEmpty {
-            Text(isFiltering ? "Nothing matches “\(query.trimmingCharacters(in: .whitespaces))”." : "No notes here yet.")
-                .foregroundStyle(LibraryPalette.secondaryLabel)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 120)
         }
     }
 
