@@ -103,6 +103,12 @@ struct FolderView: View {
         .navigationBarBackButtonHidden(!isRoot)
         .background(SwipeBackEnabler())
         .toolbar {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarLeading) { brand }
+                    .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarLeading) { brand }
+            }
             if selecting {
                 ToolbarItem(placement: .principal) { selectionTitle }
                 ToolbarItem(placement: .primaryAction) {
@@ -110,12 +116,6 @@ struct FolderView: View {
                         .labelStyle(.iconOnly)
                 }
             } else {
-                if #available(iOS 26.0, *) {
-                    ToolbarItem(placement: .topBarLeading) { brand }
-                        .sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .topBarLeading) { brand }
-                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("New Note", systemImage: "square.and.pencil", action: newNote)
                 }
@@ -526,7 +526,7 @@ private struct BottomSearch: ViewModifier {
 /// are placeholders to replace before Paper is distributed.
 private struct SelectionToast: View {
     /// Spatial's corners: rounded, not a full capsule.
-    static let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+    static let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
     let count: Int
     let move: () -> Void
     let delete: () -> Void
