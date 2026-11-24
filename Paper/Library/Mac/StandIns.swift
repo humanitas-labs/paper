@@ -63,8 +63,8 @@ struct FolderCard: View {
                     label(scale: scale)
                         .frame(width: proxy.size.width * 0.78, alignment: .leading)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                        .padding(.leading, 29.5 * scale)
-                        .padding(.bottom, 29 * scale)
+                        .padding(.leading, 25 * scale)
+                        .padding(.bottom, 22 * scale)
                 }
             }
             // Picked: a bright outline around the folder's silhouette.
