@@ -94,6 +94,8 @@ struct FolderView: View {
                 }
             }
             .padding(.horizontal, 20)
+            // Room between the bar's enso and the first row.
+            .padding(.top, 16)
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, minHeight: viewport, alignment: .top)
             .contentShape(Rectangle())
@@ -122,12 +124,9 @@ struct FolderView: View {
             }
             if selecting {
                 ToolbarItem(placement: .principal) { selectionTitle }
-                if #available(iOS 26.0, *) {
-                    ToolbarItem(placement: .primaryAction) { doneButton }
-                        .sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .primaryAction) { doneButton }
-                }
+                // The glass circle stays: it marks the check as the one
+                // live control while picking.
+                ToolbarItem(placement: .primaryAction) { doneButton }
             } else if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .primaryAction) { composeButton }
                     .sharedBackgroundVisibility(.hidden)
@@ -205,17 +204,14 @@ struct FolderView: View {
         .accessibilityLabel("New Note")
     }
 
-    /// Ends picking: a checkmark in the compose glyph's line style.
+    /// Ends picking: a checkmark in the compose glyph's line style, in the
+    /// bar's glass circle.
     private var doneButton: some View {
         Button { changeSelection { $0.removeAll() } } label: {
             CheckGlyph()
                 .stroke(Color.primary, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                .frame(width: 22, height: 22)
-                .padding(8)
-                .contentShape(Rectangle())
+                .frame(width: 20, height: 20)
         }
-        .buttonStyle(.plain)
-        .offset(x: brandInset)
         .accessibilityLabel("Done")
     }
 
@@ -635,7 +631,7 @@ enum NoteMiniature {
 /// a folder to move them and a bin to delete them.
 /// The two glyphs are Spatial's own, copied for this demo build only; they
 /// are placeholders to replace before Paper is distributed.
-struct SelectionToast: View {
+private struct SelectionToast: View {
     /// Spatial's corners: rounded, not a full capsule.
     static let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
     let count: Int
@@ -648,7 +644,17 @@ struct SelectionToast: View {
         HStack(spacing: 4) {
             button(Image("SpatialFolder"), label: "Move", action: move)
             if let rename {
-                button(Image(systemName: "pencil"), label: "Rename", action: rename)
+                Button(action: rename) {
+                    // Drawn to the Spatial glyphs' grid and weight: the
+                    // system pencil sits larger than they do.
+                    PencilGlyph()
+                        .stroke(ToastPalette.glyph, style: StrokeStyle(lineWidth: 2 * 22 / 24, lineCap: .round, lineJoin: .round))
+                        .frame(width: 22, height: 22)
+                        .frame(width: 56, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rename")
             }
             button(Image("SpatialTrash"), label: "Delete", action: delete)
         }
@@ -937,5 +943,25 @@ private struct PickGesture: ViewModifier {
             } onPressingChanged: { pressing = $0 }
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: "Select", pick)
+    }
+}
+
+/// A pencil on the Spatial glyphs' 24 pt grid: a slanted body with a
+/// rounded tip at the lower left and a band below its end.
+struct PencilGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+        var path = Path()
+        // As tall as the folder and the bin: about 4–20 on the grid.
+        path.move(to: p(15.9, 4.2))
+        path.addLine(to: p(19.8, 8.1))
+        path.addLine(to: p(8.75, 19.15))
+        path.addLine(to: p(3.6, 20.4))
+        path.addLine(to: p(4.85, 15.25))
+        path.closeSubpath()
+        path.move(to: p(13.3, 6.8))
+        path.addLine(to: p(17.2, 10.7))
+        return path
     }
 }
