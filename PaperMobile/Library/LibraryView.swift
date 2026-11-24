@@ -122,7 +122,7 @@ struct FolderView: View {
             ForEach(notes) { item in
                 NavigationLink(value: LibraryRoute.note(item.url)) {
                     NoteCard(note: item).matchedTransitionSource(id: item.url, in: cards) { source in
-                        source.clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        source.clipShape(NoteCard.shape)
                     }
                 }
                 .buttonStyle(.plain)
@@ -251,12 +251,15 @@ struct FolderCard: View {
 /// card is the page it zooms into. Until the miniature is drawn, the card
 /// shows the title.
 struct NoteCard: View {
+    /// One shape for the card, its border and the zoom's clip, so the clip
+    /// never shaves the border at the corners.
+    static let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
     let note: FolderListing.Note
     @Environment(\.colorScheme) private var colorScheme
     @State private var miniature: UIImage?
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        NoteCard.shape
             .fill(LibraryPalette.card)
             .aspectRatio(NoteMiniature.aspect, contentMode: .fit)
             .overlay {
@@ -273,9 +276,9 @@ struct NoteCard: View {
                         .padding(10)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(LibraryPalette.border, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(NoteCard.shape)
+            .overlay(NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1.5))
+            .contentShape(NoteCard.shape)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(note.title)
             .task(id: NoteMiniature.Key(url: note.url, modified: note.modified, dark: colorScheme == .dark)) {
