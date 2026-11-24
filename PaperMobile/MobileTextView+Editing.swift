@@ -350,6 +350,13 @@ extension MobileTextView {
             for: NSRange(location: min(location, textStorage.length), length: 0)
         )
         guard paragraph.length > 0 else { return body }
+        // A heading's marks with nothing after them yet, as on a new
+        // note's title line, are styled as body text until the first
+        // letter; the caret already stands at the heading's size.
+        let line = (textStorage.string as NSString).substring(with: paragraph)
+        if let match = line.firstMatch(of: /^(#{1,6})[\t ]*\n?$/) {
+            return Appearance.headingFont(size: Appearance.headingSize(level: match.1.count))
+        }
         var tallest = body
         textStorage.enumerateAttribute(.font, in: paragraph) { value, _, _ in
             if let font = value as? UIFont, font.pointSize > tallest.pointSize { tallest = font }

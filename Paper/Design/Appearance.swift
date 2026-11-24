@@ -483,6 +483,13 @@ enum Zoom {
     static let steps: [CGFloat] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.5, 1.75, 2.0, 2.5, 3.0]
     static let range: ClosedRange<CGFloat> = 0.5...3.0
     static let defaultsKey = "paper.viewScale"
+    /// A phone is read closer to the eye than a Mac but in a narrower
+    /// column, and the Mac's sizes read a touch small there.
+    #if os(iOS)
+    static let defaultScale: CGFloat = 1.1
+    #else
+    static let defaultScale: CGFloat = 1
+    #endif
 
     /// Published for the badge; `scale` is the same value for everyone else.
     final class Observed: ObservableObject {
@@ -495,7 +502,7 @@ enum Zoom {
     static var scale: CGFloat {
         if let cached { return cached }
         let stored = UserDefaults.standard.object(forKey: defaultsKey) as? Double
-        let scale = stored.map { clamp(CGFloat($0)) } ?? 1
+        let scale = stored.map { clamp(CGFloat($0)) } ?? defaultScale
         cached = scale
         observed.scale = scale
         return scale

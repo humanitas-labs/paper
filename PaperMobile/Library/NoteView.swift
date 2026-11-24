@@ -10,6 +10,10 @@ struct NoteView: View {
     @State private var text = ""
     @State private var saved = ""
     @State private var loaded = false
+    /// An empty note opens on a title line, `# ` with the caret after it,
+    /// as Notes starts on its title. Left untouched, it saves as empty.
+    @State private var startsWithTitle = false
+    private static let titleLine = "# "
     @State private var failure: String?
     @State private var pendingSave: Task<Void, Never>?
 
@@ -23,7 +27,7 @@ struct NoteView: View {
                     .foregroundStyle(.secondary)
                     .padding()
             } else if loaded {
-                MobileEditor(text: $text, fileURL: url)
+                MobileEditor(text: $text, fileURL: url, focusesEnd: startsWithTitle)
                     // The page runs under the navigation bar and the
                     // keyboard so text scrolls beneath both bars and fades
                     // there; the text view insets itself.
@@ -48,6 +52,10 @@ struct NoteView: View {
         do {
             text = try NoteFile.read(url)
             saved = text
+            if text.isEmpty {
+                text = Self.titleLine
+                startsWithTitle = true
+            }
             loaded = true
         } catch {
             failure = "This note couldn’t be opened: \(error.localizedDescription)"
@@ -64,10 +72,11 @@ struct NoteView: View {
     }
 
     private func save() {
-        guard loaded, text != saved else { return }
+        let content = text == Self.titleLine ? "" : text
+        guard loaded, content != saved else { return }
         do {
-            try NoteFile.write(text, to: url)
-            saved = text
+            try NoteFile.write(content, to: url)
+            saved = content
         } catch {
             failure = "This note couldn’t be saved: \(error.localizedDescription)"
         }

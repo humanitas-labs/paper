@@ -16,12 +16,21 @@ struct PaperMobileApp: App {
 struct MobileEditor: UIViewRepresentable {
     @Binding var text: String
     var fileURL: URL?
+    /// Puts the caret at the end and the keyboard up on open, for a new
+    /// note's title line.
+    var focusesEnd = false
 
     func makeUIView(context: Context) -> MobileTextView {
         let textView = MobileTextView()
         textView.documentURL = fileURL
         textView.load(text)
         textView.onTextChange = { text = $0 }
+        if focusesEnd {
+            DispatchQueue.main.async {
+                textView.selectedRange = NSRange(location: textView.textStorage.length, length: 0)
+                _ = textView.becomeFirstResponder()
+            }
+        }
         return textView
     }
 
