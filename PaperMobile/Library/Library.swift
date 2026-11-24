@@ -123,6 +123,25 @@ struct FolderListing: Sendable {
         return found.sorted { $0.modified > $1.modified }
     }
 
+    /// Every folder under `root`, at any depth, in path order.
+    static func allFolders(under root: URL, isDefaultRoot: Bool) -> [URL] {
+        guard let walker = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return [] }
+        var folders: [URL] = []
+        for case let entry as URL in walker {
+            let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+            guard values?.isDirectory == true, values?.isPackage != true else { continue }
+            if isDefaultRoot, walker.level == 1, hiddenAtDefaultRoot.contains(entry.lastPathComponent) {
+                walker.skipDescendants()
+                continue
+            }
+            folders.append(entry)
+        }
+        return folders.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
     /// Notes and folders directly inside `folder`.
     private static func itemCount(in folder: URL) -> Int {
         let entries = (try? FileManager.default.contentsOfDirectory(
@@ -169,6 +188,39 @@ enum NoteFile {
         }
         if let coordinationError { throw coordinationError }
         return try result.get()
+    }
+
+    /// Moves a note into `folder`, numbering its name if one is taken there.
+    static func move(_ url: URL, into folder: URL) throws {
+        let base = url.deletingPathExtension().lastPathComponent
+        let ext = url.pathExtension
+        var destination = folder.appendingPathComponent(url.lastPathComponent)
+        var index = 2
+        while FileManager.default.fileExists(atPath: destination.path) {
+            destination = folder.appendingPathComponent("\(base) \(index)").appendingPathExtension(ext)
+            index += 1
+        }
+        guard destination.standardizedFileURL != url.standardizedFileURL else { return }
+        var result: Result<Void, Error> = .success(())
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(
+            writingItemAt: url, options: .forMoving, writingItemAt: destination, options: .forReplacing,
+            error: &coordinationError
+        ) { from, to in
+            result = Result { try FileManager.default.moveItem(at: from, to: to) }
+        }
+        if let coordinationError { throw coordinationError }
+        try result.get()
+    }
+
+    static func delete(_ url: URL) throws {
+        var result: Result<Void, Error> = .success(())
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: .forDeleting, error: &coordinationError) { url in
+            result = Result { try FileManager.default.removeItem(at: url) }
+        }
+        if let coordinationError { throw coordinationError }
+        try result.get()
     }
 
     static func write(_ text: String, to url: URL) throws {

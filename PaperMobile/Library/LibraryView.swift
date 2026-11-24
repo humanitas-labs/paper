@@ -55,6 +55,18 @@ struct FolderView: View {
     /// Notes under this folder matching `query`; nil until a search ran.
     @State private var results: [FolderListing.Note]?
     @Environment(\.scenePhase) private var scenePhase
+    /// Notes picked with a long press; while any are picked, taps pick
+    /// rather than open and the toast replaces the bottom bar.
+    @State private var selection: Set<URL> = []
+    @State private var movingSelection = false
+    @State private var confirmingDelete = false
+    @State private var namingFolder = false
+    @State private var folderName = ""
+    /// The scroll view's height, so empty space below the grid still takes
+    /// the long press that makes a folder.
+    @State private var viewport: CGFloat = 0
+
+    private var selecting: Bool { !selection.isEmpty }
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -72,7 +84,17 @@ struct FolderView: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
+            .frame(maxWidth: .infinity, minHeight: viewport, alignment: .top)
+            .contentShape(Rectangle())
+            // A hold on empty space makes a folder; cards take their own.
+            .onLongPressGesture(minimumDuration: 0.5) {
+                guard !selecting else { return }
+                Haptics.press()
+                folderName = ""
+                namingFolder = true
+            }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
         .background(LibraryPalette.background.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -87,20 +109,44 @@ struct FolderView: View {
             } else {
                 ToolbarItem(placement: .topBarLeading) { brand }
             }
-            if isRoot {
+            if selecting {
                 ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button("Choose Root Folder…", systemImage: "folder") { choosingRoot = true }
-                        if !root.isDefault {
-                            Button("Use Paper's Folder", systemImage: "arrow.uturn.backward") { root.reset() }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
+                    Button("Done") { selection.removeAll() }
+                }
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New Note", systemImage: "square.and.pencil", action: newNote)
                 }
             }
         }
-        .modifier(SearchAndCompose(query: $query, compose: newNote))
+        .modifier(BottomSearch(query: $query, hidden: selecting))
+        .overlay(alignment: .bottom) {
+            if selecting {
+                SelectionToast(count: selection.count, move: { movingSelection = true }, delete: { confirmingDelete = true })
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.3), value: selecting)
+        .sheet(isPresented: $movingSelection) {
+            MoveSheet(root: root.url, current: folder, isDefaultRoot: root.isDefault) { destination in
+                moveSelection(to: destination)
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .confirmationDialog(
+            selection.count == 1 ? "Delete this note?" : "Delete \(selection.count) notes?",
+            isPresented: $confirmingDelete, titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive, action: deleteSelection)
+        } message: {
+            Text("The files are removed from the folder.")
+        }
+        .alert("New Folder", isPresented: $namingFolder) {
+            TextField("Name", text: $folderName)
+            Button("Create", action: createFolder)
+            Button("Cancel", role: .cancel) {}
+        }
         .fileImporter(isPresented: $choosingRoot, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { root.choose(url) }
         }
@@ -119,9 +165,30 @@ struct FolderView: View {
 
     private let brandInset: CGFloat = 10
 
-    /// The enso, and inside a folder the folder's name after it.
-    private var brand: some View {
-        Button(action: home) {
+    /// The enso, and inside a folder the folder's name after it, which takes
+    /// you back to the root. At the root the enso holds the library's
+    /// settings instead.
+    @ViewBuilder private var brand: some View {
+        if isRoot {
+            Menu {
+                Button("New Folder", systemImage: "folder.badge.plus") { folderName = ""; namingFolder = true }
+                Divider()
+                Button("Choose Root Folder…", systemImage: "folder") { choosingRoot = true }
+                if !root.isDefault {
+                    Button("Use Paper's Folder", systemImage: "arrow.uturn.backward") { root.reset() }
+                }
+            } label: {
+                brandLabel
+            }
+            .accessibilityLabel("Paper")
+        } else {
+            Button(action: home) { brandLabel }
+                .accessibilityLabel("Paper, \(folder.lastPathComponent)")
+        }
+    }
+
+    private var brandLabel: some View {
+        Group {
             HStack(spacing: 8) {
                 Image("Enso")
                     .renderingMode(.template)
@@ -142,7 +209,6 @@ struct FolderView: View {
             // the enso lines up with the cards' left edge.
             .offset(x: -brandInset)
         }
-        .accessibilityLabel(isRoot ? "Paper" : "Paper, \(folder.lastPathComponent)")
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -159,12 +225,19 @@ struct FolderView: View {
     private func noteGrid(_ notes: [FolderListing.Note]) -> some View {
         LazyVGrid(columns: columns, spacing: 12) {
             ForEach(notes) { item in
-                NavigationLink(value: LibraryRoute.note(item.url)) {
-                    NoteCard(note: item).matchedTransitionSource(id: item.url, in: cards) { source in
+                NoteCard(note: item, selected: selection.contains(item.url))
+                    .matchedTransitionSource(id: item.url, in: cards) { source in
                         source.clipShape(NoteCard.shape)
                     }
-                }
-                .buttonStyle(.plain)
+                    // A tap opens, or picks while picking; a hold starts picking.
+                    .onTapGesture {
+                        if selecting { toggle(item.url) } else { open(.note(item.url)) }
+                    }
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        Haptics.press()
+                        selection.insert(item.url)
+                    }
+                    .accessibilityAddTraits(.isButton)
             }
         }
     }
@@ -208,6 +281,34 @@ struct FolderView: View {
         let found = await Task.detached { FolderListing.search(query, under: folder, isDefaultRoot: isDefault) }.value
         guard !Task.isCancelled else { return }
         results = found
+    }
+
+    private func toggle(_ url: URL) {
+        if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
+    }
+
+    private func moveSelection(to destination: URL) {
+        for url in selection {
+            try? NoteFile.move(url, into: destination)
+        }
+        selection.removeAll()
+        Task { await reload(); if searching { await search() } }
+    }
+
+    private func deleteSelection() {
+        for url in selection {
+            try? NoteFile.delete(url)
+        }
+        selection.removeAll()
+        Task { await reload(); if searching { await search() } }
+    }
+
+    private func createFolder() {
+        let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+        guard !name.isEmpty, !name.hasPrefix(".") else { return }
+        try? FileManager.default.createDirectory(at: folder.appendingPathComponent(name, isDirectory: true), withIntermediateDirectories: false)
+        Task { await reload() }
     }
 
     /// An empty `Untitled.md` (numbered when taken), opened at once.
@@ -294,6 +395,7 @@ struct NoteCard: View {
     /// never shaves the border at the corners.
     static let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
     let note: FolderListing.Note
+    var selected = false
     @Environment(\.colorScheme) private var colorScheme
     @State private var miniature: UIImage?
 
@@ -317,9 +419,15 @@ struct NoteCard: View {
             }
             .clipShape(NoteCard.shape)
             .overlay(NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1.5))
+            // Picked, as in Spatial: a bright ring around the card.
+            .overlay {
+                if selected { NoteCard.shape.strokeBorder(Color.primary, lineWidth: 3) }
+            }
+            .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(NoteCard.shape)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(note.title)
+            .accessibilityAddTraits(selected ? .isSelected : [])
             .task(id: NoteMiniature.Key(url: note.url, modified: note.modified, dark: colorScheme == .dark)) {
                 miniature = NoteMiniature.image(for: note, dark: colorScheme == .dark)
             }
@@ -369,33 +477,119 @@ enum NoteMiniature {
     }
 }
 
-/// Search and a new note at the bottom of the screen, as in Notes: on
-/// iOS 26 the search field and the compose button share the bottom bar;
-/// earlier systems keep search at the top and compose in the bar.
-private struct SearchAndCompose: ViewModifier {
+/// Search at the bottom of the screen, as in Notes, on iOS 26; at the top
+/// on earlier systems. New notes are made from the top right.
+private struct BottomSearch: ViewModifier {
     @Binding var query: String
-    let compose: () -> Void
+    /// While picking notes, the toast takes the bottom of the screen.
+    var hidden = false
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
                 .searchable(text: $query, prompt: "Search")
                 .toolbar {
-                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                    ToolbarSpacer(.fixed, placement: .bottomBar)
-                    ToolbarItem(placement: .bottomBar) {
-                        Button("New Note", systemImage: "square.and.pencil", action: compose)
+                    if !hidden {
+                        DefaultToolbarItem(kind: .search, placement: .bottomBar)
                     }
                 }
         } else {
-            content
-                .searchable(text: $query, prompt: "Search")
-                .toolbar {
-                    ToolbarItem(placement: .bottomBar) {
-                        Button("New Note", systemImage: "square.and.pencil", action: compose)
-                    }
-                }
+            content.searchable(text: $query, prompt: "Search")
         }
+    }
+}
+
+/// The toast while notes are picked, after Spatial's: a dark capsule with
+/// a folder to move them and a bin to delete them.
+/// The two glyphs are Spatial's own, copied for this demo build only; they
+/// are placeholders to replace before Paper is distributed.
+private struct SelectionToast: View {
+    let count: Int
+    let move: () -> Void
+    let delete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            button("SpatialFolder", label: "Move \(count == 1 ? "Note" : "\(count) Notes")", action: move)
+            button("SpatialTrash", label: "Delete \(count == 1 ? "Note" : "\(count) Notes")", action: delete)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background {
+            // The shadow falls from the capsule alone, not from the glyphs.
+            Capsule()
+                .fill(ToastPalette.fill)
+                .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        }
+        .overlay(Capsule().strokeBorder(ToastPalette.border, lineWidth: 1))
+    }
+
+    private func button(_ image: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(image)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 22, height: 22)
+                .foregroundStyle(ToastPalette.glyph)
+                .frame(width: 56, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+private enum ToastPalette {
+    static let fill = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x212426) : UIColor(hex: 0xF1F1F0) })
+    static let border = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x2E3133) : UIColor(hex: 0xDEDEDC) })
+    static let glyph = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0xB9BEC4) : UIColor(hex: 0x4B5057) })
+}
+
+/// Picks where to move notes: the root and every folder under it.
+private struct MoveSheet: View {
+    let root: URL
+    let current: URL
+    let isDefaultRoot: Bool
+    let choose: (URL) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var folders: [URL] = []
+
+    var body: some View {
+        NavigationStack {
+            List(folders, id: \.self) { folder in
+                Button {
+                    choose(folder)
+                    dismiss()
+                } label: {
+                    Label(name(of: folder), systemImage: "folder")
+                }
+                .disabled(folder.standardizedFileURL == current.standardizedFileURL)
+            }
+            .navigationTitle("Move to")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+        .task {
+            let root = root, isDefault = isDefaultRoot
+            folders = await Task.detached { [root] + FolderListing.allFolders(under: root, isDefaultRoot: isDefault) }.value
+        }
+    }
+
+    /// The path below the root, `Paper` for the root itself.
+    private func name(of folder: URL) -> String {
+        let base = root.standardizedFileURL.path
+        let path = folder.standardizedFileURL.path
+        guard path.count > base.count else { return isDefaultRoot ? "Paper" : root.lastPathComponent }
+        return String(path.dropFirst(base.count + 1)).replacingOccurrences(of: "/", with: " › ")
+    }
+}
+
+enum Haptics {
+    @MainActor static func press() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 }
 

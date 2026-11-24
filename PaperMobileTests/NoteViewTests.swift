@@ -117,3 +117,39 @@ struct ZoomDismissTests {
         #expect(recognizers.contains { $0.name == "UINavigationController.edgeSwipe" && $0.isEnabled })
     }
 }
+
+struct LibraryFileTests {
+    private func makeRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("a/b"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("themes"), withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func movingANoteNumbersItWhenTheNameIsTaken() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("a")
+        try "one".write(to: root.appendingPathComponent("n.md"), atomically: true, encoding: .utf8)
+        try "taken".write(to: target.appendingPathComponent("n.md"), atomically: true, encoding: .utf8)
+        try NoteFile.move(root.appendingPathComponent("n.md"), into: target)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("n.md").path))
+        #expect(try String(contentsOf: target.appendingPathComponent("n 2.md"), encoding: .utf8) == "one")
+    }
+
+    @Test func deletingANoteRemovesIt() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let note = root.appendingPathComponent("gone.md")
+        try "x".write(to: note, atomically: true, encoding: .utf8)
+        try NoteFile.delete(note)
+        #expect(!FileManager.default.fileExists(atPath: note.path))
+    }
+
+    @Test func everyFolderIsListedExceptPapersOwnAtTheDefaultRoot() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let names = FolderListing.allFolders(under: root, isDefaultRoot: true).map { $0.path.replacingOccurrences(of: root.path + "/", with: "") }
+        #expect(names == ["a", "a/b"])
+    }
+}
