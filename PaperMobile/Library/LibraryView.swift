@@ -247,7 +247,9 @@ struct FolderView: View {
                     .onTapGesture {
                         if selecting { toggle(item.url) } else { open(.note(item.url)) }
                     }
-                    .onLongPressGesture(minimumDuration: 0.4) {
+                    // The scroll view holds a touch ~0.15 s before the card
+                    // sees it, so 0.25 s here feels like the system's hold.
+                    .onLongPressGesture(minimumDuration: 0.25) {
                         Haptics.press()
                         changeSelection { $0.insert(item.url) }
                     }
