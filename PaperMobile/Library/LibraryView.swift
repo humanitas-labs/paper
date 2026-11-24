@@ -13,14 +13,20 @@ struct LibraryView: View {
     @ObservedObject private var root = LibraryRoot.shared
     @ObservedObject private var store = ConfigurationStore.shared
     @State private var path: [LibraryRoute] = []
+    /// Cards are the sources of the zoom into their folder or note.
+    @Namespace private var cards
 
     var body: some View {
         NavigationStack(path: $path) {
-            FolderView(folder: root.url, isRoot: true, open: open)
+            FolderView(folder: root.url, isRoot: true, cards: cards, open: open)
                 .navigationDestination(for: LibraryRoute.self) { route in
                     switch route {
-                    case .folder(let url): FolderView(folder: url, isRoot: false, open: open)
-                    case .note(let url): NoteView(url: url)
+                    case .folder(let url):
+                        FolderView(folder: url, isRoot: false, cards: cards, open: open)
+                            .navigationTransition(.zoom(sourceID: url, in: cards))
+                    case .note(let url):
+                        NoteView(url: url)
+                            .navigationTransition(.zoom(sourceID: url, in: cards))
                     }
                 }
         }
@@ -38,6 +44,7 @@ struct LibraryView: View {
 struct FolderView: View {
     let folder: URL
     let isRoot: Bool
+    let cards: Namespace.ID
     let open: (LibraryRoute) -> Void
     @ObservedObject private var root = LibraryRoot.shared
     @State private var listing = FolderListing()
@@ -52,7 +59,9 @@ struct FolderView: View {
                 if !listing.folders.isEmpty {
                     LazyVGrid(columns: columns, spacing: 16) {
                         ForEach(listing.folders) { item in
-                            NavigationLink(value: LibraryRoute.folder(item.url)) { FolderCard(folder: item) }
+                            NavigationLink(value: LibraryRoute.folder(item.url)) {
+                                FolderCard(folder: item).matchedTransitionSource(id: item.url, in: cards)
+                            }
                                 .buttonStyle(.plain)
                         }
                     }
@@ -60,7 +69,11 @@ struct FolderView: View {
                 if !listing.notes.isEmpty {
                     LazyVGrid(columns: columns, spacing: 16) {
                         ForEach(listing.notes) { item in
-                            NavigationLink(value: LibraryRoute.note(item.url)) { NoteCard(note: item) }
+                            NavigationLink(value: LibraryRoute.note(item.url)) {
+                                NoteCard(note: item).matchedTransitionSource(id: item.url, in: cards) { source in
+                                    source.clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                }
+                            }
                                 .buttonStyle(.plain)
                         }
                     }
@@ -75,9 +88,10 @@ struct FolderView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
         }
-        .background(Color(uiColor: Appearance.canvas).ignoresSafeArea())
-        .navigationTitle(isRoot ? root.url.lastPathComponent.replacingOccurrences(of: "Documents", with: "Paper") : folder.lastPathComponent)
-        .navigationBarTitleDisplayMode(isRoot ? .large : .inline)
+        .background(LibraryPalette.background.ignoresSafeArea())
+        // The root has no title; a folder is named in the bar.
+        .navigationTitle(isRoot ? "" : folder.lastPathComponent)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -128,6 +142,7 @@ struct FolderView: View {
 /// The library's colors: Marina's dark tokens, with quiet light
 /// counterparts so the grid follows the page's theme.
 enum LibraryPalette {
+    static let background = dynamic(dark: 0x0C0D0D, light: 0xFBFBFA)
     static let card = dynamic(dark: 0x111212, light: 0xF4F4F3)
     static let border = dynamic(dark: 0x1F2020, light: 0xE2E2E0)
     static let secondaryLabel = Color(uiColor: UIColor { traits in
@@ -195,8 +210,10 @@ struct NoteCard: View {
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(LibraryPalette.border, lineWidth: 1))
             .aspectRatio(150.0 / 200.0, contentMode: .fit)
             .overlay(alignment: .topLeading) {
+                // The page's own heading face, so the title reads as the
+                // note it grows into.
                 Text(note.title)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(Font(Appearance.headingFont(size: 15)))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
                     .lineLimit(4)
