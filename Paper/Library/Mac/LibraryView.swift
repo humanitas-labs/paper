@@ -484,7 +484,7 @@ struct LibraryView: View {
     private var emptySpaceItems: [LibraryMenuItem] {
         [
             LibraryMenuItem(title: "New Note", glyph: ComposeGlyph()) { newNote() },
-            LibraryMenuItem(title: "New Folder", glyph: NewFolderGlyph()) { newFolder() },
+            LibraryMenuItem(title: "New Folder", glyph: FolderGlyph(), badged: true) { newFolder() },
             LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
                 NSWorkspace.shared.activateFileViewerSelecting([folder])
             },

@@ -40,17 +40,44 @@ struct CopyGlyph: Shape {
     }
 }
 
-/// New folder: the iPhone's folder with a plus in its body.
-struct NewFolderGlyph: Shape {
-    func path(in rect: CGRect) -> Path {
-        let s = min(rect.width, rect.height) / 24
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
-        var path = FolderGlyph().path(in: rect)
-        path.move(to: p(12, 10.6))
-        path.addLine(to: p(12, 16.2))
-        path.move(to: p(9.2, 13.4))
-        path.addLine(to: p(14.8, 13.4))
-        return path
+/// A glyph with a plus badge in the clear space above its top right
+/// corner, as the system's folder-plus has: the badge's ring is cut out
+/// of the corner so the two never touch. The iPhone library's New Folder,
+/// drawn the same way.
+struct PlusBadgedGlyph: View {
+    let glyph: AnyShape
+    let style: StrokeStyle
+    /// Badge centre and the clear ring around it, on the 24 pt grid.
+    private static let badge = CGPoint(x: 20.5, y: 3.5)
+    private static let clearance: CGFloat = 4.2
+    private static let arm: CGFloat = 2.4
+
+    var body: some View {
+        glyph
+            .stroke(.foreground, style: style)
+            .mask {
+                Canvas { context, size in
+                    let s = size.width / 24
+                    context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+                    context.blendMode = .destinationOut
+                    let r = Self.clearance * s
+                    context.fill(Path(ellipseIn: CGRect(
+                        x: Self.badge.x * s - r, y: Self.badge.y * s - r, width: r * 2, height: r * 2
+                    )), with: .color(.black))
+                }
+            }
+            .overlay {
+                Canvas { context, size in
+                    let s = size.width / 24
+                    let c = CGPoint(x: Self.badge.x * s, y: Self.badge.y * s)
+                    var plus = Path()
+                    plus.move(to: CGPoint(x: c.x, y: c.y - Self.arm * s))
+                    plus.addLine(to: CGPoint(x: c.x, y: c.y + Self.arm * s))
+                    plus.move(to: CGPoint(x: c.x - Self.arm * s, y: c.y))
+                    plus.addLine(to: CGPoint(x: c.x + Self.arm * s, y: c.y))
+                    context.stroke(plus, with: .foreground, style: StrokeStyle(lineWidth: 2 * s, lineCap: .round))
+                }
+            }
     }
 }
 

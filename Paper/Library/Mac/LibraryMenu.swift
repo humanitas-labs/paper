@@ -8,12 +8,15 @@ struct LibraryMenuItem: Identifiable {
     /// A line glyph on the library's 24 pt grid.
     let glyph: AnyShape
     var hint: String = ""
+    /// A plus badge at the glyph's top right, as the iPhone's New Folder.
+    var badged = false
     let action: () -> Void
 
-    init(title: String, glyph: some Shape, hint: String = "", action: @escaping () -> Void) {
+    init(title: String, glyph: some Shape, hint: String = "", badged: Bool = false, action: @escaping () -> Void) {
         self.title = title
         self.glyph = AnyShape(glyph)
         self.hint = hint
+        self.badged = badged
         self.action = action
     }
 }
@@ -119,6 +122,7 @@ private struct LibraryMenuCard: View {
 }
 
 private struct LibraryMenuRow: View {
+    static let glyphStyle = StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round)
     let item: LibraryMenuItem
     let action: () -> Void
     @State private var hovering = false
@@ -126,10 +130,15 @@ private struct LibraryMenuRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                item.glyph
-                    .stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                    .frame(width: 20, height: 20)
-                    .frame(width: 22)
+                Group {
+                    if item.badged {
+                        PlusBadgedGlyph(glyph: item.glyph, style: Self.glyphStyle)
+                    } else {
+                        item.glyph.stroke(style: Self.glyphStyle)
+                    }
+                }
+                .frame(width: 20, height: 20)
+                .frame(width: 22)
                 Text(item.title)
                     .font(.system(size: 14, weight: .regular))
                     .lineLimit(1)
