@@ -83,7 +83,7 @@ struct FolderCard: View {
                 }
             }
             .overlay(alignment: .bottomLeading) {
-                // The label sits 26 pt in from the shape's left and ends
+                // The label sits 21 pt in from the shape's left and ends
                 // about 26 pt above its bottom on the 291 pt design folder;
                 // anchored at the bottom, it cannot run past the card.
                 GeometryReader { proxy in
@@ -91,7 +91,7 @@ struct FolderCard: View {
                     label(scale: scale)
                         .frame(width: proxy.size.width * 0.78, alignment: .leading)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                        .padding(.leading, 25 * scale)
+                        .padding(.leading, 21 * scale)
                         .padding(.bottom, 22 * scale)
                 }
             }
