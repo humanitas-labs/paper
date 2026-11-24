@@ -109,7 +109,8 @@ enum NoteOpenAnimation {
         window.appearance = appearance
         let content = NSView(frame: NSRect(origin: .zero, size: frame.size))
         content.wantsLayer = true
-        content.layer?.cornerRadius = 12
+        // The card's own corner: 24 pt on a card 235 pt wide.
+        content.layer?.cornerRadius = frame.width * 24.0 / 235.0
         content.layer?.cornerCurve = .continuous
         content.layer?.masksToBounds = true
         (appearance ?? NSApp.effectiveAppearance).performAsCurrentDrawingAppearance {

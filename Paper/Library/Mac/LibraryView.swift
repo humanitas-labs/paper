@@ -18,8 +18,8 @@ struct LibraryView: View {
     /// click landed on.
     @State private var cardFrames: [URL: CGRect] = [:]
     /// The cards picked, by dragging a rectangle across them or by
-    /// ⌘-clicking. While any are picked a click picks rather than opens,
-    /// and the toast at the foot of the window acts on them.
+    /// ⌘-clicking. The toast at the foot of the window acts on them; a
+    /// click anywhere else lets go of them.
     @State private var selection: Set<URL> = []
     /// The rectangle being dragged, in the window's content.
     @State private var marquee: CGRect?
@@ -73,7 +73,7 @@ struct LibraryView: View {
                 LibrarySelectionToast(
                     count: selection.count, move: moveSelection,
                     rename: selection.count == 1 ? { beginRename() } : nil,
-                    trash: trashSelection, done: deselect
+                    trash: trashSelection
                 )
                 .padding(.bottom, 22)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -128,7 +128,7 @@ struct LibraryView: View {
             LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
                 ForEach(listing.notes) { item in
                     LibraryNoteTile(note: item, selected: selection.contains(item.url))
-                        .modifier(CardShadow())
+                        .modifier(NoteShadow())
                         .modifier(CardClick(label: item.url.lastPathComponent) { click(item.url) { openNote(item.url) } })
                         .modifier(CardFrame(url: item.url, frames: $cardFrames))
                         .transition(LibraryMotion.itemTransition)
@@ -145,13 +145,15 @@ struct LibraryView: View {
 
     // MARK: Selection
 
-    /// A click opens a card, as in Spatial. While cards are picked, or
-    /// with ⌘ held, it picks or lets go of the card instead.
+    /// A click opens a card, as in Spatial, and lets go of anything
+    /// picked. Only a ⌘-click or a ⇧-click picks or lets go of the card
+    /// itself.
     private func click(_ url: URL, open: () -> Void) {
         guard Date().timeIntervalSince(dragEnded) > 0.15 else { return }
-        if !selection.isEmpty || NSEvent.modifierFlags.contains(.command) {
+        if !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
             if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
         } else {
+            deselect()
             open()
         }
     }
@@ -163,7 +165,8 @@ struct LibraryView: View {
             .onChanged { value in
                 guard menu == nil else { return }
                 if marquee == nil {
-                    marqueeBase = NSEvent.modifierFlags.contains(.command) ? selection : []
+                    let adding = !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty
+                    marqueeBase = adding ? selection : []
                 }
                 let rect = CGRect(
                     x: min(value.startLocation.x, value.location.x), y: min(value.startLocation.y, value.location.y),
@@ -443,7 +446,7 @@ private struct CardClick: ViewModifier {
 
         func makeBody(configuration: ButtonStyleConfiguration) -> some View {
             configuration.label
-                .scaleEffect(configuration.isPressed ? 0.985 : (hovering ? 1.03 : 1))
+                .scaleEffect(configuration.isPressed ? 0.985 : (hovering ? 1.027 : 1))
                 .animation(.spring(duration: 0.3, bounce: 0.25), value: hovering)
                 .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
                 .contentShape(Rectangle())
@@ -480,18 +483,18 @@ private struct CardFrame: ViewModifier {
     }
 }
 
-/// A name shown on hover, after Spatial's hint labels: capitals in the
-/// system monospace, spaced out, dark on a pale rounded tablet a shade
-/// lighter than the page, with no edge.
+/// A name shown on hover, after Spatial's hint labels: the system
+/// monospace, spaced out, dark on a pale rounded tablet a shade lighter
+/// than the page, with no edge. The name keeps its own case.
 private struct HoverLabel: View {
     static let height: CGFloat = 24
     static let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
     let text: String
 
     var body: some View {
-        Text(text.uppercased())
+        Text(text)
             .font(.system(size: 11, weight: .regular, design: .monospaced))
-            .tracking(0.9)
+            .tracking(0.5)
             .foregroundStyle(MenuPalette.ink)
             .lineLimit(1)
             .truncationMode(.middle)

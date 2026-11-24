@@ -27,16 +27,17 @@ struct MarqueeLayer: View {
 
 /// The toast while cards are picked, after the iPhone library's: a rounded
 /// bar at the foot of the window with how many are picked, then a folder to
-/// move them, a pencil to rename (one card only), a bin to move them to the
-/// Trash, and a cross to let go of them.
+/// move them, a pencil to rename (one card only) and a bin to move them to
+/// the Trash. A click anywhere off the toast lets go of them.
 struct LibrarySelectionToast: View {
-    static let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+    /// Spatial's desktop bar, measured from its toolbar: about 44 pt
+    /// tall with a 14 pt corner, tighter than the iPhone toast's 24.
+    static let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
     let count: Int
     let move: () -> Void
     /// Offered when one card is picked.
     let rename: (() -> Void)?
     let trash: () -> Void
-    let done: () -> Void
 
     var body: some View {
         HStack(spacing: 2) {
@@ -49,10 +50,10 @@ struct LibrarySelectionToast: View {
             button(FolderGlyph(), label: "Move to…", action: move)
             if let rename { button(PencilGlyph(), label: "Rename", action: rename) }
             button(TrashGlyph(), label: "Move to Trash", action: trash)
-            button(CloseGlyph(), label: "Deselect", action: done)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
         .background {
             Self.shape
                 .fill(ToastPalette.fill)
@@ -77,9 +78,9 @@ private struct ToastButton: View {
             glyph
                 .stroke(ToastPalette.glyph, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
                 .frame(width: 20, height: 20)
-                .frame(width: 46, height: 40)
+                .frame(width: 40, height: 32)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(Color.primary.opacity(hovering ? 0.07 : 0))
                 )
                 .contentShape(Rectangle())
@@ -88,19 +89,5 @@ private struct ToastButton: View {
         .onHover { hovering = $0 }
         .help(label)
         .accessibilityLabel(label)
-    }
-}
-
-/// A cross on the glyphs' 24 pt grid.
-struct CloseGlyph: Shape {
-    func path(in rect: CGRect) -> Path {
-        let s = min(rect.width, rect.height) / 24
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
-        var path = Path()
-        path.move(to: p(6.5, 6.5))
-        path.addLine(to: p(17.5, 17.5))
-        path.move(to: p(17.5, 6.5))
-        path.addLine(to: p(6.5, 17.5))
-        return path
     }
 }
