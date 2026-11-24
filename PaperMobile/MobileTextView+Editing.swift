@@ -291,15 +291,56 @@ extension MobileTextView {
         return cell.sourceOffsets[min(offset, cell.sourceOffsets.count - 1)]
     }
 
-    /// TextKit 1 puts the line-height multiple's extra space above the
-    /// glyphs; the caret keeps the fragment's bottom and the height of the
-    /// tallest font on its paragraph, as on the Mac.
+    /// The caret stands on the line's baseline, as tall as the tallest
+    /// font on its paragraph, as on the Mac. UIKit's proposed rect spans
+    /// the line fragment, and on iOS that includes the paragraph spacing
+    /// below a paragraph's last line, so the caret is placed from the
+    /// baseline instead of from the rect's edges.
     override func caretRect(for position: UITextPosition) -> CGRect {
         let proposed = super.caretRect(for: position)
-        let font = caretFont(at: offset(from: beginningOfDocument, to: position))
-        let height = font.ascender - font.descender + Appearance.caretOvershoot * 2
-        let clamped = min(proposed.height, height)
-        return CGRect(x: proposed.minX, y: proposed.maxY - clamped, width: proposed.width, height: clamped)
+        let index = offset(from: beginningOfDocument, to: position)
+        let font = caretFont(at: index)
+        let overshoot = Appearance.caretOvershoot
+        guard let baseline = baseline(at: index) else { return proposed }
+        return CGRect(
+            x: proposed.minX,
+            y: baseline - font.ascender - overshoot,
+            width: proposed.width,
+            height: font.ascender - font.descender + overshoot * 2
+        )
+    }
+
+    /// The baseline, in view coordinates, of the line holding the caret at
+    /// `index`: the line of the character there, or of the last character
+    /// when the caret ends the text, or the empty line after a final
+    /// newline.
+    func baseline(at index: Int) -> CGFloat? {
+        let layoutManager = paperLayoutManager
+        let length = textStorage.length
+        let origin = textContainerOrigin
+        let text = textStorage.string as NSString
+        if length == 0 || (index >= length && text.character(at: length - 1) == 0x0A) {
+            let extra = layoutManager.extraLineFragmentRect
+            guard !extra.isEmpty else { return nil }
+            // TextKit 1 sets the line-height multiple's extra space above
+            // the glyphs; the line's own height ends at the descent.
+            let body = Appearance.bodyFont()
+            let lineHeight = layoutManager.defaultLineHeight(for: body) * Appearance.lineHeightMultiple
+            return origin.y + extra.minY + lineHeight + body.descender
+        }
+        let character = min(index, length - 1)
+        let glyph = layoutManager.glyphIndexForCharacter(at: character)
+        let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        // On an empty line TextKit places the newline glyph at the bottom
+        // of the line rather than on its baseline, one descent lower; the
+        // baseline is the used rect's bottom less the descent, as for text.
+        if text.character(at: character) == 0x0A, character == 0 || text.character(at: character - 1) == 0x0A {
+            let used = layoutManager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
+            let font = textStorage.attribute(.font, at: character, effectiveRange: nil) as? UIFont ?? Appearance.bodyFont()
+            return origin.y + used.maxY + font.descender
+        }
+        let location = layoutManager.location(forGlyphAt: glyph)
+        return origin.y + fragment.minY + location.y
     }
 
     private func caretFont(at location: Int) -> UIFont {

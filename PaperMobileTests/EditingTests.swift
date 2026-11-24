@@ -192,3 +192,61 @@ struct KeyboardRowTests {
         #expect(textView.selectedRange == NSRange(location: 11, length: 0))
     }
 }
+
+@MainActor
+struct CaretTests {
+    private func caret(in source: String, at location: Int) throws -> (UIWindow, MobileTextView, CGRect) {
+        let (window, textView) = try RenderProbeTests.makeWindow(size: CGSize(width: 402, height: 874), style: .light)
+        textView.load(source)
+        _ = textView.becomeFirstResponder()
+        textView.selectedRange = NSRange(location: location, length: 0)
+        textView.layoutIfNeeded()
+        let position = try #require(textView.position(from: textView.beginningOfDocument, offset: location))
+        return (window, textView, textView.caretRect(for: position))
+    }
+
+    /// The caret spans the font's ascent and descent around the baseline.
+    private func expectOnBaseline(_ rect: CGRect, baseline: CGFloat, font: UIFont = Appearance.bodyFont()) {
+        let overshoot = Appearance.caretOvershoot
+        #expect(abs(rect.minY - (baseline - font.ascender - overshoot)) < 0.5)
+        #expect(abs(rect.maxY - (baseline - font.descender + overshoot)) < 0.5)
+    }
+
+    @Test
+    func theCaretAtAParagraphsEndStandsOnItsBaselineNotInTheSpacingBelow() throws {
+        let source = "First paragraph\n\nSecond"
+        let (window, textView, rect) = try caret(in: source, at: 15)
+        defer { window.isHidden = true }
+        let layoutManager = textView.paperLayoutManager
+        let glyph = layoutManager.glyphIndexForCharacter(at: 14)
+        let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let baseline = textView.textContainerOrigin.y + fragment.minY + layoutManager.location(forGlyphAt: glyph).y
+        expectOnBaseline(rect, baseline: baseline)
+    }
+
+    @Test
+    func theCaretOnAnEmptyLineStandsWhereTypedTextWillSit() throws {
+        let source = "Above\n\nBelow"
+        let (window, textView, empty) = try caret(in: source, at: 6)
+        defer { window.isHidden = true }
+        // Type a letter there: the caret after it must sit at the same height.
+        textView.insertText("x")
+        textView.layoutIfNeeded()
+        let position = try #require(textView.position(from: textView.beginningOfDocument, offset: 7))
+        let typed = textView.caretRect(for: position)
+        #expect(abs(empty.minY - typed.minY) < 0.5)
+        #expect(abs(empty.maxY - typed.maxY) < 0.5)
+    }
+
+    @Test
+    func theCaretAfterAFinalNewlineSitsOnTheNewLine() throws {
+        let source = "Above\n"
+        let (window, textView, empty) = try caret(in: source, at: 6)
+        defer { window.isHidden = true }
+        textView.insertText("x")
+        textView.layoutIfNeeded()
+        let position = try #require(textView.position(from: textView.beginningOfDocument, offset: 7))
+        let typed = textView.caretRect(for: position)
+        #expect(abs(empty.minY - typed.minY) < 1)
+    }
+}
