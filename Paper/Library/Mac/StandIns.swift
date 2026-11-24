@@ -84,10 +84,17 @@ struct FolderCard: View {
                     // Drawn, not an image, so the front is the note
                     // card's own color in every theme.
                     let colors = FolderCard.colors(dark: colorScheme == .dark)
+                    // In dark mode each panel has a fine rim, as the
+                    // iPhone's dark artwork does, in the note cards'
+                    // border color.
+                    let rim = colorScheme == .dark ? LibraryPalette.border : .clear
                     ZStack {
                         FolderSilhouette().fill(Color(nsColor: colors.back))
+                            .overlay(FolderSilhouette().stroke(rim, lineWidth: 1))
                         FolderSilhouette(panel: .paper).fill(Color(nsColor: colors.paper))
+                            .overlay(FolderSilhouette(panel: .paper).stroke(rim, lineWidth: 1))
                         FolderSilhouette(panel: .front).fill(Color(nsColor: colors.front))
+                            .overlay(FolderSilhouette(panel: .front).stroke(rim, lineWidth: 1))
                             // The front's lip casts up onto the back.
                             .shadow(color: .black.opacity(0.09 * scale), radius: 2 * scale, y: -2 * scale)
                     }

@@ -743,21 +743,21 @@ private struct HoverLabelLayer: View {
 }
 
 private struct HoverLabel: View {
-    static let height: CGFloat = 24
-    static let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+    static let height: CGFloat = 22
+    static let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
     let text: String
     /// The widest the label may be; a longer name is cut in its middle.
     var maxWidth: CGFloat = .infinity
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .regular, design: .monospaced))
-            .tracking(0.5)
+            .font(.system(size: 10, weight: .regular, design: .monospaced))
+            .tracking(0.3)
             .foregroundStyle(MenuPalette.ink)
             .lineLimit(1)
             .truncationMode(.middle)
-            .frame(maxWidth: maxWidth - 20)
-            .padding(.horizontal, 10)
+            .frame(maxWidth: maxWidth - 18)
+            .padding(.horizontal, 9)
             .frame(height: Self.height)
             .background(
                 Self.shape
