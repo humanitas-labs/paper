@@ -843,7 +843,9 @@ private struct LibraryBar: View {
         HStack(spacing: searchOpen ? 6 : 5) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: searchOpen ? 17 : 13, weight: .medium))
-                .foregroundStyle(searchOpen ? .secondary : .primary)
+                // Closed, the pill is quiet, as the Home Screen's is: gray
+                // glyph and word, not the primary color.
+                .foregroundStyle(.secondary)
             ZStack(alignment: .leading) {
                 // The pill's word and the field's placeholder sit in the
                 // same place, so the word stays put as the pill grows.
@@ -857,6 +859,7 @@ private struct LibraryBar: View {
                 } else {
                     Text("Search")
                         .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
                         .transition(.opacity)
                 }
             }
