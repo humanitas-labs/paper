@@ -104,3 +104,13 @@ struct TrackedRanges: Sendable {
         ended.insert(id)
     }
 }
+
+extension NSRange {
+    /// Clamps the range into `0...utf16Length` so a selection survives an
+    /// external replacement of the text it referred to.
+    func clamped(to utf16Length: Int) -> NSRange {
+        let safeLocation = min(location, utf16Length)
+        let availableLength = utf16Length - safeLocation
+        return NSRange(location: safeLocation, length: min(length, availableLength))
+    }
+}

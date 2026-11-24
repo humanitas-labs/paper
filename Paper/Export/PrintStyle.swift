@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// A named look for exported and printed pages: `paper`, the page as the
 /// editor draws it, `book`, or a file in `styles/` beside the config.
@@ -197,8 +201,8 @@ extension PrintStyle.Page {
     /// styled. Runs on the print surface only, after the styler, so the
     /// editor's paragraphs are never touched.
     @MainActor
-    func apply(to textView: PaperTextView) {
-        guard !isEditorPage, let storage = textView.textStorage, storage.length > 0 else { return }
+    func apply(to textView: some StyledSurface) {
+        guard !isEditorPage, let storage = textView.surfaceStorage, storage.length > 0 else { return }
         let lines = Self.lines(of: storage)
         let em = Appearance.bodySize
         storage.beginEditing()

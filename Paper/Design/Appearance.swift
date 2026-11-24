@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// Single source of visual tokens. User-tunable values come from the live
 /// `Configuration`; everything else is fixed here.
@@ -244,14 +248,23 @@ enum Appearance {
     }
 
     static func color(hex: String) -> NSColor {
+        #if os(macOS)
         guard let c = HexColor.components(hex) else { return .textColor }
         return NSColor(srgbRed: c.red, green: c.green, blue: c.blue, alpha: 1)
+        #else
+        guard let c = HexColor.components(hex) else { return .label }
+        return UIColor(red: c.red, green: c.green, blue: c.blue, alpha: 1)
+        #endif
     }
 
     private static func dynamic(light lightColor: NSColor, dark darkColor: NSColor) -> NSColor {
+        #if os(macOS)
         NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? darkColor : lightColor
         }
+        #else
+        UIColor { traits in traits.userInterfaceStyle == .dark ? darkColor : lightColor }
+        #endif
     }
 
     /// The shipped default: the system serif, which has no user-installable
@@ -262,8 +275,12 @@ enum Appearance {
     /// serif (New York) stands in, so rendering never falls back to a
     /// generic face.
     private static var preferredFamilyIsInstalled: Bool {
+        #if os(macOS)
         preferredFamily != systemSerifFamily
             && NSFontManager.shared.availableFontFamilies.contains(preferredFamily)
+        #else
+        preferredFamily != systemSerifFamily && UIFont.familyNames.contains(preferredFamily)
+        #endif
     }
 
     /// The body face at the configured weight.
@@ -318,6 +335,7 @@ enum Appearance {
     /// manager.
     static func font(size: CGFloat, weight: CGFloat, italic: Bool) -> NSFont {
         let weight = min(max(weight, 100), 900)
+        #if os(macOS)
         guard preferredFamilyIsInstalled else {
             let system = NSFont.systemFont(ofSize: size, weight: systemWeight(weight))
             var descriptor = system.fontDescriptor.withDesign(.serif) ?? system.fontDescriptor
@@ -338,6 +356,30 @@ enum Appearance {
         }
         let descriptor = italic ? base.fontDescriptor.withSymbolicTraits(.italic) : base.fontDescriptor
         return NSFont(descriptor: descriptor, size: size) ?? base
+        #else
+        guard preferredFamilyIsInstalled else {
+            let system = UIFont.systemFont(ofSize: size, weight: systemWeight(weight))
+            var descriptor = system.fontDescriptor.withDesign(.serif) ?? system.fontDescriptor
+            if italic { descriptor = descriptor.withSymbolicTraits(.traitItalic) ?? descriptor }
+            return UIFont(descriptor: descriptor, size: size)
+        }
+        let base = UIFont(descriptor: UIFontDescriptor(fontAttributes: [.family: preferredFamily]), size: size)
+        if let axis = weightAxis(of: base) {
+            let value = min(max(weight, axis.minimum), axis.maximum)
+            let variation = UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String)
+            var descriptor = base.fontDescriptor.addingAttributes([variation: [NSNumber(value: axis.identifier): value]])
+            if italic { descriptor = descriptor.withSymbolicTraits(.traitItalic) ?? descriptor }
+            return UIFont(descriptor: descriptor, size: size)
+        }
+        // A static family: the nearest face by weight trait, as the Mac's
+        // font manager picks one.
+        var descriptor = UIFontDescriptor(fontAttributes: [
+            .family: preferredFamily,
+            .traits: [UIFontDescriptor.TraitKey.weight: systemWeight(weight).rawValue],
+        ])
+        if italic { descriptor = descriptor.withSymbolicTraits(.traitItalic) ?? descriptor }
+        return UIFont(descriptor: descriptor, size: size)
+        #endif
     }
 
     /// The `wght` axis of a variable face, if it has one.

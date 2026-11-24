@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 extension NSAttributedString.Key {
     /// Marks block-quote paragraphs so the text view can draw their rule.
@@ -124,6 +128,7 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         nil
     }
 
+    #if os(macOS)
     // MARK: Spelling marks
 
     // The checker lays its underlines down as the `.spellingState`
@@ -185,6 +190,7 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         return ranges
     }
+    #endif
 
     /// Changes the revealed range, regenerating glyphs only for the parts of
     /// the old and new ranges that carry concealable punctuation or list
@@ -384,6 +390,13 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     /// The used rect's bottom after the previous complete layout, for the
     /// vacated-area invalidation below.
     private var lastUsedBottom: CGFloat = 0
+    #if os(iOS)
+    /// Called when the laid-out text ends higher than it did, with the new
+    /// and old bottoms in container coordinates, so the surface can clear
+    /// what was drawn below. On the Mac the container's text view is told
+    /// directly; a UIKit container has no view.
+    var usedBottomDidShrink: ((_ bottom: CGFloat, _ previous: CGFloat) -> Void)?
+    #endif
 
     /// Every display invalidation in TextKit is character-based, so when an
     /// edit shortens the layout, the strip the text vacated below the new
@@ -406,7 +419,9 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let bottom = manager.usedRect(for: container).maxY
             let stale = manager.lastUsedBottom
             manager.lastUsedBottom = bottom
-            guard bottom < stale, let textView = container.textView else { return }
+            guard bottom < stale else { return }
+            #if os(macOS)
+            guard let textView = container.textView else { return }
             let origin = textView.textContainerOrigin
             textView.setNeedsDisplay(NSRect(
                 x: 0,
@@ -414,6 +429,9 @@ final class PaperLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 width: textView.bounds.width,
                 height: stale - bottom
             ))
+            #else
+            manager.usedBottomDidShrink?(bottom, stale)
+            #endif
         }
     }
 

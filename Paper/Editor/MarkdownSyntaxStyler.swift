@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 @MainActor
 final class MarkdownSyntaxStyler {
@@ -142,16 +146,16 @@ final class MarkdownSyntaxStyler {
     }
 
     /// Restyles the whole text.
-    func apply(to textView: NSTextView) {
-        guard let storage = textView.textStorage else { return }
+    func apply(to textView: some StyledSurface) {
+        guard let storage = textView.surfaceStorage else { return }
         let source = storage.string
         let fullRange = NSRange(location: 0, length: source.utf16.count)
         let fences = Self.fencedBlocks(in: source, range: fullRange)
         let comments = Self.commentRanges(in: source, range: fullRange, fenced: fences)
         apply(to: textView, range: fullRange, fenced: fences, comments: comments)
-        (textView as? PaperTextView)?.clearCheckingMarksInCode(in: fullRange)
-        if let paperView = textView as? PaperTextView, paperView.isPrintSurface, let page = paperView.printPage {
-            page.apply(to: paperView)
+        textView.surfaceClearCheckingMarksInCode(in: fullRange)
+        if textView.surfaceIsPrinting, let page = textView.surfacePrintPage {
+            page.apply(to: textView)
         }
         lastPassWasFull = true
     }
@@ -162,8 +166,8 @@ final class MarkdownSyntaxStyler {
     /// bounded by blank lines, so a blank-line-delimited run of paragraphs,
     /// widened to any fence or comment it overlaps, restyles to the same
     /// attributes the full pass would set there.
-    func applyEdited(to textView: NSTextView) {
-        guard let storage = textView.textStorage, let edit = pendingEdit, !pendingIsCompound else {
+    func applyEdited(to textView: some StyledSurface) {
+        guard let storage = textView.surfaceStorage, let edit = pendingEdit, !pendingIsCompound else {
             return apply(to: textView)
         }
         let source = storage.string
@@ -195,7 +199,7 @@ final class MarkdownSyntaxStyler {
         guard outside(fences + comments) == outside(shifted) else { return apply(to: textView) }
 
         apply(to: textView, range: chunk, fenced: fences, comments: comments)
-        (textView as? PaperTextView)?.clearCheckingMarksInCode(in: chunk)
+        textView.surfaceClearCheckingMarksInCode(in: chunk)
         lastPassWasFull = false
     }
 
@@ -233,16 +237,15 @@ final class MarkdownSyntaxStyler {
         inner.location >= outer.location && NSMaxRange(inner) <= NSMaxRange(outer)
     }
 
-    private func apply(to textView: NSTextView, range: NSRange, fenced: [NSRange], comments: [NSRange]) {
-        guard let storage = textView.textStorage else { return }
+    private func apply(to textView: some StyledSurface, range: NSRange, fenced: [NSRange], comments: [NSRange]) {
+        guard let storage = textView.surfaceStorage else { return }
         pendingEdit = nil
         pendingIsCompound = false
         styledFences = fenced
         styledComments = comments
 
         let source = storage.string
-        let selection = textView.selectedRange()
-        let paperView = textView as? PaperTextView
+        let selection = textView.surfaceSelection
         var hadImages = false
         if range.length > 0 {
             storage.enumerateAttribute(.imageSource, in: range) { value, _, stop in
@@ -313,7 +316,7 @@ final class MarkdownSyntaxStyler {
         applyArrows(to: storage, source: source, range: range)
         let imageURLs = applyBlockImages(
             to: storage, source: source, range: range,
-            documentURL: paperView?.documentURL,
+            documentURL: textView.surfaceDocumentURL,
             width: Self.measure(of: textView),
             excluding: fenced + comments
         )
@@ -324,7 +327,7 @@ final class MarkdownSyntaxStyler {
         applyComments(to: storage, source: source, range: range, comments: comments)
         applyPageBreaks(
             to: storage, source: source, range: range, comments: comments,
-            printing: paperView?.isPrintSurface == true
+            printing: textView.surfaceIsPrinting
         )
         // Tables go last: a cell draws with the styling the passes above
         // gave its source.
@@ -342,17 +345,17 @@ final class MarkdownSyntaxStyler {
         }
         storage.endEditing()
 
-        textView.typingAttributes = Self.baseAttributes
-        textView.setSelectedRange(selection)
+        textView.surfaceTypingAttributes = Self.baseAttributes
+        textView.surfaceSelection = selection
         // The watchers want every image the text shows, which is the set
         // carrying `.imageSource`; a chunk that neither had nor has one
         // leaves them alone.
-        guard let paperView, hadImages || !imageURLs.isEmpty else { return }
+        guard hadImages || !imageURLs.isEmpty else { return }
         var watched = imageURLs
         storage.enumerateAttribute(.imageSource, in: NSRange(location: 0, length: storage.length)) { value, _, _ in
             if let url = value as? URL { watched.insert(url) }
         }
-        paperView.watchImages(watched)
+        textView.surfaceWatchImages(watched)
     }
 
     /// `---`, `***`, or `___` alone on a line is a thematic break: the
@@ -418,10 +421,14 @@ final class MarkdownSyntaxStyler {
 
             storage.enumerateAttribute(.font, in: contentRange) { value, fontRange, _ in
                 let current = (value as? NSFont) ?? Appearance.bodyFont()
-                let descriptor = current.fontDescriptor.withSymbolicTraits(
-                    current.fontDescriptor.symbolicTraits.union(trait)
-                )
+                let traits = current.fontDescriptor.symbolicTraits.union(trait)
+                #if os(macOS)
+                let descriptor = current.fontDescriptor.withSymbolicTraits(traits)
                 let font = NSFont(descriptor: descriptor, size: current.pointSize) ?? current
+                #else
+                let descriptor = current.fontDescriptor.withSymbolicTraits(traits) ?? current.fontDescriptor
+                let font = UIFont(descriptor: descriptor, size: current.pointSize)
+                #endif
                 storage.addAttribute(.font, value: font, range: fontRange)
             }
             dimDelimiters(around: contentRange, in: match.range, storage: storage)
@@ -588,7 +595,9 @@ final class MarkdownSyntaxStyler {
                 storage.addAttribute(.reservedWidth, value: Self.taskBoxReservedWidth, range: circle)
                 storage.addAttribute(.foregroundColor, value: Appearance.mutedInk, range: prefixRange)
                 storage.addAttribute(.taskBox, value: box, range: prefixRange)
+                #if os(macOS)
                 storage.addAttribute(.cursor, value: NSCursor.pointingHand, range: prefixRange)
+                #endif
                 boxWidth = Self.taskBoxReservedWidth
                 let indentLength = markerRange.location - match.range.location
                 rendered = Array(prefix.prefix(indentLength))
@@ -865,7 +874,9 @@ final class MarkdownSyntaxStyler {
                 let extent = extents[paragraph] ?? (0, 0)
                 extents[paragraph] = (max(extent.ascent, formula.ascent * scale), max(extent.descent, formula.descent * scale))
             case .failure(let failure):
+                #if os(macOS)
                 storage.addAttribute(.toolTip, value: failure.message, range: span.range)
+                #endif
             }
         }
 
@@ -1085,7 +1096,9 @@ final class MarkdownSyntaxStyler {
             storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: textRange)
             storage.addAttribute(.linkDestination, value: destination, range: textRange)
             storage.addAttribute(.address, value: true, range: match.range(at: 2))
+            #if os(macOS)
             storage.addAttribute(.cursor, value: NSCursor.pointingHand, range: textRange)
+            #endif
             // `[` and `](destination)` hide off the active paragraph.
             dimDelimiters(around: textRange, in: match.range, storage: storage)
         }
@@ -1228,8 +1241,8 @@ final class MarkdownSyntaxStyler {
     /// The width a block image may take: the text container's, less its
     /// padding. A view not yet sized (no window) takes the configured
     /// measure, which is what the container becomes once it has one.
-    static func measure(of textView: NSTextView) -> CGFloat {
-        guard let container = textView.textContainer else { return Appearance.maximumMeasure }
+    static func measure(of textView: some StyledSurface) -> CGFloat {
+        guard let container = textView.surfaceContainer else { return Appearance.maximumMeasure }
         let width = container.size.width - 2 * container.lineFragmentPadding
         return width > 0 ? width : Appearance.maximumMeasure
     }

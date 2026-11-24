@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 extension NSAttributedString.Key {
     /// Marks one row paragraph of a pipe table, terminator included; the

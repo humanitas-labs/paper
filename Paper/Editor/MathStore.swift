@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import CryptoKit
 import SwiftMath
 
@@ -50,8 +54,18 @@ final class MathStore {
         /// left origin), scaled to the rect's width, in `color`. The colour
         /// is set here, not at typesetting, so a cached formula follows the
         /// drawing appearance: SwiftMath resolves it to a `CGColor` on set.
+        /// The context the current drawing goes to: the view's, or a
+        /// preview's pushed in its place.
+        private static var currentContext: CGContext? {
+            #if os(macOS)
+            NSGraphicsContext.current?.cgContext
+            #else
+            UIGraphicsGetCurrentContext()
+            #endif
+        }
+
         func draw(in rect: NSRect, color: NSColor) {
-            guard let context = NSGraphicsContext.current?.cgContext, width > 0 else { return }
+            guard let context = Self.currentContext, width > 0 else { return }
             let scale = rect.width / width
             label.textColor = color
             context.saveGState()
@@ -60,7 +74,7 @@ final class MathStore {
             // same context, so one transform covers glyphs and rules.
             context.translateBy(x: rect.minX, y: rect.minY + height * scale)
             context.scaleBy(x: scale, y: -scale)
-            context.textMatrix = .identity
+            context.textMatrix = CGAffineTransform.identity
             display.draw(context)
             context.restoreGState()
         }
@@ -116,13 +130,21 @@ final class MathStore {
         if let error = label.error {
             return .failure(Failure(message: error.localizedDescription))
         }
+        #if os(macOS)
         let fitting = label.fittingSize
+        #else
+        let fitting = label.intrinsicContentSize
+        #endif
         guard fitting.width > 0 else { return .failure(Failure(message: "Nothing to draw")) }
         // At least half the font size tall, as the label centres anything
         // shorter; at that height the label puts the baseline exactly
         // `descent` above the bottom, which `draw(in:color:)` relies on.
         label.frame = NSRect(x: 0, y: 0, width: fitting.width, height: max(fitting.height, key.size / 2))
+        #if os(macOS)
         label.layout()
+        #else
+        label.layoutSubviews()
+        #endif
         guard let display = label.displayList else { return .failure(Failure(message: "Nothing to draw")) }
         let ascent = display.ascent + max(0, key.size / 2 - display.ascent - display.descent)
         return .success(Formula(label: label, display: display, width: display.width, ascent: ascent, descent: display.descent))
@@ -181,13 +203,21 @@ final class MathStore {
         // Flipped, as a view draws, so the formula takes the same path.
         context.translateBy(x: 0, y: page.height)
         context.scaleBy(x: 1, y: -1)
+        #if os(macOS)
         let previous = NSGraphicsContext.current
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        #else
+        UIGraphicsPushContext(context)
+        #endif
         formula.draw(
             in: NSRect(x: margin, y: margin, width: formula.width, height: formula.height),
             color: .black
         )
+        #if os(macOS)
         NSGraphicsContext.current = previous
+        #else
+        UIGraphicsPopContext()
+        #endif
         context.endPDFPage()
         context.closePDF()
         return url

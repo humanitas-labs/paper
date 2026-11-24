@@ -7,11 +7,18 @@ import Foundation
 final class ConfigurationStore: ObservableObject {
     static let shared = ConfigurationStore(fileURL: defaultFileURL)
 
-    /// `$XDG_CONFIG_HOME/paper/config`, or `~/.config/paper/config`.
+    /// `$XDG_CONFIG_HOME/paper/config`, or `~/.config/paper/config`. On
+    /// iOS, `config` in the app's Documents folder, which the Files app
+    /// shows under On My iPhone ▸ Paper.
     static var defaultFileURL: URL {
+        #if os(macOS)
         configurationBase.appendingPathComponent("paper", isDirectory: true).appendingPathComponent("config")
+        #else
+        URL.documentsDirectory.appendingPathComponent("config")
+        #endif
     }
 
+    #if os(macOS)
     private static var configurationBase: URL {
         let environment = ProcessInfo.processInfo.environment
         if let xdg = environment["XDG_CONFIG_HOME"], !xdg.isEmpty {
@@ -19,6 +26,7 @@ final class ConfigurationStore: ObservableObject {
         }
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config", isDirectory: true)
     }
+    #endif
 
     @Published private(set) var current = Configuration()
     /// Names of the saved presets, sorted, refreshed whenever the presets

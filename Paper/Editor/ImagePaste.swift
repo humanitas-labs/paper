@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import UniformTypeIdentifiers
 
 /// An image pasted or dropped into a document lands on disk beside it and
@@ -23,6 +27,7 @@ enum ImagePaste {
         }
     }
 
+    #if os(macOS)
     /// The image on `pasteboard`, or nil when it holds none. Text beside an
     /// image is ignored: an app that copies a picture with a caption meant
     /// the picture.
@@ -41,6 +46,7 @@ enum ImagePaste {
         ) as? [URL] ?? []
         return urls.first { isImageFile($0) }
     }
+    #endif
 
     static func isImageFile(_ url: URL) -> Bool {
         guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
@@ -49,8 +55,12 @@ enum ImagePaste {
 
     /// Re-encodes bitmap data (TIFF from the pasteboard) as PNG.
     static func pngData(from data: Data) -> Data? {
+        #if os(macOS)
         guard let rep = NSBitmapImageRep(data: data) else { return nil }
         return rep.representation(using: .png, properties: [:])
+        #else
+        UIImage(data: data)?.pngData()
+        #endif
     }
 
     // MARK: - Destination

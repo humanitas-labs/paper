@@ -1770,3 +1770,29 @@ extension PaperTextView: NSTextStorageDelegate {
         }
     }
 }
+
+// MARK: - Styled surface
+
+/// Any text view can be styled, as tests do with plain ones; the parts
+/// only Paper's own view has are reached through it.
+extension NSTextView: StyledSurface {
+    var surfaceStorage: NSTextStorage? { textStorage }
+    var surfaceContainer: NSTextContainer? { textContainer }
+    var surfaceSelection: NSRange {
+        get { selectedRange() }
+        set { setSelectedRange(newValue) }
+    }
+    var surfaceTypingAttributes: [NSAttributedString.Key: Any] {
+        get { typingAttributes }
+        set { typingAttributes = newValue }
+    }
+    var surfaceDocumentURL: URL? { (self as? PaperTextView)?.documentURL }
+    var surfaceIsPrinting: Bool { (self as? PaperTextView)?.isPrintSurface == true }
+    var surfacePrintPage: PrintStyle.Page? { (self as? PaperTextView)?.printPage }
+    func surfaceClearCheckingMarksInCode(in range: NSRange) {
+        (self as? PaperTextView)?.clearCheckingMarksInCode(in: range)
+    }
+    func surfaceWatchImages(_ urls: Set<URL>) {
+        (self as? PaperTextView)?.watchImages(urls)
+    }
+}

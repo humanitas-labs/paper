@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import ImageIO
 import OSLog
 
@@ -334,9 +338,19 @@ final class ImageStore {
         }
     }
 
+    /// UIKit images take their size from the bitmap; every draw gives the
+    /// rect, so the natural size is carried beside it in the entry.
+    private static func image(_ decoded: Decoded) -> NSImage {
+        #if os(macOS)
+        NSImage(cgImage: decoded.cgImage, size: decoded.naturalSize)
+        #else
+        UIImage(cgImage: decoded.cgImage)
+        #endif
+    }
+
     private static func entry(_ decoded: Decoded) -> Entry {
         Entry(
-            image: NSImage(cgImage: decoded.cgImage, size: decoded.naturalSize),
+            image: image(decoded),
             naturalSize: decoded.naturalSize,
             bytes: decoded.cgImage.bytesPerRow * decoded.cgImage.height
         )
