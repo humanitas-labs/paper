@@ -1075,7 +1075,7 @@ struct FolderGlyph: Shape {
 }
 
 /// A bin on the toast glyphs' 24 pt grid: a lid with a flat handle over a
-/// tapered body, ribbed twice.
+/// tapered body.
 struct TrashGlyph: Shape {
     func path(in rect: CGRect) -> Path {
         let s = min(rect.width, rect.height) / 24
@@ -1097,11 +1097,6 @@ struct TrashGlyph: Shape {
         path.addLine(to: p(15.1, 20))
         path.addQuadCurve(to: p(17.3, 18), control: p(17.1, 20))
         path.addLine(to: p(18.5, 6.5))
-        // Ribs.
-        path.move(to: p(10, 10.5))
-        path.addLine(to: p(10, 16))
-        path.move(to: p(14, 10.5))
-        path.addLine(to: p(14, 16))
         return path
     }
 }
