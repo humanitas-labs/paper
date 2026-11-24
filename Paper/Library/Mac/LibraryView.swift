@@ -224,17 +224,19 @@ struct LibraryView: View {
                 }
             }
         }
-        ForEach(groups) { group in
-            VStack(alignment: .leading, spacing: 14) {
-                if !group.title.isEmpty { NoteGroupHeading(group: group) }
-                LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
-                    ForEach(group.notes) { item in
-                        LibraryNoteTile(note: item, selected: selection.contains(item.url))
-                            .modifier(NoteShadow())
-                            .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
-                            .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
-                            .modifier(CardFrame(url: item.url, frames: cards))
-                            .transition(Self.cardTransition)
+        if groups.count == 1, groups[0].title.isEmpty {
+            // Ungrouped: one grid straight in the page, as before grouping
+            // came; a grid inside the groups' loop dropped the cards'
+            // grow-in.
+            LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
+                ForEach(groups[0].notes) { item in noteCard(item) }
+            }
+        } else {
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 14) {
+                    NoteGroupHeading(group: group)
+                    LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
+                        ForEach(group.notes) { item in noteCard(item) }
                     }
                 }
             }
@@ -245,6 +247,15 @@ struct LibraryView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 120)
         }
+    }
+
+    private func noteCard(_ item: FolderListing.Note) -> some View {
+        LibraryNoteTile(note: item, selected: selection.contains(item.url))
+            .modifier(NoteShadow())
+            .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
+            .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
+            .modifier(CardFrame(url: item.url, frames: cards))
+            .transition(Self.cardTransition)
     }
 
     // MARK: Grouping and search
