@@ -69,7 +69,12 @@ struct FolderCard: View {
             }
             // Picked: a bright outline around the folder's silhouette.
             .overlay {
-                if selected { FolderSilhouette().stroke(Color.primary, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
+                if selected {
+                    // Picked: a white ring in both themes, as in Spatial,
+                    // with a faint shadow so it reads on the pale page.
+                    FolderSilhouette().stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineJoin: .round))
+                        .shadow(color: .black.opacity(0.14), radius: 3, y: 1)
+                }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(Rectangle())
@@ -283,7 +288,10 @@ struct NoteCard: View {
                 if colorScheme == .dark { NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1) }
             }
             .overlay {
-                if selected { NoteCard.shape.strokeBorder(Color.primary, lineWidth: 3) }
+                if selected {
+                    NoteCard.shape.strokeBorder(Color.white, lineWidth: 3)
+                        .shadow(color: .black.opacity(0.14), radius: 3, y: 1)
+                }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(NoteCard.shape)
