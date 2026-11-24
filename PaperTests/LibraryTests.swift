@@ -78,6 +78,23 @@ struct LibraryTests {
         #expect(inked)
     }
 
+    /// The pointer's 2x bitmap must be drawn at full size: ink reaches
+    /// past the middle of it, not only into one quarter.
+    @Test func pointerFillsItsBitmapAtBothScales() throws {
+        let reps = LibraryPointer.image.representations.compactMap { $0 as? NSBitmapImageRep }
+        #expect(reps.map(\.pixelsWide).sorted() == [24, 48])
+        for rep in reps {
+            #expect(rep.size == LibraryPointer.size)
+            var farthest = 0
+            for y in 0..<rep.pixelsHigh {
+                for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
+                    farthest = max(farthest, x)
+                }
+            }
+            #expect(Double(farthest) > Double(rep.pixelsWide) * 0.7)
+        }
+    }
+
     @Test func miniatureIsCachedUntilTheNoteChanges() throws {
         let root = try makeTree()
         defer { try? FileManager.default.removeItem(at: root) }

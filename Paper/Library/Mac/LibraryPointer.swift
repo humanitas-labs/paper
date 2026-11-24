@@ -28,8 +28,11 @@ enum LibraryPointer {
                 bitmapDataPlanes: nil, pixelsWide: Int(size.width) * scale, pixelsHigh: Int(size.height) * scale,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-            ), let context = NSGraphicsContext(bitmapImageRep: rep) else { continue }
+            ) else { continue }
+            // The point size goes on before the context is made, so the
+            // context scales the drawing up to fill the 2x bitmap.
             rep.size = size
+            guard let context = NSGraphicsContext(bitmapImageRep: rep) else { continue }
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = context
             drawing.draw(in: NSRect(origin: .zero, size: size))
