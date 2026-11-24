@@ -35,6 +35,19 @@ struct LibraryTests {
         #expect(listing.notes.map(\.title) == ["Newer note", "Older note"])
     }
 
+    @Test func hiddenItemsJoinTheListingAndAreMarked() throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(".config"), withIntermediateDirectories: true)
+        let (listing, hidden) = FolderListing.loadIncludingHidden(root)
+        #expect(listing.folders.map(\.name).contains(".config"))
+        #expect(listing.notes.map(\.url.lastPathComponent).contains(".hidden.md"))
+        #expect(Set(hidden.map(\.lastPathComponent)) == [".config", ".hidden.md"])
+        // The visible items are all still there and not marked.
+        #expect(listing.folders.count == 3)
+        #expect(listing.notes.count == 3)
+    }
+
     @Test func foldersAreToldFromFilesAndPackages() throws {
         let root = try makeTree()
         defer { try? FileManager.default.removeItem(at: root) }

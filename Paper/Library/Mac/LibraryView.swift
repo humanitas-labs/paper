@@ -33,6 +33,9 @@ struct LibraryView: View {
     /// Where the toast is, so a click on it is not a click off the cards.
     @State private var toastFrame = CGRect.zero
     @State private var width: CGFloat = 0
+    /// Shown when the library shows hidden items: the ones Finder hides.
+    @State private var hiddenItems: Set<URL> = []
+    @AppStorage(FolderListing.showsHiddenKey) private var showsHidden = false
     @State private var hovered: HoverTarget?
     @State private var renaming = false
     @State private var renameText = ""
@@ -118,6 +121,7 @@ struct LibraryView: View {
         .environment(\.libraryWidth, width)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(keyCommands)
+        .onChange(of: showsHidden) { Task { await reload() } }
         .task(id: folder) {
             selection.removeAll()
             cards.rects.removeAll()
@@ -147,6 +151,7 @@ struct LibraryView: View {
                 ForEach(listing.folders) { item in
                     FolderCard(folder: item, selected: selection.contains(item.url))
                         .background(FolderCard.shadow)
+                        .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
                         .modifier(CardClick { click(item.url) { go(to: item.url) } })
                         .modifier(CardFrame(url: item.url, frames: cards))
                         .transition(LibraryMotion.itemTransition)
@@ -158,6 +163,7 @@ struct LibraryView: View {
                 ForEach(listing.notes) { item in
                     LibraryNoteTile(note: item, selected: selection.contains(item.url))
                         .modifier(NoteShadow())
+                        .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
                         .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
                         .modifier(CardFrame(url: item.url, frames: cards))
                         .transition(LibraryMotion.itemTransition)
@@ -331,6 +337,9 @@ struct LibraryView: View {
             LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
                 NSWorkspace.shared.activateFileViewerSelecting([folder])
             },
+            LibraryMenuItem(
+                title: showsHidden ? "Hide Hidden Items" : "Show Hidden Items", glyph: EyeGlyph(), hint: "⇧⌘."
+            ) { showsHidden.toggle() },
         ]
     }
 
@@ -350,8 +359,13 @@ struct LibraryView: View {
 
     /// ⌘↑ to the enclosing folder, ⌘[ back and ⌘] forward, as in Finder.
     /// The buttons are hidden; only their keys act.
+    /// Hidden items show faintly, as a hint that they are usually away.
+    private static let hiddenOpacity: Double = 0.4
+
     private var keyCommands: some View {
         ZStack {
+            Button("Show Hidden Items") { showsHidden.toggle() }
+                .keyboardShortcut(".", modifiers: [.command, .shift])
             Button("Enclosing Folder") { goUp() }
                 .keyboardShortcut(.upArrow, modifiers: .command)
             Button("Back") { goBack() }
@@ -387,12 +401,19 @@ struct LibraryView: View {
 
     private func reload() async {
         let folder = folder
-        let fresh = await Task.detached { FolderListing.load(folder, isDefaultRoot: false) }.value
+        let showsHidden = showsHidden
+        let (fresh, hidden) = await Task.detached {
+            showsHidden ? FolderListing.loadIncludingHidden(folder) : (FolderListing.load(folder, isDefaultRoot: false), [])
+        }.value
         guard folder == self.folder else { return }
         if loaded {
-            withAnimation(LibraryMotion.itemSpring) { listing = fresh }
+            withAnimation(LibraryMotion.itemSpring) {
+                listing = fresh
+                hiddenItems = hidden
+            }
         } else {
             listing = fresh
+            hiddenItems = hidden
         }
         loaded = true
     }

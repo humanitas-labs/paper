@@ -66,3 +66,18 @@ struct RevealGlyph: Shape {
         return path
     }
 }
+
+/// Hidden items: an eye, an almond with a round pupil.
+struct EyeGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+        var path = Path()
+        path.move(to: p(3, 12))
+        path.addQuadCurve(to: p(21, 12), control: p(12, 2.5))
+        path.addQuadCurve(to: p(3, 12), control: p(12, 21.5))
+        path.closeSubpath()
+        path.addEllipse(in: CGRect(x: rect.minX + 9.25 * s, y: rect.minY + 9.25 * s, width: 5.5 * s, height: 5.5 * s))
+        return path
+    }
+}
