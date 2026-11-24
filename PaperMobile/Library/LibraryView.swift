@@ -540,7 +540,9 @@ struct FolderCard: View {
                     Image("FolderShape")
                         .resizable()
                         .frame(width: Self.canvas.width * scale, height: Self.canvas.height * scale)
-                        .modifier(CardShadow())
+                        // The artwork carries its own soft shadow, drawn
+                        // with it once: a live shadow here traced the tab's
+                        // corner hard and slowed scrolling.
                         .offset(x: -Self.shape.minX * scale, y: -Self.shape.minY * scale)
                 }
             }
