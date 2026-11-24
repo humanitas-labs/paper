@@ -40,7 +40,41 @@ enum LibraryWindow {
         windows[folder] = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        #if DEBUG
+        snapshotForDebugging(window)
+        #endif
     }
+
+    #if DEBUG
+    /// DEBUG-SNAPSHOT (temporary): draws the library offscreen to PNGs,
+    /// light and dark, where screen capture is not permitted.
+    private static func snapshotForDebugging(_ window: NSWindow) {
+        guard let dir = ProcessInfo.processInfo.environment["PAPER_LIBRARY_SNAPSHOT"],
+              let folder = window.representedURL else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            let listing = FolderListing.load(folder, isDefaultRoot: false)
+            for dark in [false, true] {
+                let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
+                appearance.performAsCurrentDrawingAppearance {
+                    for note in listing.notes {
+                        _ = NoteMiniature.image(
+                            for: note.url, modified: note.modified, dark: dark,
+                            background: NSColor(LibraryPalette.card)
+                        )
+                    }
+                    let view = LibraryView(root: folder, listing: listing, scrolls: false)
+                        .frame(width: 1280, height: 820)
+                        .environment(\.colorScheme, dark ? .dark : .light)
+                    let renderer = ImageRenderer(content: view)
+                    renderer.scale = 2
+                    guard let image = renderer.cgImage else { return }
+                    let url = URL(fileURLWithPath: dir).appendingPathComponent(dark ? "library-dark.png" : "library-light.png")
+                    try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
+                }
+            }
+        }
+    }
+    #endif
 
     /// Whether a window is one of the library's, so other window rules
     /// (the welcome window's, new-window placement) can leave it alone.
