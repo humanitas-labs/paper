@@ -532,7 +532,12 @@ struct FolderCard: View {
     static let shape = CGRect(x: 10.5, y: 4.5, width: 291.054, height: 205.45)
 
     var body: some View {
-        Color.clear
+        // The shadow falls from a plain silhouette under the artwork, as a
+        // note card's does: the artwork's own SVG shadow does not render,
+        // and a shadow traced from the artwork caught the tab's corner hard.
+        FolderSilhouette()
+            .fill(LibraryPalette.background)
+            .modifier(CardShadow())
             .aspectRatio(Self.shape.width / Self.shape.height, contentMode: .fit)
             .overlay {
                 GeometryReader { proxy in
@@ -540,9 +545,6 @@ struct FolderCard: View {
                     Image("FolderShape")
                         .resizable()
                         .frame(width: Self.canvas.width * scale, height: Self.canvas.height * scale)
-                        // The artwork carries its own soft shadow, drawn
-                        // with it once: a live shadow here traced the tab's
-                        // corner hard and slowed scrolling.
                         .offset(x: -Self.shape.minX * scale, y: -Self.shape.minY * scale)
                 }
             }
@@ -1165,9 +1167,9 @@ struct TrashGlyph: Shape {
     }
 }
 
-/// A card's shadow. In light, as in Spatial, two: a tight contact shadow
-/// that draws the edge, under a soft fall-off. In dark, one deeper soft
-/// shadow, where a light one would not show.
+/// A note card's shadow, matched to the folder artwork's own: a soft
+/// fall-off, light in light mode and deeper in dark, where a light one
+/// would not show.
 struct CardShadow: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1175,9 +1177,7 @@ struct CardShadow: ViewModifier {
         if colorScheme == .dark {
             content.shadow(color: .black.opacity(0.45), radius: 8, y: 4)
         } else {
-            content
-                .shadow(color: .black.opacity(0.10), radius: 1, y: 0.5)
-                .shadow(color: .black.opacity(0.07), radius: 10, y: 5)
+            content.shadow(color: .black.opacity(0.08), radius: 8, y: 4)
         }
     }
 }
