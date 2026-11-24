@@ -33,3 +33,6 @@ dist/
 # Coverage artifacts
 *.profraw
 .tmp/
+
+# Per-machine signing for the iOS target (PaperMobile/Signing.xcconfig)
+Local.xcconfig

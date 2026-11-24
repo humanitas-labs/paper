@@ -1,0 +1,7 @@
+// Signing for a device build. The team stays out of the repository: put
+//
+//     DEVELOPMENT_TEAM = <your team ID>
+//
+// in `Local.xcconfig` at the repository root, which git ignores. Without it
+// the app still builds and runs in the simulator.
+#include? "../Local.xcconfig"

@@ -17,5 +17,6 @@
 | [003](decisions/003-markdown-resource-resolution.md) | Resolve Markdown resources relative to the saved document |
 | [004](decisions/004-zero-advance-control-glyphs.md) | Use zero-advance control glyphs for concealed syntax; revises ADR-002 |
 | [005](decisions/005-swiftmath-typesetting.md) | SwiftMath for LaTeX typesetting |
+| [006](decisions/006-ios-target.md) | An iOS target sharing the Mac's engine |
 
 `assets/` holds the README screenshot; `references/` holds visual references the design steers by.

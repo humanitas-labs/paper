@@ -78,6 +78,115 @@ targets:
         PRODUCT_NAME: Paper
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
+  # Paper on iPhone and iPad (.plan/ios.md). It compiles the shared
+  # engine from `Paper/` by an explicit list, so nothing Mac-only comes
+  # in by accident, and its own surface from `PaperMobile/`.
+  PaperMobile:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: PaperMobile
+      - path: Paper/Platform
+      - Paper/Design/Theme.swift
+      - Paper/Design/Appearance.swift
+      - Paper/Config/Configuration.swift
+      - Paper/Config/ConfigurationStore.swift
+      - Paper/Documents/MarkdownDocument.swift
+      - Paper/Documents/MarkdownResource.swift
+      - Paper/Editor/ImageStore.swift
+      - Paper/Editor/ImagePaste.swift
+      - Paper/Editor/InlineFormatting.swift
+      - Paper/Editor/ListContinuation.swift
+      - Paper/Editor/ListPrefix.swift
+      - Paper/Editor/MarkdownSyntaxStyler.swift
+      - Paper/Editor/MarkdownTable.swift
+      - Paper/Editor/MathStore.swift
+      - Paper/Editor/Outline.swift
+      - Paper/Editor/PaperLayoutManager.swift
+      - Paper/Editor/SpellCheckFilter.swift
+      - Paper/Editor/TableLayout.swift
+      - Paper/Editor/TrackedRanges.swift
+      - Paper/Export/PrintStyle.swift
+    dependencies:
+      - package: SwiftMath
+    configFiles:
+      Debug: PaperMobile/Signing.xcconfig
+      Release: PaperMobile/Signing.xcconfig
+    info:
+      path: PaperMobile/Info.plist
+      properties:
+        CFBundleDisplayName: Paper
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleName: Paper
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown document
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+              - public.plain-text
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeDescription: Markdown document
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - md
+                - markdown
+              public.mime-type:
+                - text/markdown
+        # The document browser is the app's home screen, and files open in
+        # place in their provider rather than being copied in.
+        UISupportsDocumentBrowser: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # Documents/ holds the config file; the Files app shows it under
+        # On My iPhone ▸ Paper so it can be edited like the Mac's.
+        UIFileSharingEnabled: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: PaperMobile/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: org.humanitas.paper.ios
+        PRODUCT_NAME: Paper
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: false
+
+  PaperMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: PaperMobileTests
+    dependencies:
+      - target: PaperMobile
+    configFiles:
+      Debug: PaperMobile/Signing.xcconfig
+      Release: PaperMobile/Signing.xcconfig
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: org.humanitas.paper.ios.tests
+        # The app's product is `Paper.app`, not the target's name.
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Paper.app/Paper
+        BUNDLE_LOADER: $(TEST_HOST)
+
   PaperTests:
     type: bundle.unit-test
     platform: macOS
@@ -116,4 +225,20 @@ schemes:
       gatherCoverageData: true
       targets:
         - PaperTests
+  PaperMobile:
+    build:
+      targets:
+        PaperMobile: all
+        PaperMobileTests:
+          - test
+    run:
+      config: Debug
+    test:
+      config: Debug
+      environmentVariables:
+        - variable: PAPER_PROBE_DIR
+          value: $(PAPER_PROBE_DIR)
+          isEnabled: true
+      targets:
+        - PaperMobileTests
 

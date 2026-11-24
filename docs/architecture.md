@@ -1,6 +1,6 @@
 # Paper — Architecture
 
-Last updated: `2026.11.10`
+Last updated: `2026.11.23`
 
 > Paper is a native macOS editor for ordinary UTF-8 Markdown files. The file is the only persistent document state. Rendering, configuration, and window state remain outside it.
 
@@ -21,6 +21,8 @@ Last updated: `2026.11.10`
 | `Outline`, `OutlineModel`, `OutlineColumn` | List the headings beside the page, follow the scroll, and jump on click |
 
 SwiftUI owns application composition. AppKit and TextKit 1 own the writing surface. The boundary between them is `MarkdownEditor`, an `NSViewRepresentable` that synchronizes plain text and the document URL.
+
+An iOS target, `PaperMobile`, compiles the same engine (the styler, the layout manager, tables, math, images, appearance, configuration, and the document) with its own surface; see section 3 and [ADR-006](decisions/006-ios-target.md).
 
 ## 2. Editor pipeline
 
@@ -50,7 +52,27 @@ A pipe table keeps one source paragraph per row. `MarkdownTable` reads the rows 
 
 An export draws in a `PrintStyle`. The style's config keys are laid over the configuration through `Appearance.withConfiguration`, a scoped stand-in for the store's configuration and palette, so the styler and the drawing see the style's fonts, sizes, and colors while open windows see nothing (no notification is posted). The style's page keys go on the surface as `printPage`; every full styler pass on a print surface ends with `PrintStyle.Page.apply`, which classifies each line from the styler's own attributes (prose, blank, heading, other block) and sets alignment, hyphenation, first-line indents, closed-up blank lines, and heading alignment, tracking, and capitals (as glyph substitutes, so the text is untouched). Running inside the styler matters: the surface restyles itself during printing, and a pass laid on afterwards was lost. Page numbers are drawn in `drawPageBorder(with:)` in the sheet's base coordinates. Built-in styles are compiled in; files in `styles/` beside the config are read when an export asks.
 
-## 3. Invariants and configuration
+## 3. iOS
+
+`PaperMobile` lists the shared files it compiles in `project.yml`. `Paper/Platform/Platform.swift` maps AppKit's names onto UIKit's on iOS and defines `StyledSurface`, the protocol through which the styler and `PrintStyle.Page.apply` reach a text view. On the Mac `NSTextView` conforms; on iOS `MobileTextView` does.
+
+```text
+Markdown file (any Files provider)
+    ↕
+MarkdownDocument                    shared
+    ↕ SwiftUI DocumentGroup
+MobileEditor (UIViewRepresentable)
+    ↕
+MobileTextView (UITextView, TextKit 1) + DecorationView
+    ↕
+MarkdownSyntaxStyler + PaperLayoutManager + TableLayout + MathStore + ImageStore    shared
+```
+
+`MobileTextView` is built with `init(frame:textContainer:)` over a `PaperLayoutManager`, which keeps it on TextKit 1; nothing may read its `textLayoutManager`. `DecorationView` sits behind the text and draws what `PaperTextView.drawBackground(in:)` draws on the Mac. It covers the viewport and a screen above and below, and redraws only when the viewport leaves that band or the layout changes. On a compact width the side margin is 20 pt and the top margin 28 pt.
+
+The iOS config is `config` in the app's Documents folder, shown in the Files app under On My iPhone ▸ Paper, with `presets/` and `themes/` beside it.
+
+## 4. Invariants and configuration
 
 - Saving must preserve the Markdown source exactly.
 - Styling, concealment, substitution, and image rendering must not mutate the source string.
@@ -61,7 +83,7 @@ An export draws in a `PrintStyle`. The style's config keys are laid over the con
 
 `ConfigurationStore` reads `key = value` settings from `$XDG_CONFIG_HOME/paper/config` or `~/.config/paper/config`. It preserves comments and unknown keys when writing, watches in-place and atomic saves, and posts a notification when effective values change. Presets use the same format in the adjacent `presets/` directory.
 
-## 4. Decisions
+## 5. Decisions
 
 | ID | Decision | Status |
 |---|---|---|
@@ -70,3 +92,4 @@ An export draws in a `PrintStyle`. The style's config keys are laid over the con
 | [ADR-003](decisions/003-markdown-resource-resolution.md) | File-relative Markdown resource resolution | Accepted |
 | [ADR-004](decisions/004-zero-advance-control-glyphs.md) | Zero-advance control glyphs for concealed syntax | Accepted |
 | [ADR-005](decisions/005-swiftmath-typesetting.md) | SwiftMath for LaTeX typesetting | Accepted |
+| [ADR-006](decisions/006-ios-target.md) | An iOS target sharing the Mac's engine | Accepted |

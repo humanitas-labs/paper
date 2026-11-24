@@ -25,6 +25,26 @@ xcodebuild -project Paper.xcodeproj -scheme Paper \
 
 Outputs are written into that directory. `PAPER_PROBE_DOC=/absolute/path/to/file.md` alongside it exports that document as `pdf-probe-doc.pdf` with a PNG per page. The `render-readme.png` probe renders a built-in demo, not the current README screenshot. The published screenshot is `docs/assets/paper.png`, with an identical copy at `landing/paper.png`; keep both copies in sync when replacing it.
 
+## iOS
+
+`PaperMobile` is Paper for iPhone and iPad, built for installing directly on a device rather than for release. It shares the Mac's engine; see [ADR-006](decisions/006-ios-target.md).
+
+```bash
+xcodegen generate
+xcodebuild -project Paper.xcodeproj -scheme PaperMobile \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+```
+
+`TEST_RUNNER_PAPER_PROBE_DIR=/absolute/path` on the test command writes screen-by-screen renders of `PaperMobileTests/Fixtures/fixture.md`, light and dark, and the load and scroll timings of a 100 KB document.
+
+To install on a device, put your team in `Local.xcconfig` at the repository root (git ignores it):
+
+```text
+DEVELOPMENT_TEAM = <team ID>
+```
+
+Sign in to that team's Apple account under Xcode ▸ Settings ▸ Accounts, connect the device by cable the first time, trust the Mac, and turn on Developer Mode under Settings ▸ Privacy & Security. Then `scripts/install-ios.sh` builds, installs, and launches the app; later runs work over the network.
+
 ## Release
 
 Pushing a tag `vX.Y.Z` runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds a universal Release, signs it with the Developer ID, notarizes and staples the app and the DMG through `scripts/make-dmg.sh`, and publishes a GitHub release named `Paper X.Y.Z` with the notes taken from that version's section of `CHANGELOG.md`. The DMG is attached twice: as `Paper-X.Y.Z.dmg` and as `Paper.dmg`, the name the landing page's Download button fetches from `releases/latest/download/`.
