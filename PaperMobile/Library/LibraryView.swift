@@ -58,9 +58,12 @@ struct FolderView: View {
     /// opens and after changes, so search runs in memory as you type.
     @State private var searchIndex: FolderListing.SearchIndex?
     @Environment(\.scenePhase) private var scenePhase
-    /// Notes picked with a long press; while any are picked, taps pick
-    /// rather than open and the toast replaces the bottom bar.
+    /// Notes and folders picked while selecting.
     @State private var selection: Set<URL> = []
+    /// Select mode, as in Files: a hold on a card or on empty space starts
+    /// it, taps then pick rather than open, the toast replaces the bottom
+    /// bar, and only the check ends it, even with nothing picked.
+    @State private var selecting = false
     @State private var movingSelection = false
     @State private var confirmingDelete = false
     @State private var namingFolder = false
@@ -69,14 +72,10 @@ struct FolderView: View {
     @State private var renameText = ""
     /// The bottom capsule opens into a search field.
     @State private var searchOpen = false
-    /// A hold on empty space offers what can be made there, in a toast.
-    @State private var creating = false
     @FocusState private var searchFocused: Bool
     /// The scroll view's height, so empty space below the grid still takes
     /// the long press that makes a folder.
     @State private var viewport: CGFloat = 0
-
-    private var selecting: Bool { !selection.isEmpty }
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -104,15 +103,13 @@ struct FolderView: View {
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, minHeight: viewport, alignment: .top)
             .contentShape(Rectangle())
-            // A hold on empty space offers to make things; a tap there puts
-            // the offer away. Cards take their own touches first.
-            .onTapGesture {
-                if creating { withAnimation(Self.selectionSpring) { creating = false } }
-            }
+            // A hold on empty space starts selecting with nothing picked,
+            // where a folder can still be made. Cards take their own
+            // touches first.
             .onLongPressGesture(minimumDuration: 0.3) {
                 guard !selecting else { return }
                 Haptics.press()
-                withAnimation(Self.selectionSpring) { creating = true }
+                withAnimation(Self.selectionSpring) { selecting = true }
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
@@ -172,24 +169,13 @@ struct FolderView: View {
             if selecting {
                 SelectionToast(
                     count: selection.count,
+                    newFolder: { folderName = ""; namingFolder = true },
                     move: { movingSelection = true },
                     rename: renameAction,
                     delete: { confirmingDelete = true }
                 )
                 // As in Spatial: the bar drops out of the way, then the
                 // toast rises; leaving, the toast drops first.
-                .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .opacity)
-                        .animation(Self.selectionSpring.delay(0.12)),
-                    removal: .move(edge: .bottom).combined(with: .opacity)
-                        .animation(Self.selectionSpring)
-                ))
-            } else if creating {
-                CreateToast(newFolder: {
-                    withAnimation(Self.selectionSpring) { creating = false }
-                    folderName = ""
-                    namingFolder = true
-                })
                 .transition(.asymmetric(
                     insertion: .move(edge: .bottom).combined(with: .opacity)
                         .animation(Self.selectionSpring.delay(0.12)),
@@ -224,7 +210,7 @@ struct FolderView: View {
 
     /// Ends picking: the system's checkmark in the bar's glass circle.
     private var doneButton: some View {
-        Button("Done", systemImage: "checkmark") { changeSelection { $0.removeAll() } }
+        Button("Done", systemImage: "checkmark", action: endSelecting)
             .labelStyle(.iconOnly)
     }
 
@@ -259,9 +245,9 @@ struct FolderView: View {
             }
     }
 
-    /// "3 Selected": the grid already shows what the folder holds.
+    /// "3 Selected", or "Select Items" with nothing picked, as in Files.
     private var selectionTitle: some View {
-        Text("\(selection.count) Selected")
+        Text(selection.isEmpty ? "Select Items" : "\(selection.count) Selected")
             .font(.system(size: 16, weight: .semibold))
     }
 
@@ -397,7 +383,15 @@ struct FolderView: View {
     private func changeSelection(_ change: (inout Set<URL>) -> Void) {
         withAnimation(Self.selectionSpring) {
             change(&selection)
-            if !selection.isEmpty { creating = false }
+            if !selection.isEmpty { selecting = true }
+        }
+    }
+
+    /// The check: drop what is picked and leave select mode.
+    private func endSelecting() {
+        withAnimation(Self.selectionSpring) {
+            selection.removeAll()
+            selecting = false
         }
     }
 
@@ -405,7 +399,7 @@ struct FolderView: View {
         for url in selection {
             try? NoteFile.move(url, into: destination)
         }
-        changeSelection { $0.removeAll() }
+        endSelecting()
         Task { await reload() }
     }
 
@@ -413,7 +407,7 @@ struct FolderView: View {
         for url in selection {
             try? NoteFile.delete(url)
         }
-        changeSelection { $0.removeAll() }
+        endSelecting()
         Task { await reload() }
     }
 
@@ -446,7 +440,7 @@ struct FolderView: View {
         let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
         guard !name.isEmpty, !name.hasPrefix(".") else { return }
         try? NoteFile.rename(url, to: name, isFolder: selectedFolders.contains(url))
-        changeSelection { $0.removeAll() }
+        endSelecting()
         Task { await reload() }
     }
 
@@ -649,12 +643,14 @@ enum NoteMiniature {
     }
 }
 
-/// The toast while notes are picked, after Spatial's: a dark capsule with
-/// a folder to move them and a bin to delete them.
+/// The toast while selecting, after Spatial's: a dark capsule with a new
+/// folder always, and, once something is picked, a folder to move it, a
+/// pencil to rename it (one item only) and a bin to delete it.
 private struct SelectionToast: View {
     /// Spatial's corners: rounded, not a full capsule.
     static let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
     let count: Int
+    let newFolder: () -> Void
     let move: () -> Void
     /// Offered when one item is picked.
     let rename: (() -> Void)?
@@ -662,9 +658,18 @@ private struct SelectionToast: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            button(FolderGlyph(), label: "Move", action: move)
-            if let rename { button(PencilGlyph(), label: "Rename", action: rename) }
-            button(TrashGlyph(), label: "Delete", action: delete)
+            Button(action: newFolder) {
+                FolderPlusGlyph()
+                    .frame(width: 56, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New Folder")
+            if count > 0 {
+                button(FolderGlyph(), label: "Move", action: move)
+                if let rename { button(PencilGlyph(), label: "Rename", action: rename) }
+                button(TrashGlyph(), label: "Delete", action: delete)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -901,31 +906,6 @@ private struct LibraryBar: View {
             query = ""
             searchOpen = false
         }
-    }
-}
-
-/// The toast a hold on empty space brings up: what can be made here.
-private struct CreateToast: View {
-    let newFolder: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Button(action: newFolder) {
-                FolderPlusGlyph()
-                    .frame(width: 56, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("New Folder")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background {
-            SelectionToast.shape
-                .fill(ToastPalette.fill)
-                .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
-        }
-        .overlay(SelectionToast.shape.strokeBorder(ToastPalette.border, lineWidth: 1))
     }
 }
 
