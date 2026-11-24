@@ -112,7 +112,7 @@ struct FolderView: View {
             if selecting {
                 ToolbarItem(placement: .principal) { selectionTitle }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Done", systemImage: "checkmark") { selection.removeAll() }
+                    Button("Done", systemImage: "checkmark") { changeSelection { $0.removeAll() } }
                         .labelStyle(.iconOnly)
                 }
             } else {
@@ -126,10 +126,16 @@ struct FolderView: View {
             if selecting {
                 SelectionToast(count: selection.count, move: { movingSelection = true }, delete: { confirmingDelete = true })
                     .padding(.bottom, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // As in Spatial: the search bar drops out of the way,
+                    // then the toast rises; leaving, the toast drops first.
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity)
+                            .animation(Self.selectionSpring.delay(0.12)),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                            .animation(Self.selectionSpring)
+                    ))
             }
         }
-        .animation(.spring(duration: 0.3), value: selecting)
         .sheet(isPresented: $movingSelection) {
             MoveSheet(root: root.url, current: folder, isDefaultRoot: root.isDefault) { destination in
                 moveSelection(to: destination)
@@ -257,7 +263,7 @@ struct FolderView: View {
                     }
                     .onLongPressGesture(minimumDuration: 0.4) {
                         Haptics.press()
-                        selection.insert(item.url)
+                        changeSelection { $0.insert(item.url) }
                     }
                     .accessibilityAddTraits(.isButton)
             }
@@ -306,14 +312,24 @@ struct FolderView: View {
     }
 
     private func toggle(_ url: URL) {
-        if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
+        changeSelection { picked in
+            if picked.contains(url) { picked.remove(url) } else { picked.insert(url) }
+        }
+    }
+
+    static let selectionSpring = Animation.spring(duration: 0.35, bounce: 0.15)
+
+    /// Every change to the picked notes animates, so the bottom bar slides
+    /// away and back rather than vanishing.
+    private func changeSelection(_ change: (inout Set<URL>) -> Void) {
+        withAnimation(Self.selectionSpring) { change(&selection) }
     }
 
     private func moveSelection(to destination: URL) {
         for url in selection {
             try? NoteFile.move(url, into: destination)
         }
-        selection.removeAll()
+        changeSelection { $0.removeAll() }
         Task { await reload(); if searching { await search() } }
     }
 
@@ -321,7 +337,7 @@ struct FolderView: View {
         for url in selection {
             try? NoteFile.delete(url)
         }
-        selection.removeAll()
+        changeSelection { $0.removeAll() }
         Task { await reload(); if searching { await search() } }
     }
 
