@@ -17,6 +17,18 @@ struct LibraryView: View {
     /// Where each card on screen is, in the window, to tell what a right
     /// click landed on.
     @State private var cardFrames: [URL: CGRect] = [:]
+    /// The cards picked, by dragging a rectangle across them or by
+    /// ⌘-clicking. While any are picked a click picks rather than opens,
+    /// and the toast at the foot of the window acts on them.
+    @State private var selection: Set<URL> = []
+    /// The rectangle being dragged, in the window's content.
+    @State private var marquee: CGRect?
+    /// What was picked when the drag began, kept when ⌘ is held.
+    @State private var marqueeBase: Set<URL> = []
+    /// A drag that ends over a card must not also click it.
+    @State private var dragEnded = Date.distantPast
+    @State private var renaming = false
+    @State private var renameText = ""
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
     private let scrolls: Bool
 
@@ -45,13 +57,42 @@ struct LibraryView: View {
                 }
             }
         }
-        .background(LibraryPalette.background.ignoresSafeArea())
+        // A click on empty space lets go of what is picked; cards take
+        // their own clicks first.
+        .background {
+            LibraryPalette.background.ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { deselect() }
+        }
+        // A drag anywhere below the toolbar draws the rubber band.
+        .contentShape(Rectangle())
+        .simultaneousGesture(marqueeGesture)
+        .overlay(MarqueeLayer(rect: marquee))
+        .overlay(alignment: .bottom) {
+            if !selection.isEmpty {
+                LibrarySelectionToast(
+                    count: selection.count, move: moveSelection,
+                    rename: selection.count == 1 ? { beginRename() } : nil,
+                    trash: trashSelection, done: deselect
+                )
+                .padding(.bottom, 22)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(LibraryMotion.selectionSpring, value: selection.isEmpty)
+        .alert("Rename", isPresented: $renaming) {
+            TextField("Name", text: $renameText)
+            Button("Rename", action: renameSelection)
+            Button("Cancel", role: .cancel) {}
+        }
         .overlay(LibraryMenuLayer(request: $menu))
         .onReceive(navigation.secondaryClicks) { secondaryClick(at: $0) }
         // Spatial's style of pointer over the whole library.
         .pointerStyle(LibraryPointer.style)
         .background(keyCommands)
         .task(id: folder) {
+            selection.removeAll()
+            cardFrames.removeAll()
             await reload()
             watch()
         }
@@ -75,9 +116,9 @@ struct LibraryView: View {
         if !listing.folders.isEmpty {
             LazyVGrid(columns: folderColumns, alignment: .leading, spacing: 18) {
                 ForEach(listing.folders) { item in
-                    FolderCard(folder: item)
+                    FolderCard(folder: item, selected: selection.contains(item.url))
                         .background(FolderCard.shadow)
-                        .modifier(CardClick { go(to: item.url) })
+                        .modifier(CardClick { click(item.url) { go(to: item.url) } })
                         .modifier(CardFrame(url: item.url, frames: $cardFrames))
                         .transition(LibraryMotion.itemTransition)
                 }
@@ -86,9 +127,9 @@ struct LibraryView: View {
         if !listing.notes.isEmpty {
             LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
                 ForEach(listing.notes) { item in
-                    LibraryNoteTile(note: item)
+                    LibraryNoteTile(note: item, selected: selection.contains(item.url))
                         .modifier(CardShadow())
-                        .modifier(CardClick { openNote(item.url) })
+                        .modifier(CardClick { click(item.url) { openNote(item.url) } })
                         .modifier(CardFrame(url: item.url, frames: $cardFrames))
                         .transition(LibraryMotion.itemTransition)
                 }
@@ -100,6 +141,94 @@ struct LibraryView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 120)
         }
+    }
+
+    // MARK: Selection
+
+    /// A click opens a card, as in Spatial. While cards are picked, or
+    /// with ⌘ held, it picks or lets go of the card instead.
+    private func click(_ url: URL, open: () -> Void) {
+        guard Date().timeIntervalSince(dragEnded) > 0.15 else { return }
+        if !selection.isEmpty || NSEvent.modifierFlags.contains(.command) {
+            if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
+        } else {
+            open()
+        }
+    }
+
+    /// The rubber band: every card it touches is picked, on top of what
+    /// was picked before when ⌘ is held.
+    private var marqueeGesture: some Gesture {
+        DragGesture(minimumDistance: 5, coordinateSpace: .global)
+            .onChanged { value in
+                guard menu == nil else { return }
+                if marquee == nil {
+                    marqueeBase = NSEvent.modifierFlags.contains(.command) ? selection : []
+                }
+                let rect = CGRect(
+                    x: min(value.startLocation.x, value.location.x), y: min(value.startLocation.y, value.location.y),
+                    width: abs(value.location.x - value.startLocation.x), height: abs(value.location.y - value.startLocation.y)
+                )
+                marquee = rect
+                let touched = cardFrames.filter { $0.value.intersects(rect) }.map(\.key)
+                selection = marqueeBase.union(touched)
+            }
+            .onEnded { _ in
+                guard marquee != nil else { return }
+                marquee = nil
+                dragEnded = Date()
+            }
+    }
+
+    private func deselect() { selection.removeAll() }
+
+    private func selectAll() {
+        selection = Set(listing.folders.map(\.url) + listing.notes.map(\.url))
+    }
+
+    /// To the Trash, recoverable; the folder watcher takes the cards away.
+    private func trashSelection() {
+        guard !selection.isEmpty else { return }
+        NSWorkspace.shared.recycle(Array(selection)) { _, _ in }
+        deselect()
+    }
+
+    /// Asks where, in a folder panel that opens on the folder shown and
+    /// can make a new folder, then moves what is picked there.
+    private func moveSelection() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = folder
+        panel.prompt = "Move"
+        panel.message = selection.count == 1 ? "Move this item to:" : "Move \(selection.count) items to:"
+        guard panel.runModal() == .OK, let destination = panel.url?.standardizedFileURL else { return }
+        for url in selection {
+            // A folder cannot go into itself or below itself.
+            let path = url.standardizedFileURL.path
+            guard destination.path != path, !destination.path.hasPrefix(path + "/") else { continue }
+            try? NoteFile.move(url, into: destination)
+        }
+        deselect()
+        Task { await reload() }
+    }
+
+    private func beginRename() {
+        guard let url = selection.first else { return }
+        let isFolder = listing.folders.contains { $0.url == url }
+        renameText = isFolder ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
+        renaming = true
+    }
+
+    private func renameSelection() {
+        guard let url = selection.first else { return }
+        let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
+        guard !name.isEmpty, !name.hasPrefix(".") else { return }
+        let isFolder = listing.folders.contains { $0.url == url }
+        _ = try? NoteFile.rename(url, to: name, isFolder: isFolder)
+        deselect()
+        Task { await reload() }
     }
 
     // MARK: Menu
@@ -178,6 +307,12 @@ struct LibraryView: View {
                 .keyboardShortcut("[", modifiers: .command)
             Button("Forward") { goForward() }
                 .keyboardShortcut("]", modifiers: .command)
+            Button("Select All") { selectAll() }
+                .keyboardShortcut("a", modifiers: .command)
+            Button("Deselect") { deselect() }
+                .keyboardShortcut(.escape, modifiers: [])
+            Button("Move to Trash") { trashSelection() }
+                .keyboardShortcut(.delete, modifiers: .command)
         }
         .opacity(0)
         .allowsHitTesting(false)
@@ -235,11 +370,13 @@ struct LibraryView: View {
 /// again whenever the note or the appearance changes.
 private struct LibraryNoteTile: View {
     let note: FolderListing.Note
+    let selected: Bool
     @Environment(\.colorScheme) private var colorScheme
     @State private var miniature: NSImage?
 
-    init(note: FolderListing.Note) {
+    init(note: FolderListing.Note, selected: Bool) {
         self.note = note
+        self.selected = selected
     }
 
     /// A miniature already drawn shows from the first frame.
@@ -248,7 +385,7 @@ private struct LibraryNoteTile: View {
     }
 
     var body: some View {
-        NoteCard(note: note, miniature: shown.map { Image(nsImage: $0) })
+        NoteCard(note: note, selected: selected, miniature: shown.map { Image(nsImage: $0) })
             .task(id: NoteMiniature.key(for: note.url, modified: note.modified, dark: colorScheme == .dark)) {
                 let key = NoteMiniature.key(for: note.url, modified: note.modified, dark: colorScheme == .dark)
                 if let cached = NoteMiniature.cached(key) {

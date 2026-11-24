@@ -31,6 +31,9 @@ enum LibraryWindow {
         window.contentView = NSHostingView(rootView: LibraryView(navigation: navigation))
         window.isReleasedWhenClosed = false
         window.applyPaperChrome(minSize: NSSize(width: 520, height: 420))
+        // A drag on the grid draws the selection rectangle; only the
+        // toolbar moves the window.
+        window.isMovableByWindowBackground = false
         // Finder's back and forward, then the folder's name, in the bar.
         toolbars[folder] = LibraryToolbar(navigation: navigation, window: window)
         window.tabbingMode = .disallowed
