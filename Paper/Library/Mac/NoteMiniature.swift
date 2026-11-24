@@ -13,9 +13,9 @@ enum NoteMiniature {
     static let pageWidth: CGFloat = 460
     /// Only the head of a long note can show.
     static let characterLimit = 2400
-    /// The page's margins inside the card, a little more generous than
-    /// the editor's narrowest, so the miniature breathes.
-    static let margins = NSSize(width: 44, height: 52)
+    /// The page's margins inside the card: enough to breathe, little
+    /// enough that the text fills the card.
+    static let margins = NSSize(width: 32, height: 38)
     /// Enough miniatures for a few full folders; the oldest go first.
     static let cacheLimit = 400
 
