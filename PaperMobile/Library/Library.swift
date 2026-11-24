@@ -96,6 +96,33 @@ struct FolderListing: Sendable {
         return listing
     }
 
+    /// Notes under `folder`, at any depth, whose title, file name or text
+    /// contains `query`, newest first.
+    static func search(_ query: String, under folder: URL, isDefaultRoot: Bool) -> [Note] {
+        let needle = query.trimmingCharacters(in: .whitespaces)
+        guard !needle.isEmpty else { return [] }
+        let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
+        guard let walker = FileManager.default.enumerator(
+            at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return [] }
+        var found: [Note] = []
+        for case let entry as URL in walker {
+            if isDefaultRoot, walker.level == 1, hiddenAtDefaultRoot.contains(entry.lastPathComponent) {
+                walker.skipDescendants()
+                continue
+            }
+            guard noteExtensions.contains(entry.pathExtension.lowercased()) else { continue }
+            let title = title(of: entry)
+            let matches = title.localizedStandardContains(needle)
+                || entry.lastPathComponent.localizedStandardContains(needle)
+                || ((try? String(contentsOf: entry, encoding: .utf8))?.localizedStandardContains(needle) ?? false)
+            guard matches else { continue }
+            let modified = (try? entry.resourceValues(forKeys: Set(keys)))?.contentModificationDate ?? .distantPast
+            found.append(Note(url: entry, title: title, modified: modified))
+        }
+        return found.sorted { $0.modified > $1.modified }
+    }
+
     /// Notes and folders directly inside `folder`.
     private static func itemCount(in folder: URL) -> Int {
         let entries = (try? FileManager.default.contentsOfDirectory(

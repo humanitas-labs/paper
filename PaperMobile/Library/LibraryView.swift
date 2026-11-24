@@ -49,13 +49,83 @@ struct FolderView: View {
     @ObservedObject private var root = LibraryRoot.shared
     @State private var listing = FolderListing()
     @State private var choosingRoot = false
+    @State private var query = ""
+    /// Notes under this folder matching `query`; nil until a search ran.
+    @State private var results: [FolderListing.Note]?
     @Environment(\.scenePhase) private var scenePhase
+
+    private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 16)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
+                if searching {
+                    searchResults
+                } else {
+                    contents
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 32)
+        }
+        .background(LibraryPalette.background.ignoresSafeArea())
+        // The root has no title; a folder is named in the bar.
+        .navigationTitle(isRoot ? "" : folder.lastPathComponent)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if isRoot {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Choose Root Folder…", systemImage: "folder") { choosingRoot = true }
+                        if !root.isDefault {
+                            Button("Use Paper's Folder", systemImage: "arrow.uturn.backward") { root.reset() }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                }
+            }
+        }
+        .modifier(SearchAndCompose(query: $query, compose: newNote))
+        .fileImporter(isPresented: $choosingRoot, allowedContentTypes: [.folder]) { result in
+            if case .success(let url) = result { root.choose(url) }
+        }
+        .task(id: folder) { await reload() }
+        .task(id: query) { await search() }
+        .refreshable { await reload() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await reload() } }
+        }
+        .onAppear { Task { await reload() } }
+    }
+
+    @ViewBuilder private var searchResults: some View {
+        if let results, results.isEmpty {
+            Text("No notes match “\(query)”.")
+                .foregroundStyle(LibraryPalette.secondaryLabel)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 80)
+        } else if let results {
+            noteGrid(results)
+        }
+    }
+
+    private func noteGrid(_ notes: [FolderListing.Note]) -> some View {
+        LazyVGrid(columns: columns, spacing: 16) {
+            ForEach(notes) { item in
+                NavigationLink(value: LibraryRoute.note(item.url)) {
+                    NoteCard(note: item).matchedTransitionSource(id: item.url, in: cards) { source in
+                        source.clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder private var contents: some View {
                 if !listing.folders.isEmpty {
                     LazyVGrid(columns: columns, spacing: 16) {
                         ForEach(listing.folders) { item in
@@ -67,16 +137,7 @@ struct FolderView: View {
                     }
                 }
                 if !listing.notes.isEmpty {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(listing.notes) { item in
-                            NavigationLink(value: LibraryRoute.note(item.url)) {
-                                NoteCard(note: item).matchedTransitionSource(id: item.url, in: cards) { source in
-                                    source.clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                }
-                            }
-                                .buttonStyle(.plain)
-                        }
-                    }
+                    noteGrid(listing.notes)
                 }
                 if listing.folders.isEmpty, listing.notes.isEmpty {
                     Text("No notes here yet.")
@@ -84,45 +145,25 @@ struct FolderView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 80)
                 }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 32)
-        }
-        .background(LibraryPalette.background.ignoresSafeArea())
-        // The root has no title; a folder is named in the bar.
-        .navigationTitle(isRoot ? "" : folder.lastPathComponent)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("New Note", systemImage: "square.and.pencil", action: newNote)
-                    if isRoot {
-                        Divider()
-                        Button("Choose Root Folder…", systemImage: "folder") { choosingRoot = true }
-                        if !root.isDefault {
-                            Button("Use Paper's Folder", systemImage: "arrow.uturn.backward") { root.reset() }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-            }
-        }
-        .fileImporter(isPresented: $choosingRoot, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result { root.choose(url) }
-        }
-        .task(id: folder) { await reload() }
-        .refreshable { await reload() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await reload() } }
-        }
-        .onAppear { Task { await reload() } }
     }
 
     private func reload() async {
         let folder = folder
         let isDefault = isRoot && root.isDefault
         listing = await Task.detached { FolderListing.load(folder, isDefaultRoot: isDefault) }.value
+    }
+
+    /// Waits for typing to pause, then searches this folder and everything
+    /// under it.
+    private func search() async {
+        guard searching else { results = nil; return }
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled else { return }
+        let folder = folder, query = query
+        let isDefault = isRoot && root.isDefault
+        let found = await Task.detached { FolderListing.search(query, under: folder, isDefaultRoot: isDefault) }.value
+        guard !Task.isCancelled else { return }
+        results = found
     }
 
     /// An empty `Untitled.md` (numbered when taken), opened at once.
@@ -222,5 +263,35 @@ struct NoteCard: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .accessibilityElement(children: .combine)
+    }
+}
+
+/// Search and a new note at the bottom of the screen, as in Notes: on
+/// iOS 26 the search field and the compose button share the bottom bar;
+/// earlier systems keep search at the top and compose in the bar.
+private struct SearchAndCompose: ViewModifier {
+    @Binding var query: String
+    let compose: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .searchable(text: $query, prompt: "Search")
+                .toolbar {
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("New Note", systemImage: "square.and.pencil", action: compose)
+                    }
+                }
+        } else {
+            content
+                .searchable(text: $query, prompt: "Search")
+                .toolbar {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button("New Note", systemImage: "square.and.pencil", action: compose)
+                    }
+                }
+        }
     }
 }

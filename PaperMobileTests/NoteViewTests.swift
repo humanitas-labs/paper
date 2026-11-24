@@ -65,3 +65,18 @@ struct NewNoteTests {
         #expect(try String(contentsOf: url, encoding: .utf8) == "")
     }
 }
+
+struct LibrarySearchTests {
+    @Test func searchFindsNotesByTitleAndTextInSubfolders() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let nested = root.appendingPathComponent("journal")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "# Grocery list\n\n- milk\n".write(to: root.appendingPathComponent("a.md"), atomically: true, encoding: .utf8)
+        try "# Monday\n\nBought milk on the way home.\n".write(to: nested.appendingPathComponent("b.md"), atomically: true, encoding: .utf8)
+        try "# Other\n\nNothing here.\n".write(to: nested.appendingPathComponent("c.md"), atomically: true, encoding: .utf8)
+        #expect(Set(FolderListing.search("MILK", under: root, isDefaultRoot: false).map(\.title)) == ["Grocery list", "Monday"])
+        #expect(FolderListing.search("grocery", under: root, isDefaultRoot: false).map(\.title) == ["Grocery list"])
+        #expect(FolderListing.search("absent", under: root, isDefaultRoot: false).isEmpty)
+    }
+}
