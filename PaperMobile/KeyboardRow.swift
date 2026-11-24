@@ -5,7 +5,12 @@ import UIKit
 /// capsule, as the system's own editors do, with clear space around it.
 final class KeyboardRow: UIView {
     private weak var textView: MobileTextView?
+    private let scroller = UIScrollView()
+    private var buttonWidths: [NSLayoutConstraint] = []
     static let barHeight: CGFloat = 48
+    /// As in the system's own bars, the row scrolls rather than squeezing:
+    /// five buttons show, and a sixth is cut at the edge to say there is more.
+    static let visibleButtons: CGFloat = 5.5
     static let inset: CGFloat = 10
 
     init(textView: MobileTextView) {
@@ -32,12 +37,21 @@ final class KeyboardRow: UIView {
             return button
         })
         stack.axis = .horizontal
-        stack.distribution = .fillEqually
+        stack.distribution = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
+        buttonWidths = stack.arrangedSubviews.map { $0.widthAnchor.constraint(equalToConstant: 64) }
+
+        scroller.showsHorizontalScrollIndicator = false
+        scroller.alwaysBounceHorizontal = true
+        scroller.translatesAutoresizingMaskIntoConstraints = false
+        scroller.layer.cornerRadius = Self.barHeight / 2
+        scroller.layer.cornerCurve = .continuous
+        scroller.clipsToBounds = true
+        scroller.addSubview(stack)
 
         let capsule = Self.capsule()
         capsule.translatesAutoresizingMaskIntoConstraints = false
-        capsule.contentView.addSubview(stack)
+        capsule.contentView.addSubview(scroller)
         addSubview(capsule)
         NSLayoutConstraint.activate([
             capsule.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: Self.inset),
@@ -45,11 +59,16 @@ final class KeyboardRow: UIView {
             capsule.topAnchor.constraint(equalTo: topAnchor),
             capsule.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.inset),
             capsule.heightAnchor.constraint(equalToConstant: Self.barHeight),
-            stack.leadingAnchor.constraint(equalTo: capsule.contentView.leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: capsule.contentView.trailingAnchor, constant: -6),
-            stack.topAnchor.constraint(equalTo: capsule.contentView.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: capsule.contentView.bottomAnchor),
-        ])
+            scroller.leadingAnchor.constraint(equalTo: capsule.contentView.leadingAnchor),
+            scroller.trailingAnchor.constraint(equalTo: capsule.contentView.trailingAnchor),
+            scroller.topAnchor.constraint(equalTo: capsule.contentView.topAnchor),
+            scroller.bottomAnchor.constraint(equalTo: capsule.contentView.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: scroller.contentLayoutGuide.leadingAnchor, constant: 6),
+            stack.trailingAnchor.constraint(equalTo: scroller.contentLayoutGuide.trailingAnchor, constant: -6),
+            stack.topAnchor.constraint(equalTo: scroller.contentLayoutGuide.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: scroller.contentLayoutGuide.bottomAnchor),
+            stack.heightAnchor.constraint(equalTo: scroller.frameLayoutGuide.heightAnchor),
+        ] + buttonWidths)
         tintColor = .label
         // Text scrolling beneath the bar fades under it, as under the
         // navigation bar at the top.
@@ -75,6 +94,15 @@ final class KeyboardRow: UIView {
         view.layer.cornerCurve = .continuous
         view.clipsToBounds = true
         return view
+    }
+
+    /// Each button takes the share of the bar that leaves five and a half
+    /// in view, whatever the phone's width.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = ((scroller.bounds.width - 6) / Self.visibleButtons).rounded(.down)
+        guard width > 0, buttonWidths.first?.constant != width else { return }
+        buttonWidths.forEach { $0.constant = width }
     }
 
     override var intrinsicContentSize: CGSize {

@@ -143,7 +143,6 @@ struct FolderView: View {
 /// counterparts so the grid follows the page's theme.
 enum LibraryPalette {
     static let background = dynamic(dark: 0x0C0D0D, light: 0xFBFBFA)
-    static let card = dynamic(dark: 0x111212, light: 0xF4F4F3)
     static let border = dynamic(dark: 0x1F2020, light: 0xE2E2E0)
     static let secondaryLabel = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(hex: 0x959EAC) : UIColor(hex: 0x6B7280)
@@ -200,13 +199,16 @@ struct FolderCard: View {
     }
 }
 
-/// Marina's spatial note card: a quiet panel with the note's title.
+/// Marina's spatial note card: a panel in the page's color with the note's
+/// title.
 struct NoteCard: View {
     let note: FolderListing.Note
 
     var body: some View {
+        // The note page's own canvas, so the card is the page it grows
+        // into and follows the theme.
         RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(LibraryPalette.card)
+            .fill(Color(uiColor: Appearance.canvas))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(LibraryPalette.border, lineWidth: 1))
             .aspectRatio(150.0 / 200.0, contentMode: .fit)
             .overlay(alignment: .topLeading) {

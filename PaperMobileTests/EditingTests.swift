@@ -250,3 +250,26 @@ struct CaretTests {
         #expect(abs(empty.minY - typed.minY) < 1)
     }
 }
+
+@MainActor
+struct KeyboardBarLayoutTests {
+    /// Five buttons and half of a sixth show; the rest scroll into view.
+    @Test func theBarScrollsWithFiveAndAHalfButtonsInView() throws {
+        let (window, textView) = try RenderProbeTests.makeWindow(size: CGSize(width: 402, height: 874), style: .light)
+        defer { window.isHidden = true }
+        let bar = try #require(textView.inputAccessoryView)
+        bar.frame = CGRect(x: 0, y: 0, width: 402, height: 58)
+        bar.layoutIfNeeded()
+        bar.layoutIfNeeded()
+        func scroller(_ v: UIView) -> UIScrollView? {
+            if let s = v as? UIScrollView { return s }
+            for s in v.subviews { if let found = scroller(s) { return found } }
+            return nil
+        }
+        let scroll = try #require(scroller(bar))
+        let button = try #require(scroll.subviews.first?.subviews.first)
+        let visible = scroll.bounds.width / button.bounds.width
+        #expect(visible > 5.3 && visible < 5.7)
+        #expect(scroll.contentSize.width > scroll.bounds.width)
+    }
+}
