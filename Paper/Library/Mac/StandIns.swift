@@ -104,10 +104,8 @@ struct FolderCard: View {
                 .font(.system(size: countSize, weight: .regular))
                 .tracking(-0.01 * countSize)
                 .foregroundStyle(FolderCard.countInk)
-            // Light: at a card's size the regular cut read heavy beside
-            // Spatial's, light text on the dark page most of all.
             Text(folder.name)
-                .font(.system(size: size, weight: .light))
+                .font(.system(size: size, weight: .regular))
                 .tracking(-0.022 * size)
                 .foregroundStyle(FolderCard.nameInk)
                 .lineLimit(1)
