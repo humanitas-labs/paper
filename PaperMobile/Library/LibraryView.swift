@@ -497,7 +497,7 @@ struct FolderView: View {
 /// in light.
 enum LibraryPalette {
     static let background = dynamic(dark: 0x0C0D0D, light: 0xE8EAEB)
-    static let card = dynamic(dark: 0x111212, light: 0xF3F4F5)
+    static let card = dynamic(dark: 0x111212, light: 0xFFFFFF)
     /// The dark card's hairline; light cards have none.
     static let border = dynamic(dark: 0x1F2020, light: 0xFFFFFF)
     static let secondaryLabel = Color(uiColor: UIColor { traits in

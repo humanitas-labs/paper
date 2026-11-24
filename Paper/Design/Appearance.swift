@@ -201,11 +201,12 @@ enum Appearance {
 
     private static var cachedColors: Colors?
 
-    /// On iPhone the page is the library's background, so an open note
-    /// sits on the same ground as the grid; the Mac keeps the theme's.
+    /// On iPhone the dark page is the library's background, so an open
+    /// note sits on the same ground as the grid; the light page is white,
+    /// as the light note cards are. The Mac keeps the theme's.
     #if os(iOS)
     private static let phoneCanvasDark: String? = "#0C0D0D"
-    private static let phoneCanvasLight: String? = "#E8EAEB"
+    private static let phoneCanvasLight: String? = "#FFFFFF"
     #else
     private static let phoneCanvasDark: String? = nil
     private static let phoneCanvasLight: String? = nil
