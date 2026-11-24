@@ -66,6 +66,8 @@ struct FolderView: View {
     @State private var renameText = ""
     /// The bottom capsule opens into a search field.
     @State private var searchOpen = false
+    /// A hold on empty space offers what can be made there, in a toast.
+    @State private var creating = false
     @FocusState private var searchFocused: Bool
     /// The scroll view's height, so empty space below the grid still takes
     /// the long press that makes a folder.
@@ -99,12 +101,15 @@ struct FolderView: View {
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, minHeight: viewport, alignment: .top)
             .contentShape(Rectangle())
-            // A hold on empty space makes a folder; cards take their own.
-            .onLongPressGesture(minimumDuration: 0.5) {
+            // A hold on empty space offers to make things; a tap there puts
+            // the offer away. Cards take their own touches first.
+            .onTapGesture {
+                if creating { withAnimation(Self.selectionSpring) { creating = false } }
+            }
+            .onLongPressGesture(minimumDuration: 0.3) {
                 guard !selecting else { return }
                 Haptics.press()
-                folderName = ""
-                namingFolder = true
+                withAnimation(Self.selectionSpring) { creating = true }
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
@@ -176,12 +181,21 @@ struct FolderView: View {
                     removal: .move(edge: .bottom).combined(with: .opacity)
                         .animation(Self.selectionSpring)
                 ))
+            } else if creating {
+                CreateToast(newFolder: {
+                    withAnimation(Self.selectionSpring) { creating = false }
+                    folderName = ""
+                    namingFolder = true
+                })
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity)
+                        .animation(Self.selectionSpring.delay(0.12)),
+                    removal: .move(edge: .bottom).combined(with: .opacity)
+                        .animation(Self.selectionSpring)
+                ))
             } else {
-                LibraryBar(
-                    query: $query, searchOpen: $searchOpen, searchFocused: $searchFocused,
-                    newFolder: { folderName = ""; namingFolder = true }
-                )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                LibraryBar(query: $query, searchOpen: $searchOpen, searchFocused: $searchFocused)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .padding(.horizontal, searchOpen && !selecting ? 16 : 0)
@@ -376,7 +390,10 @@ struct FolderView: View {
     /// Every change to the picked notes animates, so the bottom bar slides
     /// away and back rather than vanishing.
     private func changeSelection(_ change: (inout Set<URL>) -> Void) {
-        withAnimation(Self.selectionSpring) { change(&selection) }
+        withAnimation(Self.selectionSpring) {
+            change(&selection)
+            if !selection.isEmpty { creating = false }
+        }
     }
 
     private func moveSelection(to destination: URL) {
@@ -822,18 +839,17 @@ private struct BarGlyph: View {
     }
 }
 
-/// The library's bottom bar: search and a new folder, in the system's
-/// glass, as current apps use, so it reads apart from the toast. Search
-/// opens a field across the bar; closing it clears the search.
+/// The library's search, in the system's glass: a small "Search" pill at
+/// the bottom, as on the Home Screen, that opens into a field across the
+/// screen; closing it clears the search.
 private struct LibraryBar: View {
     @Binding var query: String
     @Binding var searchOpen: Bool
     var searchFocused: FocusState<Bool>.Binding
-    let newFolder: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            if searchOpen {
+        if searchOpen {
+            HStack(spacing: 0) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -844,34 +860,84 @@ private struct LibraryBar: View {
                     .autocorrectionDisabled()
                     .frame(height: 48)
                     .padding(.horizontal, 8)
-                icon("xmark", label: "Close Search") {
+                Button {
                     withAnimation(FolderView.selectionSpring) {
                         query = ""
                         searchOpen = false
                     }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 17, weight: .medium))
+                        .frame(width: 52, height: 48)
+                        .contentShape(Rectangle())
                 }
-            } else {
-                icon("magnifyingglass", label: "Search") {
-                    withAnimation(FolderView.selectionSpring) { searchOpen = true }
-                    searchFocused.wrappedValue = true
-                }
-                icon("folder.badge.plus", label: "New Folder", action: newFolder)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close Search")
             }
+            .modifier(GlassCapsule())
+        } else {
+            Button {
+                withAnimation(FolderView.selectionSpring) { searchOpen = true }
+                searchFocused.wrappedValue = true
+            } label: {
+                Label("Search", systemImage: "magnifyingglass")
+                    .font(.system(size: 15, weight: .medium))
+                    .padding(.horizontal, 16)
+                    .frame(height: 38)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .modifier(GlassCapsule())
         }
-        .padding(.horizontal, 6)
-        .modifier(GlassCapsule())
     }
+}
 
-    private func icon(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 56, height: 48)
-                .contentShape(Capsule())
+/// The toast a hold on empty space brings up: what can be made here.
+private struct CreateToast: View {
+    let newFolder: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: newFolder) {
+                FolderPlusGlyph()
+                    .frame(width: 56, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New Folder")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background {
+            SelectionToast.shape
+                .fill(ToastPalette.fill)
+                .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        }
+        .overlay(SelectionToast.shape.strokeBorder(ToastPalette.border, lineWidth: 1))
+    }
+}
+
+/// Spatial's classic folder with a plus in its body, at the toast's size.
+private struct FolderPlusGlyph: View {
+    var body: some View {
+        Image("SpatialFolder")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 22, height: 22)
+            .overlay {
+                Canvas { context, size in
+                    let s = size.width / 24
+                    var plus = Path()
+                    plus.move(to: CGPoint(x: 12 * s, y: 10.5 * s))
+                    plus.addLine(to: CGPoint(x: 12 * s, y: 16.5 * s))
+                    plus.move(to: CGPoint(x: 9 * s, y: 13.5 * s))
+                    plus.addLine(to: CGPoint(x: 15 * s, y: 13.5 * s))
+                    context.stroke(plus, with: .foreground, style: StrokeStyle(lineWidth: 2 * s, lineCap: .round))
+                }
+                .frame(width: 22, height: 22)
+            }
+            .foregroundStyle(ToastPalette.glyph)
     }
 }
 
