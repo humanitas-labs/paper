@@ -496,7 +496,7 @@ struct FolderView: View {
 enum LibraryPalette {
     static let background = dynamic(dark: 0x0C0D0D, light: 0xE8EAEB)
     static let card = dynamic(dark: 0x111212, light: 0xF3F4F5)
-    /// A white rim in light, as Spatial's cards have; a dark line in dark.
+    /// The dark card's hairline; light cards have none.
     static let border = dynamic(dark: 0x1F2020, light: 0xFFFFFF)
     static let secondaryLabel = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(hex: 0x959EAC) : UIColor(hex: 0x6B7280)
@@ -557,7 +557,7 @@ struct FolderCard: View {
             }
             // Picked: a bright outline around the folder's silhouette.
             .overlay {
-                if selected { FolderSilhouette().stroke(Color.primary, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
+                if selected { FolderSilhouette().stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineJoin: .round)) }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(Rectangle())
@@ -611,11 +611,15 @@ struct NoteCard: View {
                 }
             }
             .clipShape(NoteCard.shape)
-            .overlay(NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: colorScheme == .dark ? 1 : 1.5))
+            // A hairline in dark; in light, as in Spatial, the card has
+            // no edge until it is picked.
+            .overlay {
+                if colorScheme == .dark { NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1) }
+            }
             .modifier(CardShadow())
             // Picked, as in Spatial: a bright ring around the card.
             .overlay {
-                if selected { NoteCard.shape.strokeBorder(Color.primary, lineWidth: 3) }
+                if selected { NoteCard.shape.strokeBorder(Color.white, lineWidth: 3) }
             }
             .animation(.easeOut(duration: 0.15), value: selected)
             .contentShape(NoteCard.shape)
