@@ -414,10 +414,18 @@ struct LibraryView: View {
                 .keyboardShortcut("]", modifiers: .command)
             Button("Select All") { selectAll() }
                 .keyboardShortcut("a", modifiers: .command)
-            Button("Deselect") { deselect() }
+            // Escape lets go of what is picked; with nothing picked it
+            // steps back, as ⌃T does, after vim's tag stack.
+            Button("Deselect or Back") { selection.isEmpty ? stepBack() : deselect() }
                 .keyboardShortcut(.escape, modifiers: [])
+            Button("Step Back") { stepBack() }
+                .keyboardShortcut("t", modifiers: .control)
             Button("Move to Trash") { trashSelection() }
                 .keyboardShortcut(.delete, modifiers: .command)
+            // Delete alone does the same: to the Trash, so it can be put
+            // back, never removed outright.
+            Button("Delete") { if !renaming && menu == nil { trashSelection() } }
+                .keyboardShortcut(.delete, modifiers: [])
         }
         .opacity(0)
         .allowsHitTesting(false)
@@ -428,6 +436,13 @@ struct LibraryView: View {
 
     private func go(to target: URL) { navigation.go(to: target) }
     private func goUp() { navigation.goUp() }
+    /// Back to the folder this one was reached from, or, with no history
+    /// (a folder opened deep, or the way back already taken), up to its
+    /// parent; never above the folder opened.
+    private func stepBack() {
+        guard menu == nil, !renaming else { return }
+        navigation.canGoBack ? navigation.goBack() : navigation.goUp()
+    }
     private func goBack() { navigation.goBack() }
     private func goForward() { navigation.goForward() }
 
