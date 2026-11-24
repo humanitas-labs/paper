@@ -41,46 +41,77 @@ struct LibraryHeader: View {
 }
 
 /// What lies behind the library's header, in a window and in full screen:
-/// the cards run on under it, blurred and dimmed, and come clear again
-/// just below, as under the iPhone's bar.
+/// the cards run on under it, out of focus and sinking into the page's
+/// own color toward the top, and come clear again just below, as notes
+/// do under the iPhone's bar. No tint of its own: a material laid a gray
+/// cloud over them.
 struct LibraryHeaderShade: View {
     /// The header's height: the window's toolbar, or the drawn header.
     static let height: CGFloat = 52
     /// How far below the header the blur thins out to nothing.
-    static let fade: CGFloat = 28
+    static let fade: CGFloat = 30
 
     var body: some View {
         ZStack {
             WindowBlur()
-            // Light enough that the cards still show through.
-            LibraryPalette.background.opacity(0.3)
-        }
-        .frame(height: Self.height + Self.fade)
-        .mask(
+                .mask(LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 0.6),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                ))
             LinearGradient(
                 stops: [
-                    .init(color: .black, location: 0),
-                    .init(color: .black, location: 0.55),
-                    .init(color: .clear, location: 1),
+                    .init(color: LibraryPalette.background.opacity(0.82), location: 0),
+                    .init(color: LibraryPalette.background.opacity(0.55), location: 0.55),
+                    .init(color: LibraryPalette.background.opacity(0), location: 1),
                 ],
                 startPoint: .top, endPoint: .bottom
             )
-        )
+        }
+        .frame(height: Self.height + Self.fade)
         .allowsHitTesting(false)
     }
 }
 
-/// A blur of what lies under it in the same window. SwiftUI's materials
-/// blur what is behind the window on the Mac, which leaves the cards
-/// under the header sharp or hidden.
+/// A plain blur of what lies under it in the same window, with no tint.
+/// SwiftUI's materials blur what is behind the window on the Mac, and
+/// AppKit's effect view lays grays of its own over its blur; those are
+/// put away here, leaving the blur. Should AppKit build the view some
+/// other way one day, the tint simply stays.
 private struct WindowBlur: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
+    func makeNSView(context: Context) -> NSView {
+        let view = TintlessEffectView()
         view.blendingMode = .withinWindow
-        view.material = .headerView
+        view.material = .hudWindow
         view.state = .active
         return view
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    private final class TintlessEffectView: NSVisualEffectView {
+        override func layout() {
+            super.layout()
+            strip()
+        }
+
+        override func updateLayer() {
+            super.updateLayer()
+            strip()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            DispatchQueue.main.async { [weak self] in self?.strip() }
+        }
+
+        private func strip() {
+            guard let holder = layer?.sublayers?.first, let parts = holder.sublayers,
+                  parts.contains(where: { $0.className.contains("Backdrop") }) else { return }
+            for part in parts where !part.className.contains("Backdrop") { part.isHidden = true }
+        }
+    }
 }

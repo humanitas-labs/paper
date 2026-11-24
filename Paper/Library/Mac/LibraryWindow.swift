@@ -61,7 +61,7 @@ enum LibraryWindow {
         DispatchQueue.main.asyncAfter(deadline: .now() + 6.6) {
             func all(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + all($0) } }
             if let content = window.contentView, let scroll = all(content).compactMap({ $0 as? NSScrollView }).first {
-                scroll.contentView.scroll(to: NSPoint(x: 0, y: 190))
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: 120))
                 scroll.reflectScrolledClipView(scroll.contentView)
             }
         }
@@ -77,6 +77,16 @@ enum LibraryWindow {
             for other in NSApp.windows {
                 out += "WINDOW \(type(of: other)) \(other.frame) visible=\(other.isVisible) bg=\(other.backgroundColor.description) opaque=\(other.isOpaque)\n"
                 if let frame = other.contentView?.superview { walk(frame, 1) }
+            }
+            if let content = window.contentView {
+                func all(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + all($0) } }
+                func layers(_ layer: CALayer, _ depth: Int) {
+                    out += String(repeating: "  ", count: depth) + "LAYER \(type(of: layer)) \(layer.frame) bg=\(layer.backgroundColor?.components ?? []) op=\(layer.opacity) filters=\(String(describing: layer.filters)) comp=\(String(describing: layer.compositingFilter)) hidden=\(layer.isHidden)\n"
+                    layer.sublayers?.forEach { layers($0, depth + 1) }
+                }
+                for effect in all(content).compactMap({ $0 as? NSVisualEffectView }) {
+                    if let layer = effect.layer { layers(layer, 0) }
+                }
             }
             try? out.write(toFile: path, atomically: true, encoding: .utf8)
             // The app's own windows, composited, where screen capture of
