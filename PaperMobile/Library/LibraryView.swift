@@ -117,6 +117,8 @@ struct FolderView: View {
         }
     }
 
+    private let brandInset: CGFloat = 10
+
     /// The enso, and inside a folder the folder's name after it.
     private var brand: some View {
         Button(action: home) {
@@ -135,8 +137,10 @@ struct FolderView: View {
                         .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 4)
             .foregroundStyle(.primary)
+            // The bar insets its items more than the grid's 20 pt margin;
+            // the enso lines up with the cards' left edge.
+            .offset(x: -brandInset)
         }
         .accessibilityLabel(isRoot ? "Paper" : "Paper, \(folder.lastPathComponent)")
     }
