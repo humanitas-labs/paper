@@ -29,6 +29,7 @@ struct LibraryView: View {
     @State private var dragEnded = Date.distantPast
     /// Where the toast is, so a click on it is not a click off the cards.
     @State private var toastFrame = CGRect.zero
+    @State private var width: CGFloat = 0
     @State private var renaming = false
     @State private var renameText = ""
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
@@ -93,6 +94,8 @@ struct LibraryView: View {
         .onReceive(navigation.primaryClicks) { primaryClick(at: $0) }
         // Spatial's style of pointer over the whole library.
         .pointerStyle(LibraryPointer.style)
+        .environment(\.libraryWidth, width)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(keyCommands)
         .task(id: folder) {
             selection.removeAll()
@@ -428,6 +431,10 @@ private struct CardClick: ViewModifier {
     var label: String?
     let open: () -> Void
     @State private var hovering = false
+    @State private var midX: CGFloat = 0
+    @State private var labelWidth: CGFloat = 0
+    @Environment(\.libraryWidth) private var windowWidth
+    private static let labelMargin: CGFloat = 12
 
     init(label: String? = nil, open: @escaping () -> Void) {
         self.label = label
@@ -443,14 +450,25 @@ private struct CardClick: ViewModifier {
                 if hovering, let label {
                     // Pushed down by its own height and a gap, so its top
                     // sits clear of the card's foot.
-                    HoverLabel(text: label)
-                        .offset(y: HoverLabel.height + 10)
+                    HoverLabel(text: label, maxWidth: max(120, windowWidth - 2 * Self.labelMargin))
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { labelWidth = $0 }
+                        .offset(x: labelShift, y: HoverLabel.height + 10)
                         .transition(.opacity)
                 }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).midX } action: { midX = $0 }
             .animation(.easeOut(duration: 0.14), value: hovering)
             // The grown card and its label draw over their neighbors.
             .zIndex(hovering ? 1 : 0)
+    }
+
+    /// A long name is wider than its card; at the window's edge the
+    /// label slides inward rather than run off the side.
+    private var labelShift: CGFloat {
+        guard windowWidth > 0, labelWidth > 0 else { return 0 }
+        let left = midX - labelWidth / 2
+        let clamped = min(max(left, Self.labelMargin), max(Self.labelMargin, windowWidth - Self.labelMargin - labelWidth))
+        return clamped - left
     }
 
     private struct PressStyle: ButtonStyle {
@@ -484,6 +502,18 @@ enum LibraryNames {
 }
 
 /// Reports a card's place in the window while it is on screen.
+private struct LibraryWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// The library's width, so a card's label can stay inside it.
+    fileprivate var libraryWidth: CGFloat {
+        get { self[LibraryWidthKey.self] }
+        set { self[LibraryWidthKey.self] = newValue }
+    }
+}
+
 private struct CardFrame: ViewModifier {
     let url: URL
     @Binding var frames: [URL: CGRect]
@@ -502,6 +532,8 @@ private struct HoverLabel: View {
     static let height: CGFloat = 24
     static let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
     let text: String
+    /// The widest the label may be; a longer name is cut in its middle.
+    var maxWidth: CGFloat = .infinity
 
     var body: some View {
         Text(text)
@@ -510,6 +542,7 @@ private struct HoverLabel: View {
             .foregroundStyle(MenuPalette.ink)
             .lineLimit(1)
             .truncationMode(.middle)
+            .frame(maxWidth: maxWidth - 20)
             .padding(.horizontal, 10)
             .frame(height: Self.height)
             .background(
