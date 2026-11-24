@@ -1162,15 +1162,19 @@ struct TrashGlyph: Shape {
     }
 }
 
-/// A card's soft drop shadow: faint on Spatial's light grays, deeper on
-/// the dark background, where a light one would not show.
+/// A card's shadow. In light, as in Spatial, two: a tight contact shadow
+/// that draws the edge, under a soft fall-off. In dark, one deeper soft
+/// shadow, where a light one would not show.
 struct CardShadow: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        content.shadow(
-            color: .black.opacity(colorScheme == .dark ? 0.45 : 0.08),
-            radius: colorScheme == .dark ? 8 : 10, y: colorScheme == .dark ? 4 : 5
-        )
+        if colorScheme == .dark {
+            content.shadow(color: .black.opacity(0.45), radius: 8, y: 4)
+        } else {
+            content
+                .shadow(color: .black.opacity(0.10), radius: 1, y: 0.5)
+                .shadow(color: .black.opacity(0.07), radius: 10, y: 5)
+        }
     }
 }
