@@ -28,6 +28,11 @@ enum LibraryPalette {
     static let border = themed { canvas, dark in
         dark ? canvas.blended(withFraction: 0.12, of: .white) ?? canvas : .white
     }
+    /// The folder's fine rim in dark mode: halfway between the card and
+    /// the note card's border, which read harsh around a folder.
+    static let folderRim = themed { canvas, dark in
+        dark ? canvas.blended(withFraction: 0.09, of: .white) ?? canvas : .clear
+    }
     static let secondaryLabel = dynamic(dark: 0x959EAC, light: 0x6B7280)
 
     static func nsColor(dark: UInt32, light: UInt32) -> NSColor {
@@ -85,9 +90,8 @@ struct FolderCard: View {
                     // card's own color in every theme.
                     let colors = FolderCard.colors(dark: colorScheme == .dark)
                     // In dark mode each panel has a fine rim, as the
-                    // iPhone's dark artwork does, in the note cards'
-                    // border color.
-                    let rim = colorScheme == .dark ? LibraryPalette.border : .clear
+                    // iPhone's dark artwork does.
+                    let rim = colorScheme == .dark ? LibraryPalette.folderRim : .clear
                     ZStack {
                         FolderSilhouette().fill(Color(nsColor: colors.back))
                             .overlay(FolderSilhouette().stroke(rim, lineWidth: 1))
