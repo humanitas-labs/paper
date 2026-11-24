@@ -13,6 +13,13 @@ final class LibraryNavigation: ObservableObject {
     @Published private(set) var history: [URL] = []
     @Published private(set) var forward: [URL] = []
 
+    /// Right clicks (and Control-clicks) in the window, where they landed
+    /// in its content from the top left. The window hears them, so no view
+    /// has to sit over the cards to catch them.
+    let secondaryClicks = PassthroughSubject<CGPoint, Never>()
+    /// The library's window, for placing what opens from it on screen.
+    weak var window: NSWindow?
+
     init(root: URL) {
         self.root = root.standardizedFileURL
         folder = root.standardizedFileURL
@@ -79,14 +86,30 @@ final class LibraryToolbar: NSObject, NSToolbarDelegate {
         refresh()
         // A mouse's side buttons go back and forward, as in a browser:
         // button 3 is "back" (mouse 4) and button 4 "forward" (mouse 5).
-        sideButtons = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] event in
+        sideButtons = NSEvent.addLocalMonitorForEvents(
+            matching: [.otherMouseDown, .rightMouseDown, .leftMouseDown]
+        ) { [weak self] event in
             guard let self, let window = self.window, event.window === window else { return event }
-            switch event.buttonNumber {
-            case 3: self.navigation.goBack()
-            case 4: self.navigation.goForward()
-            default: return event
+            switch event.type {
+            case .otherMouseDown:
+                switch event.buttonNumber {
+                case 3: self.navigation.goBack()
+                case 4: self.navigation.goForward()
+                default: return event
+                }
+                return nil
+            case .leftMouseDown where !event.modifierFlags.contains(.control):
+                return event
+            default:
+                // A right click, or a Control-click, below the toolbar.
+                guard let content = window.contentView else { return event }
+                let point = content.convert(event.locationInWindow, from: nil)
+                let fromTop = content.isFlipped ? point.y : content.bounds.height - point.y
+                let toolbarHeight = content.bounds.height - window.contentLayoutRect.height
+                guard content.bounds.contains(point), fromTop > toolbarHeight else { return event }
+                self.navigation.secondaryClicks.send(CGPoint(x: point.x, y: fromTop))
+                return nil
             }
-            return nil
         }
     }
 

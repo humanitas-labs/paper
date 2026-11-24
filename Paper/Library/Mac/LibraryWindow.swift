@@ -27,6 +27,7 @@ enum LibraryWindow {
             backing: .buffered, defer: false
         )
         let navigation = LibraryNavigation(root: folder)
+        navigation.window = window
         window.contentView = NSHostingView(rootView: LibraryView(navigation: navigation))
         window.isReleasedWhenClosed = false
         window.applyPaperChrome(minSize: NSSize(width: 520, height: 420))
@@ -67,6 +68,20 @@ enum LibraryWindow {
                     let view = LibraryView(navigation: LibraryNavigation(root: folder), listing: listing, scrolls: false)
                         .frame(width: 1280, height: 820)
                         .environment(\.colorScheme, dark ? .dark : .light)
+                    let sample = LibraryMenuRequest(point: CGPoint(x: 420, y: 300), items: [
+                        LibraryMenuItem(title: "Open", glyph: OpenGlyph()) {},
+                        LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {},
+                        LibraryMenuItem(title: "Copy Path", glyph: CopyGlyph()) {},
+                        LibraryMenuItem(title: "Move to Trash", glyph: TrashGlyph()) {},
+                    ])
+                    let withMenu = view.overlay(LibraryMenuLayer(request: .constant(sample)))
+                        .environment(\.colorScheme, dark ? .dark : .light)
+                    let menuRenderer = ImageRenderer(content: withMenu)
+                    menuRenderer.scale = 2
+                    if let image = menuRenderer.cgImage {
+                        let url = URL(fileURLWithPath: dir).appendingPathComponent(dark ? "menu-dark.png" : "menu-light.png")
+                        try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
+                    }
                     let renderer = ImageRenderer(content: view)
                     renderer.scale = 2
                     guard let image = renderer.cgImage else { return }

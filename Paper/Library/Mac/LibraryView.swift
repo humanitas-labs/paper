@@ -12,6 +12,11 @@ struct LibraryView: View {
     @State private var listing = FolderListing()
     @State private var loaded = false
     @State private var watcher: FolderWatcher?
+    /// The menu a right click opened, while it is up.
+    @State private var menu: LibraryMenuRequest?
+    /// Where each card on screen is, in the window, to tell what a right
+    /// click landed on.
+    @State private var cardFrames: [URL: CGRect] = [:]
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
     private let scrolls: Bool
 
@@ -41,6 +46,8 @@ struct LibraryView: View {
             }
         }
         .background(LibraryPalette.background.ignoresSafeArea())
+        .overlay(LibraryMenuLayer(request: $menu))
+        .onReceive(navigation.secondaryClicks) { secondaryClick(at: $0) }
         // Spatial's style of pointer over the whole library.
         .pointerStyle(LibraryPointer.style)
         .background(keyCommands)
@@ -71,7 +78,7 @@ struct LibraryView: View {
                     FolderCard(folder: item)
                         .background(FolderCard.shadow)
                         .modifier(CardClick { go(to: item.url) })
-                        .contextMenu { menu(for: item.url, isFolder: true) }
+                        .modifier(CardFrame(url: item.url, frames: $cardFrames))
                         .transition(LibraryMotion.itemTransition)
                 }
             }
@@ -82,7 +89,7 @@ struct LibraryView: View {
                     LibraryNoteTile(note: item)
                         .modifier(CardShadow())
                         .modifier(CardClick { openNote(item.url) })
-                        .contextMenu { menu(for: item.url, isFolder: false) }
+                        .modifier(CardFrame(url: item.url, frames: $cardFrames))
                         .transition(LibraryMotion.itemTransition)
                 }
             }
@@ -95,14 +102,70 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder private func menu(for url: URL, isFolder: Bool) -> some View {
-        Button("Open") { isFolder ? go(to: url) : openNote(url) }
-        Divider()
-        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-        Button("Copy Path") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(url.path, forType: .string)
+    // MARK: Menu
+
+    /// A right click closes an open menu; otherwise it opens the menu of
+    /// the card under it, or of the folder shown on empty space.
+    private func secondaryClick(at point: CGPoint) {
+        if menu != nil {
+            withAnimation(LibraryMenuLayer.wash) { menu = nil }
+            return
         }
+        if let url = cardFrames.first(where: { $0.value.contains(point) })?.key {
+            let isFolder = listing.folders.contains { $0.url == url }
+            showMenu(at: point, items: items(for: url, isFolder: isFolder))
+        } else {
+            showMenu(at: point, items: emptySpaceItems)
+        }
+    }
+
+    private func showMenu(at point: CGPoint, items: [LibraryMenuItem]) {
+        withAnimation(LibraryMenuLayer.wash) {
+            menu = LibraryMenuRequest(point: point, items: items)
+        }
+    }
+
+    private func items(for url: URL, isFolder: Bool) -> [LibraryMenuItem] {
+        [
+            LibraryMenuItem(title: "Open", glyph: OpenGlyph()) {
+                isFolder ? go(to: url) : openNote(url)
+            },
+            LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            },
+            LibraryMenuItem(title: "Copy Path", glyph: CopyGlyph()) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url.path, forType: .string)
+            },
+            LibraryMenuItem(title: "Move to Trash", glyph: TrashGlyph()) {
+                // Recoverable; the folder watcher takes the card away.
+                NSWorkspace.shared.recycle([url]) { _, _ in }
+            },
+        ]
+    }
+
+    private var emptySpaceItems: [LibraryMenuItem] {
+        [
+            LibraryMenuItem(title: "New Note", glyph: ComposeGlyph()) { newNote() },
+            LibraryMenuItem(title: "New Folder", glyph: NewFolderGlyph()) { newFolder() },
+            LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
+                NSWorkspace.shared.activateFileViewerSelecting([folder])
+            },
+        ]
+    }
+
+    /// An empty `Untitled.md`, numbered when the name is taken, opened at
+    /// once in its own window.
+    private func newNote() {
+        let url = LibraryNames.unused("Untitled", extension: "md", in: folder)
+        guard FileManager.default.createFile(atPath: url.path, contents: Data()) else { return }
+        openNote(url)
+    }
+
+    /// `Untitled Folder`, numbered when taken, as Finder names one.
+    private func newFolder() {
+        let url = LibraryNames.unused("Untitled Folder", extension: "", in: folder)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
     }
 
     /// ⌘↑ to the enclosing folder, ⌘[ back and ⌘] forward, as in Finder.
@@ -128,8 +191,22 @@ struct LibraryView: View {
     private func goBack() { navigation.goBack() }
     private func goForward() { navigation.goForward() }
 
+    /// Opens a note in its own window, grown out of its card when the
+    /// card is on screen.
     private func openNote(_ url: URL) {
-        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+        var card: NSRect?
+        if let frame = cardFrames[url], let window = navigation.window, let content = window.contentView {
+            // The card's frame is measured from the content's top left.
+            let inContent = NSRect(
+                x: frame.minX, y: content.isFlipped ? frame.minY : content.bounds.height - frame.maxY,
+                width: frame.width, height: frame.height
+            )
+            card = window.convertToScreen(content.convert(inContent, to: nil))
+        }
+        let dark = navigation.window?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let modified = listing.notes.first { $0.url == url }?.modified
+        let miniature = modified.flatMap { NoteMiniature.cached(NoteMiniature.key(for: url, modified: $0, dark: dark)) }
+        NoteOpenAnimation.open(url, from: card, miniature: miniature, library: navigation.window)
     }
 
     // MARK: Loading
@@ -190,22 +267,59 @@ private struct LibraryNoteTile: View {
     }
 }
 
-/// A card answers one click, as in Spatial: it opens. It gives a little
-/// under the pointer while pressed, so the click shows before it lands.
+/// A card answers one click, as in Spatial: it opens. It grows a little
+/// under the pointer and gives a little while pressed, so both the hover
+/// and the click show before anything opens.
 private struct CardClick: ViewModifier {
     let open: () -> Void
+    @State private var hovering = false
 
     func body(content: Content) -> some View {
         Button(action: open) { content }
-            .buttonStyle(PressStyle())
+            .buttonStyle(PressStyle(hovering: hovering))
+            .onHover { hovering = $0 }
+            // The grown card draws over its neighbors' shadows.
+            .zIndex(hovering ? 1 : 0)
     }
 
     private struct PressStyle: ButtonStyle {
+        let hovering: Bool
+
         func makeBody(configuration: ButtonStyleConfiguration) -> some View {
             configuration.label
-                .scaleEffect(configuration.isPressed ? 0.98 : 1)
+                .scaleEffect(configuration.isPressed ? 0.985 : (hovering ? 1.03 : 1))
+                .animation(.spring(duration: 0.3, bounce: 0.25), value: hovering)
                 .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
                 .contentShape(Rectangle())
         }
+    }
+}
+
+/// Names for new notes and folders: the plain name, then numbered.
+enum LibraryNames {
+    static func unused(_ base: String, extension ext: String, in folder: URL) -> URL {
+        func url(_ name: String) -> URL {
+            let url = folder.appendingPathComponent(name, isDirectory: ext.isEmpty)
+            return ext.isEmpty ? url : url.appendingPathExtension(ext)
+        }
+        var candidate = url(base)
+        var index = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = url("\(base) \(index)")
+            index += 1
+        }
+        return candidate
+    }
+}
+
+/// Reports a card's place in the window while it is on screen.
+private struct CardFrame: ViewModifier {
+    let url: URL
+    @Binding var frames: [URL: CGRect]
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames[url] = $0 }
+            .onDisappear { frames[url] = nil }
     }
 }
