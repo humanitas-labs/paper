@@ -129,7 +129,7 @@ struct LibraryView: View {
                 ForEach(listing.notes) { item in
                     LibraryNoteTile(note: item, selected: selection.contains(item.url))
                         .modifier(CardShadow())
-                        .modifier(CardClick { click(item.url) { openNote(item.url) } })
+                        .modifier(CardClick(label: item.url.lastPathComponent) { click(item.url) { openNote(item.url) } })
                         .modifier(CardFrame(url: item.url, frames: $cardFrames))
                         .transition(LibraryMotion.itemTransition)
                 }
@@ -408,14 +408,31 @@ private struct LibraryNoteTile: View {
 /// under the pointer and gives a little while pressed, so both the hover
 /// and the click show before anything opens.
 private struct CardClick: ViewModifier {
+    /// Shown in a small pill under the card while the pointer is on it:
+    /// a note's file name, which its page does not say.
+    var label: String?
     let open: () -> Void
     @State private var hovering = false
+
+    init(label: String? = nil, open: @escaping () -> Void) {
+        self.label = label
+        self.open = open
+    }
 
     func body(content: Content) -> some View {
         Button(action: open) { content }
             .buttonStyle(PressStyle(hovering: hovering))
             .onHover { hovering = $0 }
-            // The grown card draws over its neighbors' shadows.
+            // Hung below the card, outside its layout, so nothing moves.
+            .overlay(alignment: .bottom) {
+                if hovering, let label {
+                    HoverLabel(text: label)
+                        .alignmentGuide(.bottom) { $0[.top] - 9 }
+                        .transition(.opacity.combined(with: .offset(y: -3)))
+                }
+            }
+            .animation(.easeOut(duration: 0.14), value: hovering)
+            // The grown card and its label draw over their neighbors.
             .zIndex(hovering ? 1 : 0)
     }
 
@@ -458,5 +475,26 @@ private struct CardFrame: ViewModifier {
         content
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames[url] = $0 }
             .onDisappear { frames[url] = nil }
+    }
+}
+
+/// A small pill of quiet monospaced type, for a name shown on hover.
+private struct HoverLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+            .tracking(0.4)
+            .foregroundStyle(ToastPalette.glyph)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4.5)
+            .background(Capsule().fill(ToastPalette.fill))
+            .overlay(Capsule().strokeBorder(ToastPalette.border, lineWidth: 1))
+            .frame(maxWidth: 260)
+            .fixedSize()
+            .allowsHitTesting(false)
     }
 }
