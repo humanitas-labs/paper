@@ -201,12 +201,14 @@ enum Appearance {
 
     private static var cachedColors: Colors?
 
-    /// On iPhone the dark page is the library's background, so an open
-    /// note sits on the same ground as the grid; the Mac keeps the theme's.
+    /// On iPhone the page is the library's background, so an open note
+    /// sits on the same ground as the grid; the Mac keeps the theme's.
     #if os(iOS)
     private static let phoneCanvasDark: String? = "#0C0D0D"
+    private static let phoneCanvasLight: String? = "#E8EAEB"
     #else
     private static let phoneCanvasDark: String? = nil
+    private static let phoneCanvasLight: String? = nil
     #endif
 
     private static var colors: Colors {
@@ -223,7 +225,7 @@ enum Appearance {
         }
         let colors = Colors(
             palette: palette,
-            canvas: dynamic(light: color(hex: palette.canvas), dark: color(hex: phoneCanvasDark ?? palette.canvasDark)),
+            canvas: dynamic(light: color(hex: phoneCanvasLight ?? palette.canvas), dark: color(hex: phoneCanvasDark ?? palette.canvasDark)),
             ink: dynamic(light: lightInk, dark: darkInk),
             mutedInk: tone(palette.inkMuted, palette.inkMutedDark, alpha: 0.28),
             quoteInk: tone(palette.inkQuote, palette.inkQuoteDark, alpha: 0.62),

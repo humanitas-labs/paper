@@ -491,12 +491,13 @@ struct FolderView: View {
     }
 }
 
-/// The library's colors: Marina's dark tokens, with quiet light
-/// counterparts so the grid follows the page's theme.
+/// The library's colors: Marina's dark tokens, and Spatial's soft grays
+/// in light.
 enum LibraryPalette {
-    static let background = dynamic(dark: 0x0C0D0D, light: 0xFBFBFA)
-    static let card = dynamic(dark: 0x111212, light: 0xF4F4F3)
-    static let border = dynamic(dark: 0x1F2020, light: 0xE2E2E0)
+    static let background = dynamic(dark: 0x0C0D0D, light: 0xE8EAEB)
+    static let card = dynamic(dark: 0x111212, light: 0xF3F4F5)
+    /// A white rim in light, as Spatial's cards have; a dark line in dark.
+    static let border = dynamic(dark: 0x1F2020, light: 0xFFFFFF)
     static let secondaryLabel = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(hex: 0x959EAC) : UIColor(hex: 0x6B7280)
     })
@@ -537,6 +538,7 @@ struct FolderCard: View {
                     Image("FolderShape")
                         .resizable()
                         .frame(width: Self.canvas.width * scale, height: Self.canvas.height * scale)
+                        .modifier(CardShadow())
                         .offset(x: -Self.shape.minX * scale, y: -Self.shape.minY * scale)
                 }
             }
@@ -571,7 +573,7 @@ struct FolderCard: View {
                     Text(folder.name)
                         .font(.system(size: 14, weight: .medium))
                         .tracking(-0.07)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                 }
     }
@@ -609,7 +611,8 @@ struct NoteCard: View {
                 }
             }
             .clipShape(NoteCard.shape)
-            .overlay(NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1))
+            .overlay(NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: colorScheme == .dark ? 1 : 1.5))
+            .modifier(CardShadow())
             // Picked, as in Spatial: a bright ring around the card.
             .overlay {
                 if selected { NoteCard.shape.strokeBorder(Color.primary, lineWidth: 3) }
@@ -1152,5 +1155,18 @@ struct TrashGlyph: Shape {
         path.addQuadCurve(to: p(17.3, 18), control: p(17.1, 20))
         path.addLine(to: p(18.5, 6.5))
         return path
+    }
+}
+
+/// A card's soft drop shadow: faint on Spatial's light grays, deeper on
+/// the dark background, where a light one would not show.
+struct CardShadow: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.shadow(
+            color: .black.opacity(colorScheme == .dark ? 0.45 : 0.08),
+            radius: colorScheme == .dark ? 8 : 10, y: colorScheme == .dark ? 4 : 5
+        )
     }
 }
