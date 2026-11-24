@@ -5,8 +5,8 @@ import SwiftUI
 
 enum LibraryPalette {
     static let background = dynamic(dark: 0x0C0D0D, light: 0xE8EAEB)
-    static let card = dynamic(dark: 0x111212, light: 0xFFFFFF)
-    static let border = dynamic(dark: 0x1F2020, light: 0xFFFFFF)
+    static let card = dynamic(dark: 0x212426, light: 0xF3F4F5)
+    static let border = dynamic(dark: 0x2F3233, light: 0xFFFFFF)
     static let secondaryLabel = dynamic(dark: 0x959EAC, light: 0x6B7280)
 
     static func nsColor(dark: UInt32, light: UInt32) -> NSColor {
@@ -255,8 +255,8 @@ enum LibraryMotion {
 }
 
 struct NoteCard: View {
-    static let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-    static let aspect: CGFloat = 470.0 / 668.0
+    static let shape = NoteCardShape()
+    static let aspect: CGFloat = 235.0 / 334.0
     let note: FolderListing.Note
     var selected = false
     var miniature: Image?
@@ -298,4 +298,38 @@ enum ToastPalette {
     static let fill = Color(nsColor: LibraryPalette.nsColor(dark: 0x212426, light: 0xF1F1F0))
     static let border = Color(nsColor: LibraryPalette.nsColor(dark: 0x2E3133, light: 0xDEDEDC))
     static let glyph = Color(nsColor: LibraryPalette.nsColor(dark: 0xB9BEC4, light: 0x4B5057))
+}
+
+/// Spatial's note card outline: a continuous corner of 24 pt on a card
+/// 235 pt wide, kept in that proportion at any size.
+struct NoteCardShape: InsettableShape {
+    var inset: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let radius = max(rect.width * 24.0 / 235.0 - inset, 0)
+        return Path(roundedRect: rect.insetBy(dx: inset, dy: inset), cornerRadius: radius, style: .continuous)
+    }
+
+    func inset(by amount: CGFloat) -> NoteCardShape {
+        NoteCardShape(inset: inset + amount)
+    }
+}
+
+/// Spatial's two shadows under a note, both sized from the card's width:
+/// a wide soft one falling 5% of the width below, and a close, faint one
+/// hugging the edge. Their color is a near-black with a little blue.
+struct NoteShadow: ViewModifier {
+    @State private var width: CGFloat = 200
+    private static let ink = Color(.sRGB, red: 0x09 / 255.0, green: 0x0B / 255.0, blue: 0x0D / 255.0)
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                NoteCard.shape
+                    .fill(LibraryPalette.card)
+                    .shadow(color: Self.ink.opacity(0.10), radius: width * 0.06, y: width * 0.05)
+                    .shadow(color: Self.ink.opacity(0.06), radius: width * 0.01)
+            )
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
 }
