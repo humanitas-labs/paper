@@ -51,14 +51,19 @@ struct LibraryMenuLayer: View {
                     let place = placement(for: request, in: proxy.size)
                     LibraryMenuCard(items: request.items, close: close)
                         .frame(width: Self.width)
-                        // Out from the pointer: the click stays put while
-                        // the card grows away from it.
+                        .offset(x: place.origin.x, y: place.origin.y)
+                        // The transition scales the whole layer about the
+                        // click itself: an offset does not move a view's
+                        // frame, so a scale anchored in the card's own
+                        // frame grew from the window's corner and slid
+                        // over the pointer. This way the click stays put
+                        // and the card grows out of it.
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                         .transition(
                             .scale(scale: 0.3, anchor: place.anchor).combined(with: .opacity)
                                 .animation(Self.grow)
                         )
                         .id(request.id)
-                        .offset(x: place.origin.x, y: place.origin.y)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
@@ -73,7 +78,7 @@ struct LibraryMenuLayer: View {
 
     /// The card opens down and to the right of the pointer, and turns the
     /// other way at the window's edges. It grows from the pointer: the
-    /// anchor is the click, in the card's own unit square.
+    /// anchor is the click, in the whole layer's unit square.
     private func placement(for request: LibraryMenuRequest, in size: CGSize) -> (origin: CGPoint, anchor: UnitPoint) {
         let height = CGFloat(request.items.count) * Self.rowHeight + Self.inset * 2
         let margin: CGFloat = 12
@@ -83,7 +88,8 @@ struct LibraryMenuLayer: View {
         if y + height + margin > size.height { y = request.point.y - height }
         x = min(max(x, margin), max(size.width - Self.width - margin, margin))
         y = min(max(y, margin), max(size.height - height - margin, margin))
-        let anchor = UnitPoint(x: (request.point.x - x) / Self.width, y: (request.point.y - y) / height)
+        // The click, in the layer's unit square.
+        let anchor = UnitPoint(x: request.point.x / max(size.width, 1), y: request.point.y / max(size.height, 1))
         return (CGPoint(x: x, y: y), anchor)
     }
 }
