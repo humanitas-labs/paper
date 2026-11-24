@@ -19,7 +19,12 @@ private struct MobileDocumentView: View {
 
     var body: some View {
         MobileEditor(text: $document.text, fileURL: fileURL)
-            .ignoresSafeArea(.container, edges: .bottom)
+            // The page runs under the navigation bar and the keyboard so
+            // text scrolls beneath both bars and fades there; the text view
+            // insets itself (`MobileTextView.keyboardWillChangeFrame`).
+            .ignoresSafeArea()
+            // As in Notes: the bar keeps its buttons but not the title.
+            .toolbar(removing: .title)
             .background(Color(uiColor: Appearance.canvas))
     }
 }

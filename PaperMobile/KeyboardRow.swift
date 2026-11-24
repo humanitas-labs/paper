@@ -1,14 +1,18 @@
 import UIKit
 
-/// The row above the keyboard: the Mac's Format menu, a task, list indent,
-/// and a key to put the keyboard away. Quiet, in the page's ink.
-final class KeyboardRow: UIInputView {
+/// The bar above the keyboard: the Mac's Format menu, a task, list indent,
+/// and a key to put the keyboard away. It floats over the page as a glass
+/// capsule, as the system's own editors do, with clear space around it.
+final class KeyboardRow: UIView {
     private weak var textView: MobileTextView?
+    static let barHeight: CGFloat = 48
+    static let inset: CGFloat = 10
 
     init(textView: MobileTextView) {
         self.textView = textView
-        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 46), inputViewStyle: .keyboard)
-        allowsSelfSizing = true
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.barHeight + Self.inset))
+        backgroundColor = .clear
+        autoresizingMask = .flexibleHeight
         let items: [(symbol: String, label: String, action: Selector)] = [
             ("bold", "Bold", #selector(bold)),
             ("italic", "Italic", #selector(italic)),
@@ -22,7 +26,7 @@ final class KeyboardRow: UIInputView {
         ]
         let stack = UIStackView(arrangedSubviews: items.map { item in
             let button = UIButton(type: .system)
-            button.setImage(UIImage(systemName: item.symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)), for: .normal)
+            button.setImage(UIImage(systemName: item.symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
             button.accessibilityLabel = item.label
             button.addTarget(self, action: item.action, for: .touchUpInside)
             return button
@@ -30,15 +34,51 @@ final class KeyboardRow: UIInputView {
         stack.axis = .horizontal
         stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+
+        let capsule = Self.capsule()
+        capsule.translatesAutoresizingMaskIntoConstraints = false
+        capsule.contentView.addSubview(stack)
+        addSubview(capsule)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 4),
-            stack.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -4),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.heightAnchor.constraint(equalToConstant: 46),
-            stack.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
+            capsule.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: Self.inset),
+            capsule.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -Self.inset),
+            capsule.topAnchor.constraint(equalTo: topAnchor),
+            capsule.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.inset),
+            capsule.heightAnchor.constraint(equalToConstant: Self.barHeight),
+            stack.leadingAnchor.constraint(equalTo: capsule.contentView.leadingAnchor, constant: 6),
+            stack.trailingAnchor.constraint(equalTo: capsule.contentView.trailingAnchor, constant: -6),
+            stack.topAnchor.constraint(equalTo: capsule.contentView.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: capsule.contentView.bottomAnchor),
         ])
-        tintColor = Appearance.ink
+        tintColor = .label
+        // Text scrolling beneath the bar fades under it, as under the
+        // navigation bar at the top.
+        if #available(iOS 26.0, *) {
+            let interaction = UIScrollEdgeElementContainerInteraction()
+            interaction.scrollView = textView
+            interaction.edge = .bottom
+            addInteraction(interaction)
+        }
+    }
+
+    /// Liquid Glass on iOS 26; a material capsule on earlier systems.
+    private static func capsule() -> UIVisualEffectView {
+        if #available(iOS 26.0, *) {
+            let glass = UIGlassEffect(style: .regular)
+            glass.isInteractive = true
+            let view = UIVisualEffectView(effect: glass)
+            view.cornerConfiguration = .capsule()
+            return view
+        }
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        view.layer.cornerRadius = barHeight / 2
+        view.layer.cornerCurve = .continuous
+        view.clipsToBounds = true
+        return view
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.barHeight + Self.inset)
     }
 
     @available(*, unavailable)

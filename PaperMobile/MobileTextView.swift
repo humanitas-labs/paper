@@ -64,6 +64,14 @@ final class MobileTextView: UITextView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(settingsDidChange), name: Configuration.didChangeNotification, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillHideNotification, object: nil
+        )
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitHorizontalSizeClass.self]) { (view: MobileTextView, _) in
             view.setNeedsLayout()
             view.restyle()
@@ -125,6 +133,31 @@ final class MobileTextView: UITextView {
         styledMeasure = MarkdownSyntaxStyler.measure(of: self)
         decorations.setNeedsDisplay()
         refreshImageDemand()
+    }
+
+    /// The page runs under the keyboard and its bar (see the document
+    /// view), so the text view insets its content by the part of itself
+    /// the keyboard covers. Text can still scroll beneath the glass bar,
+    /// where the bottom edge effect fades it.
+    @objc private func keyboardWillChangeFrame(_ note: Notification) {
+        guard let window, let screenFrame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        let hiding = note.name == UIResponder.keyboardWillHideNotification
+        let keyboard = convert(window.convert(screenFrame, from: window.screen.coordinateSpace), from: window)
+        let covered = hiding ? 0 : max(0, bounds.maxY - max(keyboard.minY, bounds.minY))
+        // The automatic adjustment already adds the home indicator's inset.
+        let inset = max(0, covered - safeAreaInsets.bottom)
+        guard contentInset.bottom != inset else { return }
+        contentInset.bottom = inset
+        verticalScrollIndicatorInsets.bottom = inset
+        if !hiding { scrollRangeToVisible(selectedRange) }
+    }
+
+    /// Tells the enclosing view controller this is its content scroll view,
+    /// so the navigation bar fades text scrolling under it.
+    private func claimTopEdge() {
+        var responder: UIResponder? = self
+        while let next = responder?.next, !(next is UIViewController) { responder = next }
+        (responder?.next as? UIViewController)?.setContentScrollView(self, for: .top)
     }
 
     @objc private func settingsDidChange() {
@@ -240,6 +273,7 @@ final class MobileTextView: UITextView {
             ImageStore.shared.removeDemand(for: ObjectIdentifier(self))
         } else {
             refreshImageDemand()
+            claimTopEdge()
         }
     }
 }
