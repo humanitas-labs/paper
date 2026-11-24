@@ -66,10 +66,11 @@ final class LibraryNavigation: ObservableObject {
 
     // MARK: Tabs
 
-    /// A new tab after the front one, on `folder` or the folder in front,
-    /// brought forward unless `behind`.
+    /// A new tab after the front one, on `folder` or else the library's
+    /// root (⌘T starts fresh, as a browser's new tab does), brought
+    /// forward unless `behind`.
     func openTab(_ folder: URL? = nil, behind: Bool = false) {
-        tabs.insert(Tab(folder: (folder ?? self.folder).standardizedFileURL), at: front + 1)
+        tabs.insert(Tab(folder: (folder ?? root).standardizedFileURL), at: front + 1)
         if !behind { front += 1 }
     }
 

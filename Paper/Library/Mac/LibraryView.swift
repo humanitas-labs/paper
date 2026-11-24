@@ -45,10 +45,9 @@ struct LibraryView: View {
     @State private var hovered: HoverTarget?
     @State private var renaming = false
     @State private var renameText = ""
-    @AppStorage(LibraryGrouping.storageKey) private var groupingStorage = "none"
-    @State private var query = ""
-    @State private var searching = false
-    @FocusState private var searchFocused: Bool
+    /// No grouping and no search for now; their controls are put away.
+    private let grouping = LibraryGrouping.none
+    private let query = ""
     /// Each note's frontmatter, read after the listing, for grouping.
     @State private var properties: [URL: [String: String]] = [:]
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
@@ -108,13 +107,9 @@ struct LibraryView: View {
                 .padding(.leading, navigation.fullScreen ? 94 : 181)
                 .ignoresSafeArea()
         }
-        // Across from the folder's name: how many are picked, the
-        // grouping and the search.
+        // Across from the folder's name: how many are picked.
         .overlay(alignment: .topTrailing) {
-            LibraryControls(
-                selectionCount: selection.count, query: $query, searching: $searching,
-                searchFocus: $searchFocused, showGroupMenu: showGroupMenu
-            )
+            LibraryControls(selectionCount: selection.count)
             .frame(height: 52)
             .padding(.trailing, 14)
             .ignoresSafeArea()
@@ -172,12 +167,6 @@ struct LibraryView: View {
             selection.removeAll()
             cards.rects.removeAll()
             hovered = nil
-            // A search is for the folder it was typed in.
-            if query.isEmpty == false || searching {
-                query = ""
-                searching = false
-                searchFocused = false
-            }
             await reload(arriving: true)
             watch()
         }
@@ -198,10 +187,8 @@ struct LibraryView: View {
             .onChange(of: hiddenItems) { publishContext() }
             .onChange(of: selection) { publishContext() }
             .onChange(of: hovered?.url) { publishContext() }
-            .onChange(of: query) { publishContext() }
-            .onChange(of: groupingStorage) { publishContext() }
             .onChange(of: properties) { publishContext() }
-            .task(id: listing.notes) { await readProperties() }
+            .task(id: listing.notes) { if grouping != .none { await readProperties() } }
     }
 
     private var page: some View {
@@ -262,7 +249,6 @@ struct LibraryView: View {
 
     // MARK: Grouping and search
 
-    private var grouping: LibraryGrouping { LibraryGrouping(storage: groupingStorage) }
     private var isFiltering: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private var visibleFolders: [FolderListing.Folder] {
@@ -280,28 +266,6 @@ struct LibraryView: View {
         // A property no note here has groups nothing; show the plain list.
         if case .property(let key) = grouping, !properties.values.contains(where: { $0[key] != nil }) { grouping = .none }
         return LibraryOrganize.groups(visibleNotes, by: grouping, properties: properties)
-    }
-
-    private func showGroupMenu(under frame: CGRect) {
-        if menu != nil {
-            withAnimation(LibraryMenuLayer.wash) { menu = nil }
-            return
-        }
-        var choices: [LibraryGrouping] = [.none, .modified, .name]
-        choices += LibraryOrganize.groupableKeys(properties).map { .property($0) }
-        let items = choices.map { choice in
-            LibraryMenuItem(title: choice.title, glyph: GroupGlyph(), hint: choice == grouping ? "✓" : "") {
-                withAnimation(LibraryMotion.itemSpring) { groupingStorage = choice.storage }
-            }
-        }
-        // Under the button, its right edge on the button's; the menu turns
-        // left at the window's edge.
-        showMenu(at: CGPoint(x: frame.maxX, y: frame.maxY + 4), items: items)
-    }
-
-    private func openSearch() {
-        searching = true
-        DispatchQueue.main.async { searchFocused = true }
     }
 
     /// Reads the frontmatter of the notes shown, off the main thread.
@@ -570,21 +534,16 @@ struct LibraryView: View {
                 .keyboardShortcut(".", modifiers: [.command, .shift])
             Button("Enclosing Folder") { goUp() }
                 .keyboardShortcut(.upArrow, modifiers: .command)
-                .disabled(searchFocused)
-            Button("Find") { openSearch() }
-                .keyboardShortcut("f", modifiers: .command)
             Button("Back") { goBack() }
                 .keyboardShortcut("[", modifiers: .command)
             Button("Forward") { goForward() }
                 .keyboardShortcut("]", modifiers: .command)
             Button("Select All") { selectAll() }
                 .keyboardShortcut("a", modifiers: .command)
-                .disabled(searchFocused)
             // Escape lets go of what is picked; with nothing picked it
             // steps back, as ⌃T does, after vim's tag stack.
             Button("Deselect or Back") { selection.isEmpty ? stepBack() : deselect() }
                 .keyboardShortcut(.escape, modifiers: [])
-                .disabled(searchFocused)
             // ⌘N here makes a blank note in the folder shown, which grows
             // into the grid, newest first, ready to click into. Elsewhere
             // ⌘N is File ▸ New as before.
@@ -605,15 +564,12 @@ struct LibraryView: View {
             }
             Button("Step Back") { stepBack() }
                 .keyboardShortcut("t", modifiers: .control)
-                .disabled(searchFocused)
             Button("Move to Trash") { trashSelection() }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(searchFocused)
             // Delete alone does the same: to the Trash, so it can be put
             // back, never removed outright.
             Button("Delete") { if !renaming && menu == nil { trashSelection() } }
                 .keyboardShortcut(.delete, modifiers: [])
-                .disabled(searchFocused)
         }
         .opacity(0)
         .allowsHitTesting(false)

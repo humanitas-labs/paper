@@ -191,100 +191,21 @@ enum NoteProperties {
 
 // MARK: Controls
 
-/// The library's controls at the top right: how many cards are picked,
-/// the grouping, and the search. Bare glyphs, without a ground.
+/// The library's controls at the top right; for now only how many cards
+/// are picked. (Group and search buttons were tried here and put away;
+/// the grouping and search above are kept for their return.)
 struct LibraryControls: View {
     let selectionCount: Int
-    @Binding var query: String
-    @Binding var searching: Bool
-    var searchFocus: FocusState<Bool>.Binding
-    /// Opens the grouping menu under the button's frame, in global space.
-    let showGroupMenu: (CGRect) -> Void
-    @State private var groupFrame = CGRect.zero
 
     var body: some View {
         HStack(spacing: 4) {
             if selectionCount > 0 {
                 LibraryTitlePill(title: selectionCount == 1 ? "1 selected" : "\(selectionCount) selected")
                     .monospacedDigit()
-                    .padding(.trailing, 6)
                     .transition(.opacity)
             }
-            ControlButton(label: "Group") {
-                HStack(spacing: 3) {
-                    GroupGlyph().stroke(ControlStyle.ink, style: ControlStyle.stroke).frame(width: 20, height: 20)
-                    ChevronGlyph().stroke(ControlStyle.ink, style: ControlStyle.stroke).frame(width: 9, height: 9)
-                }
-            } action: { showGroupMenu(groupFrame) }
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { groupFrame = $0 }
-            if searching {
-                field.transition(.opacity.combined(with: .scale(0.9, anchor: .trailing)))
-            } else {
-                ControlButton(label: "Search (⌘F)") {
-                    SearchGlyph().stroke(ControlStyle.ink, style: ControlStyle.stroke).frame(width: 20, height: 20)
-                } action: { open() }
-            }
         }
-        .animation(.spring(duration: 0.25, bounce: 0.1), value: searching)
         .animation(.easeOut(duration: 0.15), value: selectionCount > 0)
-    }
-
-    private var field: some View {
-        HStack(spacing: 6) {
-            SearchGlyph().stroke(ControlStyle.ink, style: ControlStyle.stroke).frame(width: 15, height: 15)
-            TextField("Search", text: $query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .focused(searchFocus)
-                // Escape clears the search, and closes it once empty.
-                .onExitCommand { query.isEmpty ? close() : (query = "") }
-        }
-        .padding(.horizontal, 10)
-        .frame(width: 210, height: 30)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(LibraryPalette.card))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Color.primary.opacity(0.09), lineWidth: 1))
-        .onChange(of: searchFocus.wrappedValue) { _, focused in
-            if !focused, query.isEmpty { searching = false }
-        }
-    }
-
-    private func open() {
-        searching = true
-        DispatchQueue.main.async { searchFocus.wrappedValue = true }
-    }
-
-    private func close() {
-        searchFocus.wrappedValue = false
-        searching = false
-    }
-}
-
-private enum ControlStyle {
-    static var ink: Color { Color.primary.opacity(0.62) }
-    static var stroke: StrokeStyle { StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round) }
-}
-
-private struct ControlButton<Content: View>: View {
-    let label: String
-    @ViewBuilder let content: Content
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            content
-                .padding(.horizontal, 7)
-                .frame(minWidth: 34, minHeight: 30)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color.primary.opacity(hovering ? 0.07 : 0))
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help(label)
-        .accessibilityLabel(label)
     }
 }
 

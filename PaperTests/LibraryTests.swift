@@ -116,6 +116,10 @@ struct LibraryTests {
         #expect(navigation.closeTab())
         #expect(!navigation.closeTab())
         #expect(navigation.tabs.count == 1)
+        // ⌘T starts at the library's root, wherever the front tab is.
+        navigation.go(to: root.appendingPathComponent("a/deep"))
+        navigation.openTab()
+        #expect(navigation.folder == root.standardizedFileURL && !navigation.canGoBack)
     }
 
     @Test func foldersAreToldFromFilesAndPackages() throws {
