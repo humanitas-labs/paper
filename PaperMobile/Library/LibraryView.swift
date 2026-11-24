@@ -479,21 +479,36 @@ struct FolderCard: View {
     let folder: FolderListing.Folder
     var selected = false
 
+    /// The artwork draws the folder inside a larger canvas (room for its
+    /// shadow): the shape spans x 10.5–301.6 and y 4.5–210 of 312 × 226.
+    /// The card is sized by the shape, so its edges meet the grid's like a
+    /// note card's, and the artwork overhangs it by the shadow's margin.
+    static let canvas = CGSize(width: 312.054, height: 226.45)
+    static let shape = CGRect(x: 10.5, y: 4.5, width: 291.054, height: 205.45)
+
     var body: some View {
-        Image("FolderShape")
-            .resizable()
-            .aspectRatio(312.054 / 226.45, contentMode: .fit)
-            .overlay(alignment: .bottomLeading) {
-                // The label sits 26 pt in from the card's left and ends
-                // about 26 pt above its bottom on the 293.5 pt design card,
-                // which the artwork draws 9.3 pt into a 312 × 226 canvas.
-                // Anchored at the bottom, it cannot run past the card.
+        Color.clear
+            .aspectRatio(Self.shape.width / Self.shape.height, contentMode: .fit)
+            .overlay {
                 GeometryReader { proxy in
+                    let scale = proxy.size.width / Self.shape.width
+                    Image("FolderShape")
+                        .resizable()
+                        .frame(width: Self.canvas.width * scale, height: Self.canvas.height * scale)
+                        .offset(x: -Self.shape.minX * scale, y: -Self.shape.minY * scale)
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                // The label sits 26 pt in from the shape's left and ends
+                // about 26 pt above its bottom on the 291 pt design folder;
+                // anchored at the bottom, it cannot run past the card.
+                GeometryReader { proxy in
+                    let scale = proxy.size.width / Self.shape.width
                     label
                         .frame(width: proxy.size.width * 0.78, alignment: .leading)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                        .padding(.leading, proxy.size.width * 35.7 / 312.054)
-                        .padding(.bottom, proxy.size.height * 42.5 / 226.45)
+                        .padding(.leading, 25.2 * scale)
+                        .padding(.bottom, 26 * scale)
                 }
             }
             // Picked: a bright outline around the folder's silhouette.
@@ -552,7 +567,7 @@ struct NoteCard: View {
                 }
             }
             .clipShape(NoteCard.shape)
-            .overlay(NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1.5))
+            .overlay(NoteCard.shape.strokeBorder(LibraryPalette.border, lineWidth: 1))
             // Picked, as in Spatial: a bright ring around the card.
             .overlay {
                 if selected { NoteCard.shape.strokeBorder(Color.primary, lineWidth: 3) }
@@ -752,12 +767,16 @@ private struct SwipeBackEnabler: UIViewControllerRepresentable {
     }
 }
 
-/// The folder artwork's outline (its back panel and tab), scaled from the
-/// artwork's 312 × 226 canvas, for the picked state's ring.
+/// The folder artwork's outline (its back panel and tab), fitted to the
+/// card, which is the shape's own box, for the picked state's ring.
 struct FolderSilhouette: Shape {
     func path(in rect: CGRect) -> Path {
-        let sx = rect.width / 312.054, sy = rect.height / 226.45
-        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * sx, y: rect.minY + y * sy) }
+        // Artwork coordinates, measured from the shape's own top left.
+        let box = FolderCard.shape
+        let sx = rect.width / box.width, sy = rect.height / box.height
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + (x - box.minX) * sx, y: rect.minY + (y - box.minY) * sy)
+        }
         var path = Path()
         path.move(to: p(10.5, 22.844))
         path.addCurve(to: p(28.844, 4.5), control1: p(10.5, 10.615), control2: p(16.615, 4.5))
