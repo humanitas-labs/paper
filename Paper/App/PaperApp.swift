@@ -91,6 +91,11 @@ struct PaperApp: App {
                 Button("Actual Size") { Zoom.reset() }
                     .keyboardShortcut("0", modifiers: .command)
             }
+            // A folder opens as a library window (.plan/desktop-library.md).
+            CommandGroup(after: .newItem) {
+                Button("Open Folder…") { LibraryOpening.chooseFolder() }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
+            }
             PinCommands()
         }
 

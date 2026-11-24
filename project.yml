@@ -55,6 +55,14 @@ targets:
             LSItemContentTypes:
               - net.daringfireball.markdown
               - public.plain-text
+          # A folder opens as a library window (.plan/desktop-library.md),
+          # so Finder, the Dock and Open Recent take folders. Alternate:
+          # Finder stays the app that opens folders.
+          - CFBundleTypeName: Folder
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.folder
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: net.daringfireball.markdown
             UTTypeDescription: Markdown document

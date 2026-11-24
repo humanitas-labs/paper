@@ -39,6 +39,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         PaperContext.shared.stop()
     }
 
+    /// Files and folders from Finder, the Dock and the `paper` command. A
+    /// folder opens as a library window; files go to the document system,
+    /// as they would without this method.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        LibraryOpening.open(urls)
+    }
+
     /// A Dock click while no window is open.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if hasVisibleWindows { return true }

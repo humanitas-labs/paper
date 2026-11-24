@@ -16,7 +16,8 @@ enum WelcomeWindow {
             return
         }
         let recents = WelcomeModel.recents(from: NSDocumentController.shared.recentDocumentURLs)
-        let view = WelcomeView(recents: recents, greeting: WelcomeModel.greeting)
+        let folders = WelcomeModel.recents(from: LibraryOpening.recentFolders)
+        let view = WelcomeView(recents: recents, folders: folders, greeting: WelcomeModel.greeting)
         let configuration = ConfigurationStore.shared.current
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: configuration.windowWidth, height: configuration.windowHeight),

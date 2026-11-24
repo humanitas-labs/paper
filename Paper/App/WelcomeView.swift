@@ -9,6 +9,8 @@ import SwiftUI
 /// a cancelled Open panel lands back here.
 struct WelcomeView: View {
     let recents: [WelcomeModel.Recent]
+    /// Folders opened as libraries, newest first.
+    var folders: [WelcomeModel.Recent] = []
     let greeting: String
     /// Observed so a theme or font change restyles the open window.
     @ObservedObject private var store = ConfigurationStore.shared
@@ -26,8 +28,11 @@ struct WelcomeView: View {
                 row("New file", symbol: "plus", hint: "⌘N") {
                     NSDocumentController.shared.newDocument(nil)
                 }
-                row("Open…", symbol: "folder", hint: "⌘O") {
+                row("Open…", symbol: "doc", hint: "⌘O") {
                     NSDocumentController.shared.openDocument(nil)
+                }
+                row("Open folder…", symbol: "folder", hint: "⇧⌘O") {
+                    LibraryOpening.chooseFolder()
                 }
                 row("Settings", symbol: "slider.horizontal.3", hint: "⌘,") {
                     NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
@@ -45,6 +50,16 @@ struct WelcomeView: View {
                             ) { _, _, _ in }
                         }
                         .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                    }
+                }
+                .padding(.top, 20)
+            }
+            if !folders.isEmpty {
+                section("Folders") {
+                    ForEach(folders) { folder in
+                        row(folder.name, detail: folder.folder, symbol: "folder", hint: "") {
+                            LibraryOpening.open([folder.url])
+                        }
                     }
                 }
                 .padding(.top, 20)
