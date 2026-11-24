@@ -14,7 +14,10 @@ struct NoteView: View {
     @State private var pendingSave: Task<Void, Never>?
 
     var body: some View {
-        Group {
+        // A ZStack over the canvas, not a Group: an empty Group has no
+        // view, so its `task` never runs and the note never loads.
+        ZStack {
+            Color(uiColor: Appearance.canvas).ignoresSafeArea()
             if let failure {
                 Text(failure)
                     .foregroundStyle(.secondary)
@@ -27,7 +30,6 @@ struct NoteView: View {
                     .ignoresSafeArea()
             }
         }
-        .background(Color(uiColor: Appearance.canvas).ignoresSafeArea())
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ShareLink(item: url)
