@@ -5,6 +5,12 @@ import UniformTypeIdentifiers
 enum LibraryRoute: Hashable {
     case folder(URL)
     case note(URL)
+    /// A note just made, which zooms from the compose button, as it has
+    /// no card yet.
+    case newNote(URL)
+
+    /// The compose button's zoom source.
+    static let composeSource = "compose"
 }
 
 /// The app's home: the root folder's folders and notes, and a stack to
@@ -27,6 +33,9 @@ struct LibraryView: View {
                     case .note(let url):
                         NoteView(url: url)
                             .navigationTransition(.zoom(sourceID: url, in: cards))
+                    case .newNote(let url):
+                        NoteView(url: url)
+                            .navigationTransition(.zoom(sourceID: LibraryRoute.composeSource, in: cards))
                     }
                 }
         }
@@ -206,6 +215,7 @@ struct FolderView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .matchedTransitionSource(id: LibraryRoute.composeSource, in: cards)
         // Mirror of the enso's inset, so the glyph lines up with the grid.
         .offset(x: brandInset)
         .accessibilityLabel("New Note")
@@ -488,8 +498,11 @@ struct FolderView: View {
             index += 1
         }
         let url = folder.appendingPathComponent(name)
-        guard (try? NoteFile.write("", to: url)) != nil else { return }
-        open(.note(url))
+        // A plain empty file, without the save notice: that notice reloads
+        // the grid and draws the new card's miniature mid-zoom. The grid
+        // reloads when the library reappears.
+        guard FileManager.default.createFile(atPath: url.path, contents: Data()) else { return }
+        open(.newNote(url))
     }
 }
 

@@ -26,7 +26,9 @@ struct MobileEditor: UIViewRepresentable {
         textView.load(text)
         textView.onTextChange = { text = $0 }
         if focusesEnd {
-            DispatchQueue.main.async {
+            // After the zoom lands: the keyboard rising with it made both
+            // stutter.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                 textView.selectedRange = NSRange(location: textView.textStorage.length, length: 0)
                 _ = textView.becomeFirstResponder()
             }
