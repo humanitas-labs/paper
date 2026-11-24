@@ -126,10 +126,11 @@ struct FolderView: View {
                     Button("Done", systemImage: "checkmark") { changeSelection { $0.removeAll() } }
                         .labelStyle(.iconOnly)
                 }
+            } else if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .primaryAction) { composeButton }
+                    .sharedBackgroundVisibility(.hidden)
             } else {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("New Note", systemImage: "square.and.pencil", action: newNote)
-                }
+                ToolbarItem(placement: .primaryAction) { composeButton }
             }
         }
         // One floating capsule at the bottom, as the system's apps now do:
@@ -183,7 +184,23 @@ struct FolderView: View {
             }
         }
         .padding(.horizontal, searchOpen && !selecting ? 16 : 0)
-        .padding(.bottom, 8)
+        .padding(.bottom, 4)
+    }
+
+    /// New note, drawn in Spatial's line style and standing on the page
+    /// without a glass circle, as the enso does on the left.
+    private var composeButton: some View {
+        Button(action: newNote) {
+            ComposeGlyph()
+                .stroke(Color.primary, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .frame(width: 22, height: 22)
+                .padding(8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // Mirror of the enso's inset, so the glyph lines up with the grid.
+        .offset(x: brandInset)
+        .accessibilityLabel("New Note")
     }
 
     /// Renaming is offered when one item is picked.
@@ -775,8 +792,9 @@ private struct BarGlyph: View {
     }
 }
 
-/// The library's bottom capsule: search and a new folder. Search opens a
-/// field across the capsule; clearing it closes the field.
+/// The library's bottom bar: search and a new folder, in the system's
+/// glass, as current apps use, so it reads apart from the toast. Search
+/// opens a field across the bar; closing it clears the search.
 private struct LibraryBar: View {
     @Binding var query: String
     @Binding var searchOpen: Bool
@@ -784,49 +802,79 @@ private struct LibraryBar: View {
     let newFolder: () -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             if searchOpen {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(ToastPalette.glyph)
-                    .padding(.leading, 14)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 16)
                 TextField("Search", text: $query)
                     .focused(searchFocused)
                     .submitLabel(.search)
                     .autocorrectionDisabled()
-                    .frame(height: 44)
-                Button {
+                    .frame(height: 48)
+                    .padding(.horizontal, 8)
+                icon("xmark", label: "Close Search") {
                     withAnimation(FolderView.selectionSpring) {
                         query = ""
                         searchOpen = false
                     }
-                } label: {
-                    BarGlyph(image: Image(systemName: "xmark"))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close Search")
             } else {
-                Button {
+                icon("magnifyingglass", label: "Search") {
                     withAnimation(FolderView.selectionSpring) { searchOpen = true }
                     searchFocused.wrappedValue = true
-                } label: {
-                    BarGlyph(image: Image(systemName: "magnifyingglass"))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Search")
-                Button(action: newFolder) {
-                    BarGlyph(image: Image(systemName: "folder.badge.plus"))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("New Folder")
+                icon("folder.badge.plus", label: "New Folder", action: newFolder)
             }
         }
-        .padding(.horizontal, searchOpen ? 0 : 10)
-        .padding(.vertical, 6)
-        .background {
-            SelectionToast.shape
-                .fill(ToastPalette.fill)
-                .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        .padding(.horizontal, 6)
+        .modifier(GlassCapsule())
+    }
+
+    private func icon(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 56, height: 48)
+                .contentShape(Capsule())
         }
-        .overlay(SelectionToast.shape.strokeBorder(ToastPalette.border, lineWidth: 1))
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Liquid Glass on iOS 26; a material capsule before it.
+private struct GlassCapsule: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content.background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
+/// Spatial-style compose glyph on a 24 pt grid: a rounded page open at its
+/// top right corner, and a pen stroke running into it.
+struct ComposeGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+        var path = Path()
+        // The page: from the top edge round the left, bottom and right.
+        path.move(to: p(11, 4))
+        path.addLine(to: p(8, 4))
+        path.addQuadCurve(to: p(4, 8), control: p(4, 4))
+        path.addLine(to: p(4, 16))
+        path.addQuadCurve(to: p(8, 20), control: p(4, 20))
+        path.addLine(to: p(16, 20))
+        path.addQuadCurve(to: p(20, 16), control: p(20, 20))
+        path.addLine(to: p(20, 13))
+        // The pen: a stroke from the top right into the page.
+        path.move(to: p(19.5, 4.5))
+        path.addLine(to: p(11, 13))
+        return path
     }
 }
