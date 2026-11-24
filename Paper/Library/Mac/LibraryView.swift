@@ -426,9 +426,11 @@ private struct CardClick: ViewModifier {
             // Hung below the card, outside its layout, so nothing moves.
             .overlay(alignment: .bottom) {
                 if hovering, let label {
+                    // Pushed down by its own height and a gap, so its top
+                    // sits clear of the card's foot.
                     HoverLabel(text: label)
-                        .alignmentGuide(.bottom) { $0[.top] - 9 }
-                        .transition(.opacity.combined(with: .offset(y: -3)))
+                        .offset(y: HoverLabel.height + 10)
+                        .transition(.opacity)
                 }
             }
             .animation(.easeOut(duration: 0.14), value: hovering)
@@ -480,6 +482,7 @@ private struct CardFrame: ViewModifier {
 
 /// A small pill of quiet monospaced type, for a name shown on hover.
 private struct HoverLabel: View {
+    static let height: CGFloat = 22
     let text: String
 
     var body: some View {
@@ -490,7 +493,7 @@ private struct HoverLabel: View {
             .lineLimit(1)
             .truncationMode(.middle)
             .padding(.horizontal, 9)
-            .padding(.vertical, 4.5)
+            .frame(height: Self.height)
             .background(Capsule().fill(ToastPalette.fill))
             .overlay(Capsule().strokeBorder(ToastPalette.border, lineWidth: 1))
             .frame(maxWidth: 260)
