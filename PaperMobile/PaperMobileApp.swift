@@ -5,27 +5,9 @@ struct PaperMobileApp: App {
     @UIApplicationDelegateAdaptor private var delegate: AppDelegate
 
     var body: some Scene {
-        DocumentGroup(newDocument: MarkdownDocument()) { configuration in
-            MobileDocumentView(document: configuration.$document, fileURL: configuration.fileURL)
+        WindowGroup {
+            LibraryView()
         }
-    }
-}
-
-private struct MobileDocumentView: View {
-    @Binding var document: MarkdownDocument
-    let fileURL: URL?
-    /// Observed so the canvas follows theme changes.
-    @ObservedObject private var store = ConfigurationStore.shared
-
-    var body: some View {
-        MobileEditor(text: $document.text, fileURL: fileURL)
-            // The page runs under the navigation bar and the keyboard so
-            // text scrolls beneath both bars and fades there; the text view
-            // insets itself (`MobileTextView.keyboardWillChangeFrame`).
-            .ignoresSafeArea()
-            // As in Notes: the bar keeps its buttons but not the title.
-            .toolbar(removing: .title)
-            .background(Color(uiColor: Appearance.canvas))
     }
 }
 
