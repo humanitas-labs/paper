@@ -201,6 +201,14 @@ enum Appearance {
 
     private static var cachedColors: Colors?
 
+    /// On iPhone the dark page is the library's note card color, so a
+    /// card zooms into a page of the same color; the Mac keeps the theme's.
+    #if os(iOS)
+    private static let phoneCanvasDark: String? = "#111212"
+    #else
+    private static let phoneCanvasDark: String? = nil
+    #endif
+
     private static var colors: Colors {
         let palette = self.palette
         if let cachedColors, cachedColors.palette == palette { return cachedColors }
@@ -215,7 +223,7 @@ enum Appearance {
         }
         let colors = Colors(
             palette: palette,
-            canvas: dynamic(light: color(hex: palette.canvas), dark: color(hex: palette.canvasDark)),
+            canvas: dynamic(light: color(hex: palette.canvas), dark: color(hex: phoneCanvasDark ?? palette.canvasDark)),
             ink: dynamic(light: lightInk, dark: darkInk),
             mutedInk: tone(palette.inkMuted, palette.inkMutedDark, alpha: 0.28),
             quoteInk: tone(palette.inkQuote, palette.inkQuoteDark, alpha: 0.62),
