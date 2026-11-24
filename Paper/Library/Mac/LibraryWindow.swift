@@ -59,6 +59,9 @@ enum LibraryWindow {
         guard let path = ProcessInfo.processInfo.environment["PAPER_LIBRARY_FSDUMP"] else { return }
         let windowed = ProcessInfo.processInfo.environment["PAPER_LIBRARY_WINDOWED"] != nil
         if !windowed { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { window.toggleFullScreen(nil) } }
+        if let note = ProcessInfo.processInfo.environment["PAPER_LIBRARY_OPEN_NOTE"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { LibraryOpening.open([URL(fileURLWithPath: note)]) }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 6.6) {
             func all(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + all($0) } }
             if let content = window.contentView, let scroll = all(content).compactMap({ $0 as? NSScrollView }).first {
@@ -76,7 +79,7 @@ enum LibraryWindow {
                 if depth < 9 { view.subviews.forEach { walk($0, depth + 1) } }
             }
             for other in NSApp.windows {
-                out += "WINDOW \(type(of: other)) \(other.frame) visible=\(other.isVisible) bg=\(other.backgroundColor.description) opaque=\(other.isOpaque)\n"
+                out += "WINDOW \(type(of: other)) full=\(other.styleMask.contains(.fullScreen)) aux=\(other.collectionBehavior.contains(.fullScreenAuxiliary)) space=\(other.isOnActiveSpace) \(other.frame) visible=\(other.isVisible) bg=\(other.backgroundColor.description) opaque=\(other.isOpaque)\n"
                 if let frame = other.contentView?.superview { walk(frame, 1) }
             }
             if let content = window.contentView {
@@ -157,6 +160,43 @@ enum LibraryWindow {
     /// (the welcome window's, new-window placement) can leave it alone.
     static func isLibraryWindow(_ window: NSWindow) -> Bool {
         windows.values.contains { $0 === window }
+    }
+
+    /// Note windows opened over a library in full screen, set to float in
+    /// its space rather than take a full screen of their own.
+    private static var floating: [ObjectIdentifier: NSWindow] = [:]
+    private static var exitObserver: NSObjectProtocol?
+
+    /// Whether a library is in full screen on the space in front.
+    static var isFullScreenOnActiveSpace: Bool {
+        windows.values.contains { $0.styleMask.contains(.fullScreen) && $0.isOnActiveSpace }
+    }
+
+    /// Sets a note's window, before it shows, to float in a full-screen
+    /// library's space rather than take a full screen of its own: notes
+    /// are rarely wanted full screen, and this keeps the library in view.
+    /// Once the library leaves full screen, the window can go full screen
+    /// again like any other.
+    static func float(_ window: NSWindow) {
+        guard !isLibraryWindow(window) else { return }
+        window.collectionBehavior.remove(.fullScreenPrimary)
+        window.collectionBehavior.insert(.fullScreenAuxiliary)
+        floating[ObjectIdentifier(window)] = window
+        guard exitObserver == nil else { return }
+        exitObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didExitFullScreenNotification, object: nil, queue: .main
+        ) { note in
+            let number = (note.object as? NSWindow)?.windowNumber
+            MainActor.assumeIsolated {
+                guard let number, let library = NSApp.window(withWindowNumber: number), isLibraryWindow(library),
+                      !windows.values.contains(where: { $0.styleMask.contains(.fullScreen) }) else { return }
+                for window in floating.values {
+                    window.collectionBehavior.remove(.fullScreenAuxiliary)
+                    window.collectionBehavior.insert(.fullScreenPrimary)
+                }
+                floating.removeAll()
+            }
+        }
     }
 
     private static func frameName(_ folder: URL) -> String { "Library \(folder.path)" }

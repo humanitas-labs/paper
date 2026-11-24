@@ -12,7 +12,28 @@ enum LibraryOpening {
             if isFolder(url) {
                 LibraryWindow.open(url)
             } else {
-                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+                openFile(url)
+            }
+        }
+    }
+
+    /// Opens a note. While a library is in full screen, AppKit would give
+    /// the note a full screen of its own as its window first shows, so
+    /// the window is made first, set to float over the library, and only
+    /// then shown.
+    private static func openFile(_ url: URL) {
+        guard LibraryWindow.isFullScreenOnActiveSpace else {
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+            return
+        }
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { document, alreadyOpen, _ in
+            MainActor.assumeIsolated {
+                guard let document else { return }
+                if !alreadyOpen, document.windowControllers.isEmpty { document.makeWindowControllers() }
+                for controller in document.windowControllers {
+                    if let window = controller.window { LibraryWindow.float(window) }
+                }
+                document.showWindows()
             }
         }
     }
