@@ -64,7 +64,9 @@ extension NSWindow {
     /// in the system appearance, so it is hidden in full screen and the
     /// corners square off to the screen.
     fileprivate func applyFullScreenState(_ full: Bool) {
-        toolbar?.isVisible = !full
+        // Only the empty chrome toolbar hides; a toolbar with controls
+        // in it, as a library window's has, stays in full screen.
+        if toolbar?.identifier == Self.chromeToolbarIdentifier { toolbar?.isVisible = !full }
         applyCorners(radius: full ? 0 : Appearance.windowCornerRadius)
     }
 
