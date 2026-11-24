@@ -97,6 +97,26 @@ struct LibraryTests {
         #expect(names.contains("mine.md"))
     }
 
+    @Test func tabsKeepTheirOwnFolderAndHistory() {
+        let root = URL(fileURLWithPath: "/tmp/lib")
+        let navigation = LibraryNavigation(root: root)
+        navigation.go(to: root.appendingPathComponent("a"))
+        navigation.openTab(root.appendingPathComponent("b"))
+        #expect(navigation.tabs.count == 2 && navigation.front == 1)
+        #expect(navigation.folder.lastPathComponent == "b" && !navigation.canGoBack)
+        navigation.showTab(0)
+        #expect(navigation.folder.lastPathComponent == "a" && navigation.canGoBack)
+        navigation.openTab(root.appendingPathComponent("c"), behind: true)
+        #expect(navigation.front == 0 && navigation.tabs.map { $0.folder.lastPathComponent } == ["a", "c", "b"])
+        navigation.showNextTab(-1)
+        #expect(navigation.folder.lastPathComponent == "b")
+        #expect(navigation.closeTab())
+        #expect(navigation.tabs.count == 2 && navigation.folder.lastPathComponent == "c")
+        #expect(navigation.closeTab())
+        #expect(!navigation.closeTab())
+        #expect(navigation.tabs.count == 1)
+    }
+
     @Test func foldersAreToldFromFilesAndPackages() throws {
         let root = try makeTree()
         defer { try? FileManager.default.removeItem(at: root) }

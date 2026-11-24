@@ -8,10 +8,32 @@ import Combine
 final class LibraryNavigation: ObservableObject {
     /// The folder opened: the library goes no higher.
     let root: URL
-    /// The folder shown, the root or one under it.
-    @Published private(set) var folder: URL
-    @Published private(set) var history: [URL] = []
-    @Published private(set) var forward: [URL] = []
+    /// A tab, as in Finder: a folder shown and the way it was reached.
+    struct Tab: Identifiable, Equatable {
+        let id = UUID()
+        var folder: URL
+        var history: [URL] = []
+        var forward: [URL] = []
+    }
+
+    /// The window's tabs, and the one in front. A window starts with one
+    /// and shows no tab bar until it has two.
+    @Published private(set) var tabs: [Tab]
+    @Published private(set) var front = 0
+
+    /// The folder shown in the front tab, the root or one under it.
+    private(set) var folder: URL {
+        get { tabs[front].folder }
+        set { tabs[front].folder = newValue }
+    }
+    private var history: [URL] {
+        get { tabs[front].history }
+        set { tabs[front].history = newValue }
+    }
+    private var forward: [URL] {
+        get { tabs[front].forward }
+        set { tabs[front].forward = newValue }
+    }
 
     /// Right clicks (and Control-clicks) in the window, where they landed
     /// in its content from the top left. The window hears them, so no view
@@ -39,7 +61,36 @@ final class LibraryNavigation: ObservableObject {
 
     init(root: URL) {
         self.root = root.standardizedFileURL
-        folder = root.standardizedFileURL
+        tabs = [Tab(folder: root.standardizedFileURL)]
+    }
+
+    // MARK: Tabs
+
+    /// A new tab after the front one, on `folder` or the folder in front,
+    /// brought forward unless `behind`.
+    func openTab(_ folder: URL? = nil, behind: Bool = false) {
+        tabs.insert(Tab(folder: (folder ?? self.folder).standardizedFileURL), at: front + 1)
+        if !behind { front += 1 }
+    }
+
+    func showTab(_ index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        front = index
+    }
+
+    func showNextTab(_ step: Int) {
+        guard tabs.count > 1 else { return }
+        front = (front + step + tabs.count) % tabs.count
+    }
+
+    /// Closes a tab; false when it is the last, which closes the window.
+    @discardableResult
+    func closeTab(_ index: Int? = nil) -> Bool {
+        let index = index ?? front
+        guard tabs.count > 1, tabs.indices.contains(index) else { return false }
+        tabs.remove(at: index)
+        if front > index || front == tabs.count { front = max(front - 1, 0) }
+        return true
     }
 
     var canGoBack: Bool { !history.isEmpty }

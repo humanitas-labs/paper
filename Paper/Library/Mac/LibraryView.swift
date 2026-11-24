@@ -99,6 +99,15 @@ struct LibraryView: View {
                 .ignoresSafeArea()
         }
         .overlay(MarqueeLayer(rect: marquee))
+        // Tabs, once there are two, at the foot of the window.
+        .overlay(alignment: .bottom) {
+            if navigation.tabs.count > 1 {
+                LibraryTabBar(navigation: navigation)
+                    .padding(.bottom, 16)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+            }
+        }
+        .animation(.spring(duration: 0.3, bounce: 0.15), value: navigation.tabs.count > 1)
         // A note's file name under the card the pointer is on. Drawn over
         // the whole grid: hung from the card itself it fell behind the
         // row below.
@@ -111,7 +120,7 @@ struct LibraryView: View {
                     trash: trashSelection
                 )
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { toastFrame = $0 }
-                .padding(.bottom, 22)
+                .padding(.bottom, navigation.tabs.count > 1 ? 22 + 44 : 22)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -182,6 +191,8 @@ struct LibraryView: View {
                         .background(FolderCard.shadow)
                         .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
                         .modifier(CardClick(hover: { if $0 { ListingCache.prefetch(item.url, showsHidden: showsHidden) } }) { click(item.url) { go(to: item.url) } })
+                        // A middle click opens the folder in a new tab behind, as a link in a browser.
+                        .overlay(MiddleClick { navigation.openTab(item.url, behind: true) })
                         .modifier(CardFrame(url: item.url, frames: cards))
                         .transition(Self.cardTransition)
                 }
@@ -286,9 +297,9 @@ struct LibraryView: View {
     /// quickly, and the grid closes up behind it.
     static let cardTransition = AnyTransition.asymmetric(
         insertion: .scale(scale: 0.05).combined(with: .opacity)
-            .animation(.spring(duration: 0.45, bounce: 0.28)),
+            .animation(.spring(duration: 0.3, bounce: 0.22)),
         removal: .scale(scale: 0.05).combined(with: .opacity)
-            .animation(.timingCurve(0.4, 0, 0.7, 1, duration: 0.28))
+            .animation(.timingCurve(0.4, 0, 0.7, 1, duration: 0.18))
     )
 
     /// To the Trash, so it can be put back, and off the grid at once
@@ -380,6 +391,9 @@ struct LibraryView: View {
             LibraryMenuItem(title: "Open", glyph: OpenGlyph()) {
                 isFolder ? go(to: url) : openNote(url)
             },
+        ] + (isFolder ? [
+            LibraryMenuItem(title: "Open in New Tab", glyph: OpenGlyph()) { navigation.openTab(url) },
+        ] : []) + [
             LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             },
@@ -451,6 +465,19 @@ struct LibraryView: View {
             // ⌘N is File ▸ New as before.
             Button("New Note Here") { newNote() }
                 .keyboardShortcut("n", modifiers: .command)
+            Button("New Tab") { navigation.openTab() }
+                .keyboardShortcut("t", modifiers: .command)
+            // ⌘W closes the tab in front, and the window with its last.
+            Button("Close Tab") { if !navigation.closeTab() { navigation.window?.performClose(nil) } }
+                .keyboardShortcut("w", modifiers: .command)
+            Button("Next Tab") { navigation.showNextTab(1) }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+            Button("Previous Tab") { navigation.showNextTab(-1) }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+            ForEach(1..<10) { number in
+                Button("Tab \(number)") { navigation.showTab(number - 1) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
+            }
             Button("Step Back") { stepBack() }
                 .keyboardShortcut("t", modifiers: .control)
             Button("Move to Trash") { trashSelection() }
@@ -749,13 +776,21 @@ enum ListingCache {
 
     /// Reads the folder off the main thread and keeps the result.
     static func read(_ folder: URL, showsHidden: Bool) async -> Entry {
-        let entry = await Task.detached(priority: .userInitiated) {
+        let read = await Task.detached(priority: .userInitiated) {
             if showsHidden {
                 let (listing, hidden) = FolderListing.loadIncludingHidden(folder)
                 return Entry(listing: listing, hidden: hidden)
             }
             return Entry(listing: FolderListing.load(folder, isDefaultRoot: false), hidden: [])
         }.value
+        // An untitled note waits at the end of the notes, where a new one
+        // appears, until its title names it.
+        var listing = read.listing
+        let untitled = listing.notes.filter { NoteNaming.isUntitled($0.url) }
+        if !untitled.isEmpty {
+            listing.notes = listing.notes.filter { !NoteNaming.isUntitled($0.url) } + untitled.reversed()
+        }
+        let entry = Entry(listing: listing, hidden: read.hidden)
         store(entry, Key(folder: folder.standardizedFileURL, showsHidden: showsHidden))
         return entry
     }
