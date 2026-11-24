@@ -161,15 +161,20 @@ final class DecorationView: UIView {
         }
     }
 
-    /// The circle in the room a task item's concealed `[ ]` reserves,
-    /// centred on the cap height of the text beside it.
     private func taskCircleRect(forPrefix prefix: NSRange, page: PageGeometry) -> CGRect? {
-        guard prefix.length >= 3, page.layoutManager.isConcealed(characterAt: NSMaxRange(prefix) - 1) else { return nil }
+        Self.taskCircleRect(forPrefix: prefix, layoutManager: page.layoutManager, storage: page.storage)
+    }
+
+    /// The circle in the room a task item's concealed `[ ]` reserves, in
+    /// container coordinates, centred on the cap height of the text beside
+    /// it. Taps use the same rect.
+    static func taskCircleRect(forPrefix prefix: NSRange, layoutManager: PaperLayoutManager, storage: NSTextStorage) -> CGRect? {
+        guard prefix.length >= 3, layoutManager.isConcealed(characterAt: NSMaxRange(prefix) - 1) else { return nil }
         let index = NSMaxRange(prefix) - 3
-        let glyph = page.layoutManager.glyphIndexForCharacter(at: index)
-        let fragment = page.layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil, withoutAdditionalLayout: true)
-        let location = page.layoutManager.location(forGlyphAt: glyph)
-        let font = page.storage.attribute(.font, at: index, effectiveRange: nil) as? UIFont ?? Appearance.bodyFont()
+        let glyph = layoutManager.glyphIndexForCharacter(at: index)
+        let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil, withoutAdditionalLayout: true)
+        let location = layoutManager.location(forGlyphAt: glyph)
+        let font = storage.attribute(.font, at: index, effectiveRange: nil) as? UIFont ?? Appearance.bodyFont()
         let size = Appearance.taskBoxSize
         return CGRect(
             x: fragment.minX + location.x,

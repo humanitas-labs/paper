@@ -30,6 +30,15 @@ final class MobileTextView: UITextView {
     private let decorations = DecorationView()
     private var styledMeasure: CGFloat = 0
 
+    /// Called with the whole text after every edit, for the document.
+    var onTextChange: ((String) -> Void)?
+    /// The selection before the current change, for snapping out of list
+    /// prefixes; and whether the snap itself is being applied.
+    var previousSelection: NSRange?
+    var adjustingSelection = false
+    /// Takes taps on task circles and links; see `gestureRecognizerShouldBegin`.
+    private(set) var actionTap: UITapGestureRecognizer?
+
     /// The side margin on a phone; the Mac's 64 pt minimum would leave a
     /// narrow column. The top margin is smaller for the same reason.
     static let compactMargin: CGFloat = 20
@@ -67,17 +76,23 @@ final class MobileTextView: UITextView {
     }
 
     private func configure() {
-        isEditable = false
+        isEditable = true
         isSelectable = true
+        delegate = self
         alwaysBounceVertical = true
         keyboardDismissMode = .interactive
-        // Paper's own substitutions are Markdown-aware and the source must
-        // stay as typed, so the system's are off.
-        smartQuotesType = .no
+        // As on the Mac: the system's dashes are off because they eat
+        // `---`, and Paper substitutes its own; quotes stay smart. Pasting
+        // must not add spaces. Autocorrection is left to the system, which
+        // a phone keyboard needs.
+        smartQuotesType = .yes
         smartDashesType = .no
         smartInsertDeleteType = .no
-        autocorrectionType = .no
         dataDetectorTypes = []
+        inputAccessoryView = KeyboardRow(textView: self)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        addGestureRecognizer(tap)
+        actionTap = tap
         decorations.isUserInteractionEnabled = false
         decorations.backgroundColor = .clear
         decorations.isOpaque = false
