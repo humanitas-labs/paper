@@ -64,6 +64,20 @@ struct LibraryTests {
         #expect(try #require(means[true]) < 0.2)
     }
 
+    /// The open animation carries the page's text over a changing ground,
+    /// so a clear background must come out clear.
+    @Test func miniatureOnAClearGroundIsTextAlone() throws {
+        let image = NoteMiniature.render("# A heading\n\nSome text.\n", documentURL: nil, dark: false, background: .clear)
+        let rep = try #require(image.representations.first as? NSBitmapImageRep)
+        #expect(rep.colorAt(x: 4, y: 4)?.alphaComponent == 0)
+        #expect(rep.colorAt(x: rep.pixelsWide - 4, y: rep.pixelsHigh - 4)?.alphaComponent == 0)
+        var inked = false
+        for y in stride(from: 80, to: 400, by: 2) where !inked {
+            for x in stride(from: 90, to: 500, by: 2) where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 { inked = true }
+        }
+        #expect(inked)
+    }
+
     @Test func miniatureIsCachedUntilTheNoteChanges() throws {
         let root = try makeTree()
         defer { try? FileManager.default.removeItem(at: root) }

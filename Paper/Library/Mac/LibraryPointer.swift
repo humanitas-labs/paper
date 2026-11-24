@@ -19,7 +19,27 @@ enum LibraryPointer {
     /// For AppKit views that set the cursor themselves.
     static let cursor = NSCursor(image: image, hotSpot: hotSpot)
 
+    /// Fixed bitmaps at 1x and 2x, drawn once. An image that draws itself
+    /// on demand did not show as a pointer in dark mode.
     static let image: NSImage = {
+        let image = NSImage(size: size)
+        for scale in [1, 2] {
+            guard let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: Int(size.width) * scale, pixelsHigh: Int(size.height) * scale,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+            ), let context = NSGraphicsContext(bitmapImageRep: rep) else { continue }
+            rep.size = size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            drawing.draw(in: NSRect(origin: .zero, size: size))
+            NSGraphicsContext.restoreGraphicsState()
+            image.addRepresentation(rep)
+        }
+        return image
+    }()
+
+    private static let drawing: NSImage = {
         let image = NSImage(size: size, flipped: true) { _ in
             let head = arrowhead()
             NSGraphicsContext.saveGraphicsState()

@@ -341,10 +341,7 @@ struct LibraryView: View {
             )
             card = window.convertToScreen(content.convert(inContent, to: nil))
         }
-        let dark = navigation.window?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let modified = listing.notes.first { $0.url == url }?.modified
-        let miniature = modified.flatMap { NoteMiniature.cached(NoteMiniature.key(for: url, modified: $0, dark: dark)) }
-        NoteOpenAnimation.open(url, from: card, miniature: miniature, library: navigation.window)
+        NoteOpenAnimation.open(url, from: card, cardColor: NSColor(LibraryPalette.card), library: navigation.window)
     }
 
     // MARK: Loading
