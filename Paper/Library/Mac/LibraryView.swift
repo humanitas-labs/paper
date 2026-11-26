@@ -57,20 +57,28 @@ struct LibraryView: View {
     /// not shrink or grow as a deleted or new card does.
     @State private var inFlight: Set<URL> = []
     @Namespace private var liftSpace
-    /// No grouping and no search for now; their controls are put away.
-    private let grouping = LibraryGrouping.none
+    /// How the notes are grouped and sorted, in every library window.
+    @AppStorage(LibraryGrouping.storageKey) private var groupingStorage = "none"
+    @AppStorage(LibrarySort.storageKey) private var sortStorage = LibrarySort.modified.rawValue
+    /// No search for now; its control is put away.
     private let query = ""
     /// Each note's frontmatter, read after the listing, for grouping.
     @State private var properties: [URL: [String: String]] = [:]
+    /// When each note's file was made, read only once the grouping or
+    /// the sort goes by it.
+    @State private var created: [URL: Date] = [:]
+    /// Paper's pins: the pinned notes of the folder shown lead the page.
+    @ObservedObject private var pinStore: PinStore
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
     private let scrolls: Bool
 
     private var folder: URL { navigation.folder }
 
     /// `listing`, when given, is shown at once instead of loading first.
-    init(navigation: LibraryNavigation, listing: FolderListing? = nil, scrolls: Bool = true) {
+    init(navigation: LibraryNavigation, listing: FolderListing? = nil, scrolls: Bool = true, pinStore: PinStore = .shared) {
         self.navigation = navigation
         self.scrolls = scrolls
+        self.pinStore = pinStore
         if let listing {
             _listing = State(initialValue: listing)
             _loaded = State(initialValue: true)
@@ -119,14 +127,18 @@ struct LibraryView: View {
         // The folder's name, after the arrows: the toolbar's in a window,
         // the drawn header's in full screen.
         .overlay(alignment: .topLeading) {
-            LibraryTitlePill(title: folder.lastPathComponent)
+            LibraryFolderTitle(folder: folder)
                 .frame(height: 52)
                 .padding(.leading, navigation.fullScreen ? 94 : 181)
                 .ignoresSafeArea()
         }
-        // Across from the folder's name: how many are picked.
+        // Across from the folder's name: how many are picked, the
+        // grouping and the sort.
         .overlay(alignment: .topTrailing) {
-            LibraryControls(selectionCount: selection.count)
+            LibraryControls(
+                selectionCount: selection.count, grouped: grouping != .none,
+                showGroupMenu: showGroupMenu, showSortMenu: showSortMenu
+            )
             .frame(height: 52)
             .padding(.trailing, 14)
             .ignoresSafeArea()
@@ -205,7 +217,33 @@ struct LibraryView: View {
             .onChange(of: selection) { publishContext() }
             .onChange(of: hovered?.url) { publishContext() }
             .onChange(of: properties) { publishContext() }
-            .task(id: listing.notes) { if grouping != .none { await readProperties() } }
+            .modifier(Arrangement(
+                created: created, grouping: groupingStorage, sort: sortStorage, pins: pinStore.pins,
+                changed: publishContext
+            ))
+            .task(id: listing.notes) { await readProperties() }
+            .task(id: CreatedNeed(notes: listing.notes, wanted: grouping == .created || sort == .created)) {
+                await readCreated()
+            }
+    }
+
+    /// Tells of a change in how the notes are arranged. Apart from the
+    /// rest of what the library follows, to keep that chain short enough
+    /// for the compiler.
+    private struct Arrangement: ViewModifier {
+        let created: [URL: Date]
+        let grouping: String
+        let sort: String
+        let pins: Pins
+        let changed: () -> Void
+
+        func body(content: Content) -> some View {
+            content
+                .onChange(of: created) { changed() }
+                .onChange(of: grouping) { changed() }
+                .onChange(of: sort) { changed() }
+                .onChange(of: pins) { changed() }
+        }
     }
 
     private var page: some View {
@@ -226,16 +264,22 @@ struct LibraryView: View {
 
     @ViewBuilder private var grid: some View {
         let folders = visibleFolders
-        let groups = noteGroups
+        let arranged = arrangedNotes
+        let groups = arranged.groups
         // Both grids stay in place, empty or not: a card arriving in a
         // grid that arrives with it does not grow in, so the first note or
         // folder in an empty folder would just appear.
         VStack(alignment: .leading, spacing: 0) {
+            // The pinned notes of this folder, above everything else.
+            if let pinned = arranged.pinned {
+                noteGroup(pinned)
+                    .padding(.bottom, folders.isEmpty && groups.isEmpty ? 0 : 32)
+            }
             folderGrid(folders)
             noteGrids(groups)
                 .padding(.top, folders.isEmpty || groups.isEmpty ? 0 : 32)
         }
-        if loaded, folders.isEmpty, groups.isEmpty {
+        if loaded, folders.isEmpty, groups.isEmpty, arranged.pinned == nil {
             Text(isFiltering ? "Nothing matches “\(query.trimmingCharacters(in: .whitespaces))”." : "No notes here yet.")
                 .foregroundStyle(LibraryPalette.secondaryLabel)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -270,13 +314,18 @@ struct LibraryView: View {
                 ForEach(groups.first?.notes ?? []) { item in noteCard(item) }
             }
         } else {
-            ForEach(groups) { group in
-                VStack(alignment: .leading, spacing: 14) {
-                    NoteGroupHeading(group: group)
-                    LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
-                        ForEach(group.notes) { item in noteCard(item) }
-                    }
-                }
+            VStack(alignment: .leading, spacing: 32) {
+                ForEach(groups) { group in noteGroup(group) }
+            }
+        }
+    }
+
+    /// A heading over its cards.
+    private func noteGroup(_ group: NoteGroup) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            NoteGroupHeading(group: group)
+            LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
+                ForEach(group.notes) { item in noteCard(item) }
             }
         }
     }
@@ -435,11 +484,43 @@ struct LibraryView: View {
         return listing.notes.filter { !away.contains($0.url) && LibraryOrganize.matches(query, name: $0.url.lastPathComponent, title: $0.title) }
     }
 
-    private var noteGroups: [NoteGroup] {
+    private var grouping: LibraryGrouping { LibraryGrouping(storage: groupingStorage) }
+    private var sort: LibrarySort { LibrarySort(storage: sortStorage) }
+
+    /// The notes as the page draws them: the pinned ones in a group of
+    /// their own, then the rest in their groups, all in the sort chosen.
+    private var arrangedNotes: (pinned: NoteGroup?, groups: [NoteGroup]) {
         var grouping = grouping
         // A property no note here has groups nothing; show the plain list.
         if case .property(let key) = grouping, !properties.values.contains(where: { $0[key] != nil }) { grouping = .none }
-        return LibraryOrganize.groups(visibleNotes, by: grouping, properties: properties)
+        let sorted = LibraryOrganize.sorted(visibleNotes, by: sort, created: created)
+        let pins = pinStore.pins
+        let split = LibraryOrganize.split(sorted) { pins.contains($0) }
+        let groups = LibraryOrganize.groups(split.rest, by: grouping, properties: properties, created: created)
+        let pinned = split.pinned.isEmpty ? nil : NoteGroup(id: "\u{0}pinned", title: "Pinned", notes: split.pinned)
+        return (pinned, groups)
+    }
+
+    /// Every note shown, in the order drawn.
+    private var orderedNotes: [FolderListing.Note] {
+        let arranged = arrangedNotes
+        return (arranged.pinned?.notes ?? []) + arranged.groups.flatMap(\.notes)
+    }
+
+    /// What the creation dates are read for: these notes, when wanted.
+    private struct CreatedNeed: Equatable {
+        let notes: [FolderListing.Note]
+        let wanted: Bool
+    }
+
+    /// Reads when the notes shown were made, off the main thread.
+    private func readCreated() async {
+        guard grouping == .created || sort == .created else { return }
+        let notes = listing.notes.map(\.url)
+        let folder = folder
+        let read = await Task.detached(priority: .utility) { NoteDates.created(notes) }.value
+        guard folder == self.folder, read != created else { return }
+        created = read
     }
 
     /// Reads the frontmatter of the notes shown, off the main thread.
@@ -456,7 +537,7 @@ struct LibraryView: View {
     private func publishContext() {
         navigation.snapshot = LibrarySnapshot(
             folders: visibleFolders,
-            notes: noteGroups.flatMap(\.notes),
+            notes: orderedNotes,
             hidden: hiddenItems, selection: selection, hovered: hovered?.url
         )
     }
@@ -656,6 +737,49 @@ struct LibraryView: View {
         }
     }
 
+    /// The grouping's menu, under its button: its right edge on the
+    /// button's; the menu turns left at the window's edge.
+    private func showGroupMenu(under frame: CGRect) {
+        if menu != nil {
+            withAnimation(LibraryMenuLayer.wash) { menu = nil }
+            return
+        }
+        var choices: [LibraryGrouping] = [.none, .modified, .created, .name]
+        choices += LibraryOrganize.groupableKeys(properties).map { .property($0) }
+        let items = choices.map { choice in
+            LibraryMenuItem(title: choice.title, glyph: choice.glyph, hint: choice == grouping ? "✓" : "") {
+                withAnimation(LibraryMotion.itemSpring) { groupingStorage = choice.storage }
+            }
+        }
+        showMenu(at: CGPoint(x: frame.maxX, y: frame.maxY + 4), items: items)
+    }
+
+    private func showSortMenu(under frame: CGRect) {
+        if menu != nil {
+            withAnimation(LibraryMenuLayer.wash) { menu = nil }
+            return
+        }
+        let items = LibrarySort.allCases.map { choice in
+            LibraryMenuItem(title: choice.title, glyph: choice.glyph, hint: choice == sort ? "✓" : "") {
+                withAnimation(LibraryMotion.itemSpring) { sortStorage = choice.rawValue }
+            }
+        }
+        showMenu(at: CGPoint(x: frame.maxX, y: frame.maxY + 4), items: items)
+    }
+
+    /// Pin or Unpin for a note: the note asked about, and the other
+    /// notes picked with it. Unpin when the note asked about is pinned.
+    private func pinItem(for url: URL) -> LibraryMenuItem {
+        let notes = Set(listing.notes.map(\.url))
+        let targets = selection.contains(url) ? selection.filter { notes.contains($0) } : [url]
+        let unpin = pinStore.pins.contains(url)
+        return LibraryMenuItem(title: unpin ? "Unpin" : "Pin", glyph: PinGlyph()) {
+            withAnimation(LibraryMotion.itemSpring) {
+                for target in targets where pinStore.pins.contains(target) == unpin { pinStore.toggle(target) }
+            }
+        }
+    }
+
     private func items(for url: URL, isFolder: Bool) -> [LibraryMenuItem] {
         [
             LibraryMenuItem(title: "Open", glyph: OpenGlyph()) {
@@ -663,7 +787,7 @@ struct LibraryView: View {
             },
         ] + (isFolder ? [
             LibraryMenuItem(title: "Open in New Tab", glyph: OpenGlyph()) { navigation.openTab(url) },
-        ] : []) + [
+        ] : [pinItem(for: url)]) + [
             LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             },

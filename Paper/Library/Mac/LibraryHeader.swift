@@ -56,3 +56,65 @@ struct LibraryTitlePill: View {
             .allowsHitTesting(false)
     }
 }
+
+/// The folder's name at the head of the library, with a folder before it.
+/// Under the pointer a copy glyph shows after the name; a click copies
+/// the folder's path, and the glyph is a check for a moment.
+struct LibraryFolderTitle: View {
+    let folder: URL
+    @State private var hovering: Bool
+    @State private var copied = false
+
+    /// `hovering` is true only for an offscreen render of the hover.
+    init(folder: URL, hovering: Bool = false) {
+        self.folder = folder
+        _hovering = State(initialValue: hovering)
+    }
+
+    var body: some View {
+        Button(action: copy) {
+            HStack(spacing: 6) {
+                FolderGlyph()
+                    .stroke(FolderCard.nameInk.opacity(0.75), style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+                    .frame(width: 16, height: 16)
+                Text(folder.lastPathComponent)
+                    .font(.system(size: 14, weight: .regular))
+                    .tracking(-0.022 * 14)
+                    .foregroundStyle(FolderCard.nameInk)
+                    .lineLimit(1)
+                ZStack {
+                    if copied {
+                        CheckGlyph().stroke(FolderCard.nameInk.opacity(0.75), style: Self.stroke).transition(.opacity)
+                    } else {
+                        CopyGlyph().stroke(FolderCard.nameInk.opacity(0.6), style: Self.stroke).transition(.opacity)
+                    }
+                }
+                .frame(width: 16, height: 16)
+                .opacity(hovering || copied ? 1 : 0)
+            }
+            .padding(.horizontal, 9)
+            .frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(LibraryPalette.background))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(.easeOut(duration: 0.12), value: copied)
+        .help("Copy Path")
+        .accessibilityLabel("\(folder.lastPathComponent), copy path")
+        // A new folder's name does not inherit the last one's check.
+        .onChange(of: folder) { copied = false }
+    }
+
+    private static let stroke = StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round)
+
+    private func copy() {
+        DocumentPath.copy(folder)
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            copied = false
+        }
+    }
+}

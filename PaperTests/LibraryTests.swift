@@ -251,6 +251,79 @@ struct LibraryTests {
         #expect(LibraryGrouping(storage: LibraryGrouping.property("type").storage) == .property("type"))
     }
 
+    @Test func notesSortByChangeCreationAndName() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        func note(_ name: String, daysAgo: Double) -> FolderListing.Note {
+            FolderListing.Note(url: URL(fileURLWithPath: "/n/\(name).md"), title: name, modified: now.addingTimeInterval(-daysAgo * 86_400))
+        }
+        let notes = [note("note 10", daysAgo: 2), note("beta", daysAgo: 0), note("note 9", daysAgo: 5), note("Alpha", daysAgo: 1)]
+        func names(_ notes: [FolderListing.Note]) -> [String] { notes.map(\.title) }
+        #expect(names(LibraryOrganize.sorted(notes, by: .modified)) == ["beta", "Alpha", "note 10", "note 9"])
+        // Names in their natural order: 9 before 10, case aside.
+        #expect(names(LibraryOrganize.sorted(notes, by: .name)) == ["Alpha", "beta", "note 9", "note 10"])
+        // By creation; a note with no date read yet goes by its last change.
+        let created: [URL: Date] = [
+            URL(fileURLWithPath: "/n/note 9.md"): now,
+            URL(fileURLWithPath: "/n/beta.md"): now.addingTimeInterval(-30 * 86_400),
+        ]
+        #expect(names(LibraryOrganize.sorted(notes, by: .created, created: created)) == ["note 9", "Alpha", "note 10", "beta"])
+        #expect(LibrarySort(storage: "nonsense") == .modified)
+    }
+
+    @Test func sortOrdersTheNotesInsideEachGroup() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        func note(_ name: String, hoursAgo: Double) -> FolderListing.Note {
+            FolderListing.Note(url: URL(fileURLWithPath: "/n/\(name).md"), title: name, modified: now.addingTimeInterval(-hoursAgo * 3_600))
+        }
+        let notes = [note("cherry", hoursAgo: 1), note("apple", hoursAgo: 2), note("banana", hoursAgo: 30), note("avocado", hoursAgo: 31)]
+        let byName = LibraryOrganize.sorted(notes, by: .name)
+        let groups = LibraryOrganize.groups(byName, by: .modified, now: now, calendar: calendar)
+        #expect(groups.map(\.title) == ["Today", "Yesterday"])
+        #expect(groups.map { $0.notes.map(\.title) } == [["apple", "cherry"], ["avocado", "banana"]])
+    }
+
+    @Test func notesGroupByTheDayTheyWereMade() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let old = FolderListing.Note(url: URL(fileURLWithPath: "/n/old.md"), title: "old", modified: now)
+        let new = FolderListing.Note(url: URL(fileURLWithPath: "/n/new.md"), title: "new", modified: now)
+        let created = [old.url: now.addingTimeInterval(-86_400)]
+        let groups = LibraryOrganize.groups([old, new], by: .created, created: created, now: now, calendar: calendar)
+        #expect(groups.map(\.title) == ["Today", "Yesterday"])
+        #expect(groups.last?.notes == [old])
+        #expect(LibraryGrouping(storage: LibraryGrouping.created.storage) == .created)
+    }
+
+    @Test func creationDatesAreReadFromTheFiles() throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let note = root.appendingPathComponent("old.md")
+        let made = Date(timeIntervalSince1970: 1_600_000_000)
+        try FileManager.default.setAttributes([.creationDate: made], ofItemAtPath: note.path)
+        let dates = NoteDates.created([note, root.appendingPathComponent("missing.md")])
+        #expect(dates.count == 1)
+        #expect(abs((dates[note.standardizedFileURL] ?? .distantPast).timeIntervalSince(made)) < 1)
+    }
+
+    @Test func pinnedNotesLeaveTheRestAndAreNotRepeated() {
+        func note(_ name: String) -> FolderListing.Note {
+            FolderListing.Note(url: URL(fileURLWithPath: "/n/\(name).md"), title: name, modified: Date(timeIntervalSince1970: 0))
+        }
+        let notes = [note("a"), note("b"), note("c"), note("d")]
+        // A pin elsewhere, in another folder, pins nothing here.
+        let pins = Pins([URL(fileURLWithPath: "/n/c.md"), URL(fileURLWithPath: "/n/a.md"), URL(fileURLWithPath: "/other/b.md")])
+        let split = LibraryOrganize.split(notes) { pins.contains($0) }
+        // In the notes' order, not the order they were pinned in.
+        #expect(split.pinned.map(\.title) == ["a", "c"])
+        #expect(split.rest.map(\.title) == ["b", "d"])
+        let none = LibraryOrganize.split(notes) { Pins().contains($0) }
+        #expect(none.pinned.isEmpty)
+        #expect(none.rest == notes)
+    }
+
     @Test func frontmatterGivesTopLevelProperties() {
         let text = "---\ntitle: \"Hello\"\nstatus: draft # soon\ntags: [one, two]\naliases:\n  - first\n  - second\nnested:\n  key: x\n---\n# Body\nkey: not this"
         let values = NoteProperties.parse(text)
