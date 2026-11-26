@@ -74,6 +74,8 @@ struct MediaGrid: View {
     let hover: (URL, Bool) -> Void
 
     @State private var hovered: URL?
+    /// The last click, to tell a double click on one tile.
+    @State private var lastClick: (url: URL, at: Date)?
     /// Where the grid is, in the page's space.
     @State private var frame = CGRect.zero
     @Environment(\.libraryScrolling) private var scrolling
@@ -87,14 +89,22 @@ struct MediaGrid: View {
             .overlay {
                 Color.clear
                     .contentShape(Rectangle())
-                    // Both at once: a tile is picked on the first click, with
-                    // no wait to see whether a second is coming.
-                    .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .local).onEnded { tap in
-                        if let index = layout.index(at: tap.location) { open(items[index].url) }
-                    })
-                    .simultaneousGesture(SpatialTapGesture(coordinateSpace: .local).onEnded { tap in
-                        if let index = layout.index(at: tap.location) { pick(items[index].url) }
-                    })
+                    // A tile is picked on the first click, with no wait to see
+                    // whether a second is coming; a second soon after on the
+                    // same tile opens it. Two quick clicks on two tiles are
+                    // two picks, which the system's own double tap is not.
+                    .onTapGesture(coordinateSpace: .local) { point in
+                        guard let index = layout.index(at: point) else { return }
+                        let url = items[index].url
+                        let now = Date()
+                        if let last = lastClick, last.url == url, now.timeIntervalSince(last.at) < NSEvent.doubleClickInterval {
+                            lastClick = nil
+                            open(url)
+                        } else {
+                            lastClick = (url, now)
+                            pick(url)
+                        }
+                    }
                     .onContinuousHover(coordinateSpace: .local) { phase in
                         switch phase {
                         case .active(let point):
@@ -415,7 +425,7 @@ struct MediaTileLook {
                 .paragraphStyle: style,
             ]).draw(in: CGRect(x: 9, y: side - 8 - 15, width: side - 18, height: 15))
             let configuration = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
-                .applying(.init(paletteColors: [NSColor.labelColor.withAlphaComponent(0.42)]))
+                .applying(.init(paletteColors: [NSColor.systemBlue]))
             if let wave = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?.withSymbolConfiguration(configuration) {
                 wave.draw(in: CGRect(
                     x: (side - wave.size.width) / 2, y: (side - wave.size.height) / 2,

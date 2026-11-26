@@ -413,7 +413,7 @@ struct MediaCard: View {
                 if kind == .audio {
                     Image(systemName: "waveform")
                         .font(.system(size: 30, weight: .regular))
-                        .foregroundStyle(Color.primary.opacity(0.42))
+                        .foregroundStyle(Color(nsColor: .systemBlue))
                 }
             }
             .overlay(alignment: .topLeading) {

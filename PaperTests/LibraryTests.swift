@@ -552,4 +552,14 @@ struct LibraryTests {
         #expect(seen == [urls[0], urls[1], urls[4], urls[5]])
         #expect(LibraryContextTree.inView(urls, selection: [urls[4]], hovered: nil) { _ in false } == nil)
     }
+
+    /// A ⇧-click picks the run between the last tile clicked and this one.
+    @Test
+    func aShiftClickPicksTheRunBetween() {
+        let urls = (1...6).map { URL(fileURLWithPath: "/tmp/\($0).png") }
+        #expect(LibraryOrganize.run(from: urls[1], to: urls[4], in: urls) == Set(urls[1...4]))
+        #expect(LibraryOrganize.run(from: urls[4], to: urls[1], in: urls) == Set(urls[1...4]))
+        #expect(LibraryOrganize.run(from: urls[2], to: urls[2], in: urls) == [urls[2]])
+        #expect(LibraryOrganize.run(from: URL(fileURLWithPath: "/tmp/gone.png"), to: urls[2], in: urls) == nil)
+    }
 }

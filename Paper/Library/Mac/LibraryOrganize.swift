@@ -133,6 +133,13 @@ struct NoteGroup: Identifiable, Equatable {
 }
 
 enum LibraryOrganize {
+    /// Everything from `anchor` to `end` in `order`, both included,
+    /// whichever comes first; nil when either is not there.
+    static func run(from anchor: URL, to end: URL, in order: [URL]) -> Set<URL>? {
+        guard let first = order.firstIndex(of: anchor), let last = order.firstIndex(of: end) else { return nil }
+        return Set(order[min(first, last)...max(first, last)])
+    }
+
     /// The notes in groups, each group's notes in their listed order. With
     /// no grouping, one untitled group.
     static func groups(

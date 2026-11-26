@@ -82,15 +82,19 @@ struct LibraryFolderTitle: View {
                     .tracking(-0.022 * 14)
                     .foregroundStyle(FolderCard.nameInk)
                     .lineLimit(1)
-                ZStack {
-                    if copied {
-                        CheckGlyph().stroke(FolderCard.nameInk.opacity(0.75), style: Self.stroke).transition(.opacity)
-                    } else {
-                        CopyGlyph().stroke(FolderCard.nameInk.opacity(0.6), style: Self.stroke).transition(.opacity)
+                // Only there under the pointer: kept in place and unseen,
+                // it left the pill a glyph's width too long after the name.
+                if hovering || copied {
+                    ZStack {
+                        if copied {
+                            CheckGlyph().stroke(FolderCard.nameInk.opacity(0.75), style: Self.stroke).transition(.opacity)
+                        } else {
+                            CopyGlyph().stroke(FolderCard.nameInk.opacity(0.6), style: Self.stroke).transition(.opacity)
+                        }
                     }
+                    .frame(width: 16, height: 16)
+                    .transition(.opacity)
                 }
-                .frame(width: 16, height: 16)
-                .opacity(hovering || copied ? 1 : 0)
             }
             .padding(.horizontal, 9)
             .frame(height: 24)

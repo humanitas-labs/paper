@@ -22,6 +22,8 @@ struct LibraryView: View {
     /// ⌘-clicking. The toast at the foot of the window acts on them; a
     /// click anywhere else lets go of them.
     @State private var selection: Set<URL> = []
+    /// The tile a ⇧-click's run starts from: the last one clicked alone or with ⌘.
+    @State private var pickAnchor: URL?
     /// The rectangle being dragged, in the window's content.
     @State private var marquee: CGRect?
     /// What was picked when the drag began, kept when ⌘ is held.
@@ -664,15 +666,31 @@ struct LibraryView: View {
     /// A click opens a card, as in Spatial, and lets go of anything
     /// picked. Only a ⌘-click or a ⇧-click picks or lets go of the card
     /// itself.
-    /// A click on a picture, a video or a sound picks it alone, as in
-    /// Finder; with ⌘ or ⇧ it joins or leaves what is picked. A double
-    /// click opens it.
+    /// A click on a picture, a video or a sound, as in Finder: alone it
+    /// picks that tile and lets go of the rest; with ⌘ the tile joins or
+    /// leaves what is picked; with ⇧ everything from the last tile
+    /// clicked to this one is picked, in the order the page shows.
     private func pickMedia(_ url: URL) {
         guard Date().timeIntervalSince(dragEnded) > 0.15 else { return }
-        if !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.shift), let anchor = pickAnchor {
+            selection = LibraryOrganize.run(from: anchor, to: url, in: shownOrder) ?? [url]
+        } else if flags.contains(.command) {
             if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
-        } else if selection != [url] {
-            selection = [url]
+            pickAnchor = url
+        } else {
+            if selection != [url] { selection = [url] }
+            pickAnchor = url
+        }
+    }
+
+    /// Every card in the order the page draws them: in each group the
+    /// notes, then the pictures, videos and sounds.
+    private var shownOrder: [URL] {
+        let arranged = arrangedNotes
+        return ((arranged.pinned.map { [$0] } ?? []) + arranged.groups).flatMap { group in
+            let urls = group.notes.map(\.url)
+            return urls.filter { !LibraryKind.isMedia($0) } + urls.filter(LibraryKind.isMedia)
         }
     }
 
