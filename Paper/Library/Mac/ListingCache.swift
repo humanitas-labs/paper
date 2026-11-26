@@ -50,11 +50,15 @@ enum ListingCache {
     /// Reads the folder off the main thread and keeps the result.
     static func read(_ folder: URL, showsHidden: Bool) async -> Entry {
         let read = await Task.detached(priority: .userInitiated) {
-            if showsHidden {
-                let (listing, hidden) = FolderListing.loadIncludingHidden(folder)
-                return Entry(listing: listing, hidden: hidden)
-            }
-            return Entry(listing: FolderListing.load(folder, isDefaultRoot: false), hidden: [])
+            // The notes as the iPhone lists them, then the Mac's pictures
+            // and videos among them.
+            let (notes, hiddenNotes) = showsHidden
+                ? FolderListing.loadIncludingHidden(folder)
+                : (FolderListing.load(folder, isDefaultRoot: false), [])
+            let (listing, hidden) = FolderListing.addingMedia(
+                to: notes, hidden: hiddenNotes, in: folder, includingHidden: showsHidden
+            )
+            return Entry(listing: listing, hidden: hidden)
         }.value
         // An untitled note waits at the end of the notes, where a new one
         // appears, until its title names it.
@@ -65,6 +69,8 @@ enum ListingCache {
         }
         let entry = Entry(listing: listing, hidden: read.hidden)
         store(entry, Key(folder: folder.standardizedFileURL, showsHidden: showsHidden))
+        // Pictures start as soon as the folder is known, before any tile.
+        MediaPicture.prefetch(listing.notes)
         return entry
     }
 

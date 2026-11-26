@@ -27,6 +27,20 @@ final class LibraryDrag {
         }
     }
 
+    /// Copies files into `folder`, as a paste does: a name already taken
+    /// there is numbered, and nothing is replaced. Returns the copies.
+    @discardableResult
+    nonisolated static func copy(_ urls: [URL], into folder: URL) -> [URL] {
+        var copies: [URL] = []
+        for url in urls {
+            let isFolder = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            let base = isFolder ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
+            let target = LibraryNames.unused(base, extension: isFolder ? "" : url.pathExtension, in: folder)
+            if (try? FileManager.default.copyItem(at: url, to: target)) != nil { copies.append(target) }
+        }
+        return copies
+    }
+
     /// Moves what was dropped into `folder`, off the main thread, as the
     /// toast's Move does; then `done`. False when nothing could go.
     @discardableResult

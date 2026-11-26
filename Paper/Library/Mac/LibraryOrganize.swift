@@ -12,6 +12,8 @@ enum LibraryGrouping: Hashable {
     case created
     /// By the first letter of the name, A to Z, then everything else.
     case name
+    /// Notes, then pictures, then videos, then sounds.
+    case kind
     /// By a frontmatter property's value; a list by its first item.
     case property(String)
 
@@ -22,6 +24,7 @@ enum LibraryGrouping: Hashable {
         case "modified": self = .modified
         case "created": self = .created
         case "name": self = .name
+        case "kind": self = .kind
         case let value where value.hasPrefix("property:"): self = .property(String(value.dropFirst("property:".count)))
         default: self = .none
         }
@@ -33,6 +36,7 @@ enum LibraryGrouping: Hashable {
         case .modified: "modified"
         case .created: "created"
         case .name: "name"
+        case .kind: "kind"
         case .property(let key): "property:\(key)"
         }
     }
@@ -43,6 +47,7 @@ enum LibraryGrouping: Hashable {
         case .modified: "Date Modified"
         case .created: "Date Created"
         case .name: "Name"
+        case .kind: "Kind"
         case .property(let key): key.prefix(1).uppercased() + key.dropFirst()
         }
     }
@@ -66,6 +71,56 @@ enum LibrarySort: String, CaseIterable {
         case .modified: "Date Modified"
         case .created: "Date Created"
         case .name: "Name"
+        }
+    }
+}
+
+/// Which cards the page shows, by kind. Folders always show.
+enum LibraryFilter: String, CaseIterable {
+    case all, notes, images, videos, audio
+
+    static let storageKey = "libraryFilter"
+
+    init(storage: String) { self = LibraryFilter(rawValue: storage) ?? .all }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .notes: "Notes"
+        case .images: "Images"
+        case .videos: "Videos"
+        case .audio: "Audio"
+        }
+    }
+
+    func admits(_ url: URL) -> Bool {
+        switch self {
+        case .all: true
+        case .notes: LibraryKind.of(url) == .note
+        case .images: LibraryKind.of(url) == .image
+        case .videos: LibraryKind.of(url) == .video
+        case .audio: LibraryKind.of(url) == .audio
+        }
+    }
+
+    var glyph: AnyShape {
+        switch self {
+        case .all: AnyShape(CardsGlyph())
+        case .notes: AnyShape(PageGlyph())
+        case .images: AnyShape(PictureGlyph())
+        case .videos: AnyShape(FilmGlyph())
+        case .audio: AnyShape(WaveGlyph())
+        }
+    }
+
+    /// Said where the cards would be, when the folder has none of the kind.
+    var emptyMessage: String {
+        switch self {
+        case .all: "No notes here yet."
+        case .notes: "No notes here."
+        case .images: "No images here."
+        case .videos: "No videos here."
+        case .audio: "No audio here."
         }
     }
 }
@@ -101,6 +156,15 @@ enum LibraryOrganize {
                 guard let first = name.first, first.isLetter else { return (Int.max, "#") }
                 let letter = String(first).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).uppercased()
                 return (Int(letter.unicodeScalars.first?.value ?? 0), letter)
+            }
+        case .kind:
+            return bucket(notes) { note in
+                switch LibraryKind.of(note.url) ?? .note {
+                case .note: (0, "Notes")
+                case .image: (1, "Images")
+                case .video: (2, "Videos")
+                case .audio: (3, "Audio")
+                }
             }
         case .property(let key):
             // Values in natural order, the notes without one last.
@@ -279,17 +343,21 @@ enum NoteProperties {
 // MARK: Controls
 
 /// The library's controls at the top right: how many cards are picked,
-/// then how the notes are grouped and sorted. Bare glyphs, without a
+/// then how the notes are grouped and sorted and which kinds show. Bare glyphs, without a
 /// ground; each opens its menu under itself.
 struct LibraryControls: View {
     let selectionCount: Int
     /// Whether the notes are in groups now: the glyph is drawn darker.
     let grouped: Bool
+    /// Whether a filter hides some kinds now: the glyph is drawn darker.
+    var filtered = false
     /// Open a menu under the button's frame, in global space.
     let showGroupMenu: (CGRect) -> Void
     let showSortMenu: (CGRect) -> Void
+    var showFilterMenu: (CGRect) -> Void = { _ in }
     @State private var groupFrame = CGRect.zero
     @State private var sortFrame = CGRect.zero
+    @State private var filterFrame = CGRect.zero
 
     var body: some View {
         HStack(spacing: 4) {
@@ -299,14 +367,26 @@ struct LibraryControls: View {
                     .padding(.trailing, 6)
                     .transition(.opacity)
             }
+            // The system's symbols, as Andrew chose. Group darkens while in
+            // use; Filter fills its circle while a filter is on.
             ControlButton(label: "Group") {
-                GroupGlyph().stroke(ControlStyle.ink(strong: grouped), style: ControlStyle.stroke).frame(width: 20, height: 20)
+                Image(systemName: "rectangle.3.group")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(ControlStyle.ink(strong: grouped))
+                    .frame(width: 20, height: 20)
             } action: { showGroupMenu(groupFrame) }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { groupFrame = $0 }
             ControlButton(label: "Sort") {
                 SortGlyph().stroke(ControlStyle.ink(strong: false), style: ControlStyle.stroke).frame(width: 20, height: 20)
             } action: { showSortMenu(sortFrame) }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sortFrame = $0 }
+            ControlButton(label: "Filter") {
+                Image(systemName: filtered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(ControlStyle.ink(strong: filtered))
+                    .frame(width: 20, height: 20)
+            } action: { showFilterMenu(filterFrame) }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { filterFrame = $0 }
         }
         .animation(.easeOut(duration: 0.15), value: selectionCount > 0)
     }
@@ -328,9 +408,12 @@ struct ControlButton<Content: View>: View {
             content
                 .padding(.horizontal, 7)
                 .frame(minWidth: 34, minHeight: 30)
+                // The title pill's ground, so the glyph reads over the
+                // pictures that scroll under it; darker under the pointer.
                 .background(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(Color.primary.opacity(hovering ? 0.07 : 0))
+                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(LibraryPalette.background))
                 )
                 .contentShape(Rectangle())
         }
@@ -471,6 +554,7 @@ extension LibraryGrouping {
         case .modified: AnyShape(ClockGlyph())
         case .created: AnyShape(CalendarGlyph())
         case .name: AnyShape(LetterGlyph())
+        case .kind: AnyShape(KindGlyph())
         case .property: AnyShape(TagGlyph())
         }
     }
@@ -542,9 +626,11 @@ struct NoteGroupHeading: View {
                 .tracking(-0.022 * 15)
                 .foregroundStyle(FolderCard.nameInk)
             Text("\(group.notes.count)")
+                // Proportional figures, set as close as the name: in
+                // fixed-width ones a 1 stands apart, and 612 read as 6 1 2.
                 .font(.system(size: 13))
+                .tracking(-0.022 * 13)
                 .foregroundStyle(FolderCard.countInk)
-                .monospacedDigit()
         }
         .padding(.leading, 2)
     }

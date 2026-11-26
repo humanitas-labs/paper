@@ -32,6 +32,9 @@ struct LibraryView: View {
     @State private var toastFrame = CGRect.zero
     /// The library's width, to keep the band off the scroller.
     @State private var width: CGFloat = 0
+    /// The page's right edge in the window, short of the scroller when
+    /// one shows: the controls line up with the cards under them.
+    @State private var pageRight: CGFloat = 0
     /// Shown when the library shows hidden items: the ones Finder hides.
     @State private var hiddenItems: Set<URL> = []
     @State private var themeGeneration = 0
@@ -43,6 +46,14 @@ struct LibraryView: View {
     @AppStorage(FolderListing.showsHiddenKey) private var showsHidden = false
     @Environment(\.colorScheme) private var colorScheme
     @State private var hovered: HoverTarget?
+    /// While the grid scrolls, cards passing under a still pointer are not
+    /// hovered: each hover would redraw the page mid-scroll, as Finder
+    /// also leaves them be.
+    @State private var scrolling = false
+    /// Where the page is scrolled to, for vim's `gg` and `G`.
+    @State private var scrollPosition = ScrollPosition()
+    /// When `g` was last pressed: a second within the moment is `gg`.
+    @State private var lastG = Date.distantPast
     @State private var renaming = false
     @State private var renameText = ""
     /// The folder card a drag is held over.
@@ -61,6 +72,8 @@ struct LibraryView: View {
     /// How the notes are grouped and sorted, in every library window.
     @AppStorage(LibraryGrouping.storageKey) private var groupingStorage = "none"
     @AppStorage(LibrarySort.storageKey) private var sortStorage = LibrarySort.modified.rawValue
+    /// Which kinds of card show, in every library window.
+    @AppStorage(LibraryFilter.storageKey) private var filterStorage = LibraryFilter.all.rawValue
     /// No search for now; its control is put away.
     private let query = ""
     /// Each note's frontmatter, read after the listing, for grouping.
@@ -68,6 +81,8 @@ struct LibraryView: View {
     /// When each note's file was made, read only once the grouping or
     /// the sort goes by it.
     @State private var created: [URL: Date] = [:]
+    /// The arrangement last worked out, and what it was worked out from.
+    @State private var memo = ArrangementMemo()
     /// Paper's pins: the pinned notes of the folder shown lead the page.
     @ObservedObject private var pinStore: PinStore
     /// False only for an offscreen snapshot, which cannot draw a scroll view.
@@ -98,6 +113,14 @@ struct LibraryView: View {
             Group {
                 if scrolls {
                     ScrollView { page }
+                        .scrollPosition($scrollPosition)
+                        .onScrollPhaseChange { _, phase in
+                            let moving = phase != .idle
+                            guard moving != scrolling else { return }
+                            scrolling = moving
+                            if moving { hovered = nil }
+                        }
+                        .environment(\.libraryScrolling, scrolling)
                         // Each folder opens at its top, on a fresh grid.
                         .id(folder)
                         // In full screen the system's toolbar is put
@@ -137,11 +160,13 @@ struct LibraryView: View {
         // grouping and the sort.
         .overlay(alignment: .topTrailing) {
             LibraryControls(
-                selectionCount: selection.count, grouped: grouping != .none,
-                showGroupMenu: showGroupMenu, showSortMenu: showSortMenu
+                selectionCount: selection.count, grouped: grouping != .none, filtered: filter != .all,
+                showGroupMenu: showGroupMenu, showSortMenu: showSortMenu, showFilterMenu: showFilterMenu
             )
             .frame(height: 52)
-            .padding(.trailing, 14)
+            // The last glyph ends where the cards do: the page's 32-point
+            // margin, less the 7 points a button keeps around its glyph.
+            .padding(.trailing, pageRight > 0 && width > 0 ? max(14, width - pageRight + 32 - 7) : 25)
             .ignoresSafeArea()
         }
         .overlay(MarqueeLayer(rect: marquee))
@@ -195,7 +220,7 @@ struct LibraryView: View {
         }
         .task(id: folder) {
             selection.removeAll()
-            cards.rects.removeAll()
+            cards.local.removeAll()
             hovered = nil
             await reload(arriving: true)
             watch()
@@ -219,7 +244,7 @@ struct LibraryView: View {
             .onChange(of: hovered?.url) { publishContext() }
             .onChange(of: properties) { publishContext() }
             .modifier(Arrangement(
-                created: created, grouping: groupingStorage, sort: sortStorage, pins: pinStore.pins,
+                created: created, grouping: groupingStorage, sort: sortStorage, filter: filterStorage, pins: pinStore.pins,
                 changed: publishContext
             ))
             .task(id: listing.notes) { await readProperties() }
@@ -235,6 +260,7 @@ struct LibraryView: View {
         let created: [URL: Date]
         let grouping: String
         let sort: String
+        let filter: String
         let pins: Pins
         let changed: () -> Void
 
@@ -243,6 +269,7 @@ struct LibraryView: View {
                 .onChange(of: created) { changed() }
                 .onChange(of: grouping) { changed() }
                 .onChange(of: sort) { changed() }
+                .onChange(of: filter) { changed() }
                 .onChange(of: pins) { changed() }
         }
     }
@@ -255,6 +282,14 @@ struct LibraryView: View {
         .padding(.top, 12)
         .padding(.bottom, 32)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        // The cards say where they are in this space; the page says where
+        // it is in the window (see `CardFrames`).
+        .coordinateSpace(.named(CardFrames.space))
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+            cards.origin = $0.origin
+            // The origin moves with every step of a scroll; the edge does not.
+            if pageRight != $0.maxX { pageRight = $0.maxX }
+        }
     }
 
     @ViewBuilder private var contents: some View {
@@ -280,11 +315,13 @@ struct LibraryView: View {
             noteGrids(groups)
                 .padding(.top, folders.isEmpty || groups.isEmpty ? 0 : 32)
         }
-        if loaded, folders.isEmpty, groups.isEmpty, arranged.pinned == nil {
-            Text(isFiltering ? "Nothing matches “\(query.trimmingCharacters(in: .whitespaces))”." : "No notes here yet.")
+        if loaded, groups.isEmpty, arranged.pinned == nil, folders.isEmpty || filter != .all {
+            // A filter left on says so, rather than leave the folder
+            // looking empty.
+            Text(isFiltering ? "Nothing matches “\(query.trimmingCharacters(in: .whitespaces))”." : filter.emptyMessage)
                 .foregroundStyle(LibraryPalette.secondaryLabel)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 120)
+                .padding(.top, folders.isEmpty ? 120 : 8)
         }
     }
 
@@ -301,7 +338,7 @@ struct LibraryView: View {
                         // A middle click opens the folder in a new tab behind, as a link in a browser.
                         .overlay(MiddleClick { navigation.openTab(item.url, behind: true) })
                         .modifier(CardFrame(url: item.url, frames: cards))
-                        .matchedGeometryEffect(id: item.url, in: liftSpace)
+                        .modifier(Lift(id: item.url, space: liftSpace, active: inFlight.contains(item.url)))
                         .transition(inFlight.contains(item.url) ? .identity : Self.cardTransition)
                 }
             }
@@ -311,9 +348,7 @@ struct LibraryView: View {
         if groups.count <= 1, groups.first?.title.isEmpty ?? true {
             // Ungrouped: one grid straight in the page; a grid inside the
             // groups' loop dropped the cards' grow-in.
-            LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
-                ForEach(groups.first?.notes ?? []) { item in noteCard(item) }
-            }
+            items(groups.first?.notes ?? [])
         } else {
             VStack(alignment: .leading, spacing: 32) {
                 ForEach(groups) { group in noteGroup(group) }
@@ -325,19 +360,36 @@ struct LibraryView: View {
     private func noteGroup(_ group: NoteGroup) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             NoteGroupHeading(group: group)
+            items(group.notes)
+        }
+    }
+
+    /// Notes as cards, then pictures and videos as square tiles in a
+    /// tighter grid of their own: tall cards and squares in one grid would
+    /// leave ragged rows.
+    @ViewBuilder private func items(_ all: [FolderListing.Note]) -> some View {
+        let media = all.filter { LibraryKind.isMedia($0.url) }
+        let notes = media.isEmpty ? all : all.filter { !LibraryKind.isMedia($0.url) }
+        VStack(alignment: .leading, spacing: notes.isEmpty || media.isEmpty ? 0 : 24) {
             LazyVGrid(columns: noteColumns, alignment: .leading, spacing: 18) {
-                ForEach(group.notes) { item in noteCard(item) }
+                ForEach(notes) { item in noteCard(item) }
+            }
+            if !media.isEmpty {
+                MediaGrid(
+                    items: media, selection: selection, dimmed: hiddenItems, frames: cards,
+                    pick: pickMedia, open: openNote, hover: { hover($0, $1) }
+                )
             }
         }
     }
 
     private func noteCard(_ item: FolderListing.Note) -> some View {
-        LibraryNoteTile(note: item, selected: selection.contains(item.url))
+        LibraryCardTile(note: item, selected: selection.contains(item.url))
             .modifier(NoteShadow())
             .opacity(hiddenItems.contains(item.url) ? Self.hiddenOpacity : 1)
             .modifier(CardClick(hover: { hover(item.url, $0) }) { click(item.url) { openNote(item.url) } })
             .modifier(CardFrame(url: item.url, frames: cards))
-            .matchedGeometryEffect(id: item.url, in: liftSpace)
+            .modifier(Lift(id: item.url, space: liftSpace, active: inFlight.contains(item.url)))
             .transition(inFlight.contains(item.url) ? .identity : Self.cardTransition)
     }
 
@@ -354,7 +406,7 @@ struct LibraryView: View {
         // First, without animation, the cards' leaving is made a flight
         // rather than a shrink; then they leave.
         inFlight.formUnion(urls)
-        let sizes = Dictionary(uniqueKeysWithValues: urls.map { ($0, cards.rects[$0]?.size ?? frame.size) })
+        let sizes = Dictionary(uniqueKeysWithValues: urls.map { ($0, cards[$0]?.size ?? frame.size) })
         let grab = CGSize(width: point.x - frame.midX, height: point.y - frame.midY)
         DispatchQueue.main.async {
             guard dragMode == .cards else { return }
@@ -420,7 +472,7 @@ struct LibraryView: View {
         }
         let tabFolder = dropTab.flatMap { id in navigation.tabs.first { $0.id == id }?.folder }
         let target = dropTarget ?? tabFolder
-        let targetFrame = dropTarget.flatMap { cards.rects[$0] } ?? dropTab.flatMap { LibraryDrag.shared.tabFrames[$0] }
+        let targetFrame = dropTarget.flatMap { cards[$0] } ?? dropTab.flatMap { LibraryDrag.shared.tabFrames[$0] }
         guard let target, let targetFrame else {
             withAnimation(Self.lift) { self.carried = nil }
             settle(carried.urls)
@@ -483,7 +535,11 @@ struct LibraryView: View {
         if let folder = listing.folders.first(where: { $0.url == url }) {
             FolderCard(folder: folder).background(FolderCard.shadow)
         } else if let note = listing.notes.first(where: { $0.url == url }) {
-            LibraryNoteTile(note: note, selected: false).modifier(NoteShadow())
+            if LibraryKind.isMedia(url) {
+                LibraryCardTile(note: note, selected: false).shadow(color: .black.opacity(0.12), radius: 6, y: 3)
+            } else {
+                LibraryCardTile(note: note, selected: false).modifier(NoteShadow())
+            }
         }
     }
 
@@ -515,15 +571,31 @@ struct LibraryView: View {
     private var visibleNotes: [FolderListing.Note] {
         guard listedFolder == nil || listedFolder == folder else { return [] }
         let away = Set(carried?.urls ?? [])
-        return listing.notes.filter { !away.contains($0.url) && LibraryOrganize.matches(query, name: $0.url.lastPathComponent, title: $0.title) }
+        let filter = filter
+        return listing.notes.filter {
+            !away.contains($0.url) && filter.admits($0.url)
+                && LibraryOrganize.matches(query, name: $0.url.lastPathComponent, title: $0.title)
+        }
     }
 
     private var grouping: LibraryGrouping { LibraryGrouping(storage: groupingStorage) }
     private var sort: LibrarySort { LibrarySort(storage: sortStorage) }
+    private var filter: LibraryFilter { LibraryFilter(storage: filterStorage) }
+    /// Whether the folder has pictures or videos, for Group by Kind.
+    private var hasMedia: Bool { listing.notes.contains { LibraryKind.isMedia($0.url) } }
 
     /// The notes as the page draws them: the pinned ones in a group of
     /// their own, then the rest in their groups, all in the sort chosen.
     private var arrangedNotes: (pinned: NoteGroup?, groups: [NoteGroup]) {
+        // Sorting and grouping a large folder takes tens of milliseconds,
+        // and the page is redrawn for every hover, pick and scroll phase:
+        // the arrangement is kept until something it is made from changes.
+        let key = ArrangementMemo.Key(
+            notes: listing.notes, shown: listedFolder == nil || listedFolder == folder,
+            away: Set(carried?.urls ?? []), query: query, filter: filter, sort: sort, grouping: grouping,
+            properties: properties, created: created, pins: pinStore.pins
+        )
+        if memo.key == key { return memo.value }
         var grouping = grouping
         // A property no note here has groups nothing; show the plain list.
         if case .property(let key) = grouping, !properties.values.contains(where: { $0[key] != nil }) { grouping = .none }
@@ -532,6 +604,8 @@ struct LibraryView: View {
         let split = LibraryOrganize.split(sorted) { pins.contains($0) }
         let groups = LibraryOrganize.groups(split.rest, by: grouping, properties: properties, created: created)
         let pinned = split.pinned.isEmpty ? nil : NoteGroup(id: "\u{0}pinned", title: "Pinned", notes: split.pinned)
+        memo.key = key
+        memo.value = (pinned, groups)
         return (pinned, groups)
     }
 
@@ -559,7 +633,7 @@ struct LibraryView: View {
 
     /// Reads the frontmatter of the notes shown, off the main thread.
     private func readProperties() async {
-        let notes = listing.notes.map(\.url)
+        let notes = listing.notes.map(\.url).filter { LibraryKind.of($0) == .note }
         let folder = folder
         let read = await Task.detached(priority: .utility) {
             Dictionary(uniqueKeysWithValues: notes.map { ($0.standardizedFileURL, NoteProperties.read($0)) })
@@ -577,7 +651,8 @@ struct LibraryView: View {
     }
 
     private func hover(_ url: URL, _ on: Bool) {
-        if on, let frame = cards.rects[url] {
+        guard !scrolling, !LibraryWheel.isEasing else { return }
+        if on, let frame = cards[url] {
             hovered = HoverTarget(url: url, text: url.lastPathComponent, card: frame)
         } else if hovered?.url == url {
             hovered = nil
@@ -589,6 +664,18 @@ struct LibraryView: View {
     /// A click opens a card, as in Spatial, and lets go of anything
     /// picked. Only a ⌘-click or a ⇧-click picks or lets go of the card
     /// itself.
+    /// A click on a picture, a video or a sound picks it alone, as in
+    /// Finder; with ⌘ or ⇧ it joins or leaves what is picked. A double
+    /// click opens it.
+    private func pickMedia(_ url: URL) {
+        guard Date().timeIntervalSince(dragEnded) > 0.15 else { return }
+        if !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
+            if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
+        } else if selection != [url] {
+            selection = [url]
+        }
+    }
+
     private func click(_ url: URL, open: () -> Void) {
         guard Date().timeIntervalSince(dragEnded) > 0.15 else { return }
         if !NSEvent.modifierFlags.intersection([.command, .shift]).isEmpty {
@@ -779,6 +866,7 @@ struct LibraryView: View {
             return
         }
         var choices: [LibraryGrouping] = [.none, .modified, .created, .name]
+        if hasMedia || grouping == .kind { choices.append(.kind) }
         choices += LibraryOrganize.groupableKeys(properties).map { .property($0) }
         let items = choices.map { choice in
             LibraryMenuItem(title: choice.title, glyph: choice.glyph, hint: choice == grouping ? "✓" : "") {
@@ -801,10 +889,25 @@ struct LibraryView: View {
         showMenu(at: CGPoint(x: frame.maxX, y: frame.maxY + 4), items: items)
     }
 
+    /// Which kinds of card show: one choice, folders always.
+    private func showFilterMenu(under frame: CGRect) {
+        if menu != nil {
+            withAnimation(LibraryMenuLayer.wash) { menu = nil }
+            return
+        }
+        let items = LibraryFilter.allCases.map { choice in
+            LibraryMenuItem(title: choice.title, glyph: choice.glyph, hint: choice == filter ? "✓" : "") {
+                withAnimation(LibraryMotion.itemSpring) { filterStorage = choice.rawValue }
+            }
+        }
+        showMenu(at: CGPoint(x: frame.maxX, y: frame.maxY + 4), items: items)
+    }
+
     /// Pin or Unpin for a note: the note asked about, and the other
     /// notes picked with it. Unpin when the note asked about is pinned.
+    /// Pictures and videos are not pinned: Paper's pins are documents.
     private func pinItem(for url: URL) -> LibraryMenuItem {
-        let notes = Set(listing.notes.map(\.url))
+        let notes = Set(listing.notes.map(\.url).filter { LibraryKind.of($0) == .note })
         let targets = selection.contains(url) ? selection.filter { notes.contains($0) } : [url]
         let unpin = pinStore.pins.contains(url)
         return LibraryMenuItem(title: unpin ? "Unpin" : "Pin", glyph: PinGlyph()) {
@@ -815,13 +918,21 @@ struct LibraryView: View {
     }
 
     private func items(for url: URL, isFolder: Bool) -> [LibraryMenuItem] {
-        [
+        let media = !isFolder && LibraryKind.isMedia(url)
+        var second: [LibraryMenuItem] = []
+        if isFolder {
+            second = [LibraryMenuItem(title: "Open in New Tab", glyph: OpenGlyph()) { navigation.openTab(url) }]
+        } else if media {
+            // The click opens the file's own app; Quick Look is here.
+            second = [LibraryMenuItem(title: "Quick Look", glyph: OpenGlyph()) { preview(url) }]
+        } else {
+            second = [pinItem(for: url)]
+        }
+        return [
             LibraryMenuItem(title: "Open", glyph: OpenGlyph()) {
                 isFolder ? go(to: url) : openNote(url)
             },
-        ] + (isFolder ? [
-            LibraryMenuItem(title: "Open in New Tab", glyph: OpenGlyph()) { navigation.openTab(url) },
-        ] : [pinItem(for: url)]) + [
+        ] + second + [
             LibraryMenuItem(title: "Reveal in Finder", glyph: RevealGlyph()) {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             },
@@ -915,6 +1026,27 @@ struct LibraryView: View {
             // back, never removed outright.
             Button("Delete") { if idle { trashSelection() } }
                 .keyboardShortcut(.delete, modifiers: [])
+            // Vim's: G to the foot of the page, gg to its top.
+            Button("Bottom") { if idle { withAnimation(.easeOut(duration: 0.2)) { scrollPosition.scrollTo(edge: .bottom) } } }
+                .keyboardShortcut("g", modifiers: .shift)
+            Button("Top") {
+                guard idle else { return }
+                if Date().timeIntervalSince(lastG) < 0.6 {
+                    lastG = .distantPast
+                    withAnimation(.easeOut(duration: 0.2)) { scrollPosition.scrollTo(edge: .top) }
+                } else {
+                    lastG = Date()
+                }
+            }
+            .keyboardShortcut("g", modifiers: [])
+            Button("Quick Look") { if idle { quickLook() } }
+                .keyboardShortcut(.space, modifiers: [])
+            // ⌘C and ⌘V, as in Finder: the picked files go to the
+            // clipboard as files, and files on it are copied in here.
+            Button("Copy") { if idle { copySelection() } }
+                .keyboardShortcut("c", modifiers: .command)
+            Button("Paste") { if idle { pasteFiles() } }
+                .keyboardShortcut("v", modifiers: .command)
         }
         .opacity(0)
         .allowsHitTesting(false)
@@ -938,9 +1070,68 @@ struct LibraryView: View {
     private func goBack() { navigation.goBack() }
     private func goForward() { navigation.goForward() }
 
-    /// Opens a note in its own window.
+    /// Opens a note in its own window; a picture, a video or a sound in
+    /// its own app, Preview or QuickTime unless another is set for it, as
+    /// a double click in Finder does. Space is Quick Look, as there.
     private func openNote(_ url: URL) {
-        LibraryOpening.open([url])
+        guard LibraryKind.isMedia(url) else {
+            LibraryOpening.open([url])
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Shows a picture, a video or a sound in Quick Look, with the
+    /// folder's others a step away.
+    private func preview(_ url: URL) {
+        let media = orderedNotes.map(\.url).filter(LibraryKind.isMedia)
+        let cards = cards, navigation = navigation
+        LibraryPreview.shared.show(url, among: media) { item in
+            // Only a tile in sight below the toolbar: the panel fades for
+            // one scrolled away, and does not fly to a place off the page.
+            guard let rect = cards[item], let window = navigation.window, let content = window.contentView else { return .zero }
+            let seen = CGRect(x: 0, y: 52, width: content.bounds.width, height: content.bounds.height - 52)
+            return rect.intersects(seen) ? screenRect(rect, in: window) : .zero
+        }
+    }
+
+    /// The picked cards' files on the clipboard, in the order shown, as
+    /// Finder puts them: another app pastes a picture as the picture, and
+    /// Finder or a library pastes the files.
+    private func copySelection() {
+        let shown = visibleFolders.map(\.url) + orderedNotes.map(\.url)
+        let urls = shown.filter { selection.contains($0) }
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls.map { $0 as NSURL })
+    }
+
+    /// Copies the files on the clipboard into the folder shown, numbering
+    /// a name already taken; the originals stay where they are.
+    private func pasteFiles() {
+        let urls = NSPasteboard.general.readObjects(
+            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        guard !urls.isEmpty else { return }
+        let folder = folder
+        Task {
+            await Task.detached { LibraryDrag.copy(urls, into: folder) }.value
+            await reload()
+        }
+    }
+
+    /// Space, as in Finder: the picked picture or video in Quick Look, or
+    /// the panel away again.
+    private func quickLook() {
+        if LibraryPreview.shared.isShowing {
+            LibraryPreview.shared.close()
+            return
+        }
+        let shown = orderedNotes.map(\.url)
+        guard let url = shown.first(where: { selection.contains($0) && LibraryKind.isMedia($0) })
+            ?? (hovered.map(\.url).flatMap { LibraryKind.isMedia($0) ? $0 : nil })
+        else { return }
+        preview(url)
     }
 
     // MARK: Loading
@@ -1005,6 +1196,22 @@ struct LibraryView: View {
     }
 }
 
+/// A card for whatever the item is: a note's miniature, or a picture's or a
+/// video's thumbnail.
+private struct LibraryCardTile: View {
+    let note: FolderListing.Note
+    let selected: Bool
+
+    var body: some View {
+        switch LibraryKind.of(note.url) {
+        case .image: LibraryMediaTile(item: note, kind: .image, selected: selected)
+        case .video: LibraryMediaTile(item: note, kind: .video, selected: selected)
+        case .audio: LibraryMediaTile(item: note, kind: .audio, selected: selected)
+        default: LibraryNoteTile(note: note, selected: selected)
+        }
+    }
+}
+
 /// A note's card with its miniature, drawn when the card first shows and
 /// again whenever the note or the appearance changes.
 private struct LibraryNoteTile: View {
@@ -1054,6 +1261,7 @@ private struct CardClick: ViewModifier {
     var hover: ((Bool) -> Void)?
     let open: () -> Void
     @State private var hovering = false
+    @Environment(\.libraryScrolling) private var scrolling
 
     init(hover: ((Bool) -> Void)? = nil, open: @escaping () -> Void) {
         self.hover = hover
@@ -1063,10 +1271,14 @@ private struct CardClick: ViewModifier {
     func body(content: Content) -> some View {
         Button(action: open) { content }
             .buttonStyle(PressStyle(hovering: hovering))
-            .onHover {
-                hovering = $0
-                hover?($0)
+            .onHover { over in
+                // A card scrolled under the pointer does not grow; one
+                // grown when the scroll began settles back.
+                guard !(scrolling || LibraryWheel.isEasing) || !over else { return }
+                hovering = over
+                hover?(over)
             }
+            .onChange(of: scrolling) { if scrolling, hovering { hovering = false } }
             // A button would otherwise bring back the system's arrow.
             .pointerStyle(LibraryPointer.style)
             // The grown card draws over its neighbors.
@@ -1086,9 +1298,44 @@ private struct CardClick: ViewModifier {
     }
 }
 
+/// Ties a card in the grid to the same card carried by a drag, so it flies
+/// between the two. Only on cards a drag has hold of: on every card it
+/// made SwiftUI work out every visible card's place on each frame of a
+/// scroll, for a flight that almost never happens.
+private struct Lift: ViewModifier {
+    let id: URL
+    let space: Namespace.ID
+    let active: Bool
+
+    func body(content: Content) -> some View {
+        if active {
+            content.matchedGeometryEffect(id: id, in: space)
+        } else {
+            content
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether the library's grid is scrolling now.
+    @Entry var libraryScrolling = false
+}
+
+/// Where the cards are. Each card reports its frame in the page; the
+/// page reports, once, where it is in the window; a card's frame in the
+/// window is the two together, worked out when asked for.
 @MainActor
 final class CardFrames {
-    var rects: [URL: CGRect] = [:]
+    static let space = "libraryPage"
+    /// Each card on the page, in the page's space.
+    var local: [URL: CGRect] = [:]
+    /// The page's top left in the window's content.
+    var origin = CGPoint.zero
+
+    /// Each card in the window's content, from its top left.
+    var rects: [URL: CGRect] { local.mapValues { $0.offsetBy(dx: origin.x, dy: origin.y) } }
+
+    subscript(url: URL) -> CGRect? { local[url]?.offsetBy(dx: origin.x, dy: origin.y) }
 }
 
 private struct CardFrame: ViewModifier {
@@ -1097,7 +1344,31 @@ private struct CardFrame: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.rects[url] = $0 }
-            .onDisappear { frames.rects[url] = nil }
+            // In the page's own space, where a card stays put while the
+            // page scrolls: in the window's space every card on screen
+            // moved on every frame of a scroll, and SwiftUI ran each one's
+            // report, which cost more than drawing the frame.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(CardFrames.space)) } action: { frames.local[url] = $0 }
+            .onDisappear { frames.local[url] = nil }
     }
+}
+
+/// The page's arrangement as last worked out. A class, so keeping it does
+/// not itself redraw the page.
+@MainActor
+private final class ArrangementMemo {
+    struct Key: Equatable {
+        let notes: [FolderListing.Note]
+        let shown: Bool
+        let away: Set<URL>
+        let query: String
+        let filter: LibraryFilter
+        let sort: LibrarySort
+        let grouping: LibraryGrouping
+        let properties: [URL: [String: String]]
+        let created: [URL: Date]
+        let pins: Pins
+    }
+    var key: Key?
+    var value: (pinned: NoteGroup?, groups: [NoteGroup]) = (nil, [])
 }

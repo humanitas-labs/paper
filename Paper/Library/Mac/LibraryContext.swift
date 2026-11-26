@@ -19,7 +19,7 @@ extension LibraryNavigation {
     /// Where a card is on screen, or nil when it is not drawn (scrolled
     /// out of the grid, which draws only the rows near view).
     func screenFrame(of url: URL) -> NSRect? {
-        guard let frame = frames?.rects[url], let window, let content = window.contentView else { return nil }
+        guard let frame = frames?[url], let window, let content = window.contentView else { return nil }
         let inContent = NSRect(
             x: frame.minX, y: content.isFlipped ? frame.minY : content.bounds.height - frame.maxY,
             width: frame.width, height: frame.height
@@ -45,6 +45,15 @@ final class LibraryContextTree {
 
     /// The most items reported for one folder; past it the list says so.
     static let itemLimit = 1000
+
+    /// The items to report: those in view, picked, or under the pointer.
+    /// Nil when none is in view at all, which is a window with no cards
+    /// placed yet, not an empty one.
+    static func inView(_ urls: [URL], selection: Set<URL>, hovered: URL?, isSeen: (URL) -> Bool) -> Set<URL>? {
+        let seen = Set(urls.filter(isSeen))
+        guard !seen.isEmpty else { return nil }
+        return seen.union(selection).union(hovered.map { [$0] } ?? [])
+    }
 
     private var counter = 0
     private var issued: [String: Ref] = [:]
@@ -74,7 +83,7 @@ final class LibraryContextTree {
             var attributes: [String: ContextValue] = ["file_name": .string(note.url.lastPathComponent)]
             if snapshot.hidden.contains(note.url) { attributes["hidden"] = .bool(true) }
             rows.append(ContextElement(
-                id: id("item", navigation, note.url), role: .row, subrole: "note", title: note.title,
+                id: id("item", navigation, note.url), role: .row, subrole: LibraryKind.of(note.url)?.rawValue ?? "note", title: note.title,
                 url: note.url.absoluteString, selected: snapshot.selection.contains(note.url),
                 hovered: front && snapshot.hovered == note.url, attributes: attributes
             ))
@@ -83,6 +92,20 @@ final class LibraryContextTree {
             "folders": .integer(snapshot.folders.count),
             "notes": .integer(snapshot.notes.count),
         ]
+        // Only what the user can see, with what is picked or under the
+        // pointer: a folder of hundreds told in full buries the few cards
+        // the user means, and the host cut the list anyway. The counts
+        // above still say how much the folder holds. When no card's place
+        // is known (the window is not drawn yet), the whole list goes.
+        let all = snapshot.folders.map(\.url) + snapshot.notes.map(\.url)
+        let seen = Self.inView(all, selection: snapshot.selection, hovered: snapshot.hovered) { navigation.screenFrame(of: $0) != nil }
+        if let seen {
+            rows = zip(all, rows).filter { seen.contains($0.0) }.map(\.1)
+            if rows.count < all.count {
+                listAttributes["truncated"] = .bool(true)
+                listAttributes["rows"] = .string("in view")
+            }
+        }
         if rows.count > Self.itemLimit {
             rows = Array(rows.prefix(Self.itemLimit))
             listAttributes["truncated"] = .bool(true)

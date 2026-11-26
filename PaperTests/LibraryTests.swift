@@ -400,6 +400,97 @@ struct LibraryTests {
         #expect(LibraryDrag.left(own: 12, under: 0))
     }
 
+    // MARK: Pictures and videos (.plan/library-media.md)
+
+    @Test func filesAreToldApartByKind() {
+        func kind(_ name: String) -> LibraryKind? { LibraryKind.of(URL(fileURLWithPath: "/tmp/\(name)")) }
+        #expect(kind("a.md") == .note)
+        #expect(kind("a.txt") == .note)
+        #expect(kind("a.png") == .image)
+        #expect(kind("a.JPG") == .image)
+        #expect(kind("a.svg") == .image)
+        #expect(kind("a.heic") == .image)
+        #expect(kind("a.mp4") == .video)
+        #expect(kind("a.mov") == .video)
+        #expect(kind("a.mp3") == .audio)
+        #expect(kind("a.wav") == .audio)
+        #expect(kind("a.pdf") == nil)
+        #expect(kind("Makefile") == nil)
+    }
+
+    /// Pictures and videos join the notes, newest first; hidden ones only
+    /// when hidden items show, and then marked; folder counts take them in.
+    @Test func aFolderListsItsPicturesAndVideosAmongTheNotes() throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = FileManager.default
+        let picture = root.appendingPathComponent("shot.png")
+        let video = root.appendingPathComponent("clip.mp4")
+        let secret = root.appendingPathComponent(".secret.png")
+        let song = root.appendingPathComponent("song.mp3")
+        for url in [picture, video, secret, song, root.appendingPathComponent("alpha/inside.jpg")] {
+            try Data([0]).write(to: url)
+        }
+        try manager.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: video.path)
+
+        let base = FolderListing.load(root, isDefaultRoot: false)
+        let listed = FolderListing.addingMedia(to: base, hidden: [], in: root, includingHidden: false)
+        let urls = listed.listing.notes.map(\.url.lastPathComponent)
+        #expect(urls.contains("shot.png"))
+        #expect(urls.first == "clip.mp4")
+        #expect(urls.contains("song.mp3"))
+        #expect(!urls.contains(".secret.png"))
+        #expect(listed.hidden.isEmpty)
+        let alpha = try #require(listed.listing.folders.first { $0.name == "alpha" })
+        let before = try #require(base.folders.first { $0.name == "alpha" })
+        #expect(alpha.itemCount == before.itemCount + 1)
+
+        let all = FolderListing.loadIncludingHidden(root)
+        let withHidden = FolderListing.addingMedia(to: all.listing, hidden: all.hidden, in: root, includingHidden: true)
+        #expect(withHidden.listing.notes.contains { $0.url.lastPathComponent == ".secret.png" })
+        #expect(withHidden.hidden.contains { $0.lastPathComponent == ".secret.png" })
+    }
+
+    @Test func theFilterKeepsOneKind() {
+        let urls = ["a.md", "b.png", "c.mp4", "d.mp3"].map { URL(fileURLWithPath: "/tmp/\($0)") }
+        func kept(_ filter: LibraryFilter) -> [String] { urls.filter(filter.admits).map(\.lastPathComponent) }
+        #expect(kept(.all) == ["a.md", "b.png", "c.mp4", "d.mp3"])
+        #expect(kept(.notes) == ["a.md"])
+        #expect(kept(.images) == ["b.png"])
+        #expect(kept(.videos) == ["c.mp4"])
+        #expect(kept(.audio) == ["d.mp3"])
+        #expect(LibraryFilter(storage: "bogus") == .all)
+    }
+
+    @Test func notesGroupByKind() {
+        let now = Date()
+        let notes = ["clip.mp4", "a.md", "shot.png", "b.md"].enumerated().map { index, name in
+            FolderListing.Note(url: URL(fileURLWithPath: "/tmp/\(name)"), title: name, modified: now.addingTimeInterval(-Double(index)))
+        }
+        let groups = LibraryOrganize.groups(notes, by: .kind)
+        #expect(groups.map(\.title) == ["Notes", "Images", "Videos"])
+        #expect(groups[0].notes.map(\.title) == ["a.md", "b.md"])
+        #expect(LibraryGrouping(storage: LibraryGrouping.kind.storage) == .kind)
+    }
+
+    @Test func videoLengthsReadAsAClock() {
+        #expect(MediaPicture.format(seconds: 35.4) == "0:35")
+        #expect(MediaPicture.format(seconds: 65) == "1:05")
+        #expect(MediaPicture.format(seconds: 3725) == "1:02:05")
+    }
+
+    /// A paste copies: the original stays, and a taken name is numbered.
+    @Test func pastedFilesAreCopiedAndNumbered() throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let note = root.appendingPathComponent("old.md")
+        let copies = LibraryDrag.copy([note], into: root)
+        #expect(copies.map(\.lastPathComponent) == ["old 2.md"])
+        #expect(FileManager.default.fileExists(atPath: note.path))
+        let inAlpha = LibraryDrag.copy([note], into: root.appendingPathComponent("alpha"))
+        #expect(inAlpha.map(\.lastPathComponent) == ["old.md"])
+    }
+
     @Test func movesSkipTheirOwnFolderAndFoldersIntoThemselves() {
         let root = URL(fileURLWithPath: "/tmp/library")
         let note = root.appendingPathComponent("a.md")
@@ -415,5 +506,50 @@ struct LibraryTests {
 
     private static func distinctBrightness(_ rep: NSBitmapImageRep) -> Int {
         Set(samples(rep).map { Int($0 * 255) }).count
+    }
+
+    /// A mouse wheel eases as Canvas's does: 27 points a line, five lines
+    /// an event at most, and 63% of the way in each 60 ms.
+    @Test
+    func aWheelStepEasesTowardItsTarget() {
+        #expect(LibraryWheel.travel(lines: 1) == 27)
+        #expect(LibraryWheel.travel(lines: -3) == -81)
+        #expect(LibraryWheel.travel(lines: 20) == 135)
+        #expect(LibraryWheel.share(after: 0) == 0)
+        #expect(abs(LibraryWheel.share(after: 0.06) - 0.632) < 0.001)
+        // Two half steps cover what one whole step does.
+        let half = LibraryWheel.share(after: 0.004)
+        #expect(abs((1 - (1 - half) * (1 - half)) - LibraryWheel.share(after: 0.008)) < 1e-9)
+    }
+
+    /// The picture grid's arithmetic: tiles of 120 points or more fill
+    /// the row, and a point finds its tile or a gap.
+    @Test
+    func thePictureGridPlacesItsTiles() {
+        let grid = MediaGridLayout(width: 612, count: 23)
+        #expect(grid.columns == 5)
+        #expect(grid.side == 120)
+        #expect(grid.rows == 5)
+        #expect(abs(grid.height - 612) < 0.001)
+        #expect(grid.rect(6) == CGRect(x: 123, y: 123, width: 120, height: 120))
+        #expect(grid.index(at: CGPoint(x: 130, y: 130)) == 6)
+        #expect(grid.index(at: CGPoint(x: 121, y: 130)) == nil, "the gap between two tiles")
+        #expect(grid.index(at: CGPoint(x: 500, y: 500)) == nil, "past the last tile")
+        #expect(grid.indices(in: CGRect(x: 0, y: 130, width: 612, height: 10)) == 5..<10)
+        #expect(grid.indices(in: CGRect(x: 0, y: 400, width: 612, height: 900)) == 15..<23)
+        #expect(grid.indices(in: CGRect(x: 0, y: 2000, width: 612, height: 10)).isEmpty)
+        // A wide page with few tiles: they stop at 180 and keep to the left.
+        #expect(MediaGridLayout(width: 190, count: 1).side == 180)
+        #expect(MediaGridLayout(width: 0, count: 0).height == 0)
+    }
+
+    /// Agent apps are told the cards in view, with any picked or under
+    /// the pointer; all of them when no card's place is known.
+    @Test
+    func theContextListsWhatIsInView() {
+        let urls = (1...6).map { URL(fileURLWithPath: "/tmp/\($0).png") }
+        let seen = LibraryContextTree.inView(urls, selection: [urls[4]], hovered: urls[5]) { $0 == urls[0] || $0 == urls[1] }
+        #expect(seen == [urls[0], urls[1], urls[4], urls[5]])
+        #expect(LibraryContextTree.inView(urls, selection: [urls[4]], hovered: nil) { _ in false } == nil)
     }
 }

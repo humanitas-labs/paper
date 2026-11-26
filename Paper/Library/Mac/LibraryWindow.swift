@@ -1,4 +1,5 @@
 import AppKit
+import Quartz
 import SwiftUI
 
 /// A folder opened in Paper: one window per folder, showing its folders and
@@ -11,6 +12,8 @@ enum LibraryWindow {
     private static var navigations: [URL: LibraryNavigation] = [:]
     private static var delegates: [URL: Closer] = [:]
     private static var toolbars: [URL: LibraryToolbar] = [:]
+
+    static let minimumSize = NSSize(width: 600, height: 420)
 
     static func open(_ folder: URL) {
         let folder = folder.standardizedFileURL
@@ -27,12 +30,20 @@ enum LibraryWindow {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
+        LibraryWheel.install(isLibrary: isLibraryWindow)
         let navigation = LibraryNavigation(root: folder)
         navigation.window = window
         navigations[folder] = navigation
-        window.contentView = NSHostingView(rootView: LibraryView(navigation: navigation))
+        let hosting = NSHostingView(rootView: LibraryView(navigation: navigation))
+        // The hosting view would otherwise set the window's smallest size
+        // from the page's, which shrinks to one card: the window's own
+        // minimum, wide enough for the toolbar's title and controls beside
+        // the traffic lights, would not hold.
+        hosting.sizingOptions = []
+        window.contentView = hosting
         window.isReleasedWhenClosed = false
-        window.applyPaperChrome(minSize: NSSize(width: 520, height: 420))
+        window.applyPaperChrome(minSize: Self.minimumSize)
+        window.contentMinSize = Self.minimumSize
         // A drag on the grid draws the selection rectangle; only the
         // toolbar moves the window.
         window.isMovableByWindowBackground = false
@@ -41,6 +52,15 @@ enum LibraryWindow {
         window.tabbingMode = .disallowed
         // Each folder keeps the size and place it was last given.
         if !window.setFrameUsingName(frameName(folder)) { window.centerExactly() }
+        // A frame saved narrower than the minimum is brought up to it.
+        if window.frame.width < Self.minimumSize.width || window.frame.height < Self.minimumSize.height {
+            var frame = window.frame
+            frame.size.width = max(frame.width, Self.minimumSize.width)
+            let height = max(frame.height, Self.minimumSize.height)
+            frame.origin.y -= height - frame.height
+            frame.size.height = height
+            window.setFrame(frame, display: false)
+        }
         window.setFrameAutosaveName(frameName(folder))
         let closer = Closer(folder: folder)
         window.delegate = closer
@@ -122,6 +142,18 @@ enum LibraryWindow {
 
         func windowWillClose(_ notification: Notification) {
             MainActor.assumeIsolated { LibraryWindow.closed(folder) }
+        }
+
+        // The Quick Look panel, open over a library, is the library's: it
+        // steps through the folder's pictures and videos.
+        override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+        override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+            MainActor.assumeIsolated { LibraryPreview.shared.begin(panel) }
+        }
+
+        override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+            MainActor.assumeIsolated { LibraryPreview.shared.end(panel) }
         }
     }
 }
