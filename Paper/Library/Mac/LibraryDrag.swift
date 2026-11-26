@@ -1,16 +1,20 @@
 import AppKit
 import SwiftUI
 
-/// Dropping files dragged in from Finder: onto a folder card they move
-/// into that folder, onto the page into the folder shown. Cards dragged
-/// within the library are carried by the library itself (`CarriedCards`),
-/// so the card itself lifts out of the grid rather than a picture of it.
+/// Dropping files dragged in from Finder or from another library window:
+/// onto a folder card or a tab they move into that folder, onto the page
+/// into the folder shown. Cards dragged within the library are carried by
+/// the library itself (`CarriedCards`), so the card itself lifts out of
+/// the grid rather than a picture of it; carried out of the window, they
+/// are handed to the system as a drag of their files.
 @MainActor
 final class LibraryDrag {
     static let shared = LibraryDrag()
     /// Where each tab is in the window, so a carried card can be
     /// dropped on one.
     var tabFrames: [UUID: CGRect] = [:]
+    /// The drags out of a window still in the air, kept until they end.
+    fileprivate var sources: Set<LibraryDragSource> = []
 
     /// The items that can go into `folder`: not the folder itself or one
     /// above it, and not one already there.
@@ -34,6 +38,79 @@ final class LibraryDrag {
             done()
         }
         return true
+    }
+}
+
+// MARK: Out of the window
+
+extension LibraryDrag {
+    /// Whether the pointer has left `window`: it is past the window's
+    /// edge, or over another window lying on top of it.
+    static func pointerLeft(_ window: NSWindow) -> Bool {
+        left(own: window.windowNumber, under: NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0))
+    }
+
+    /// `under` is the window the pointer is over, 0 over none.
+    static func left(own: Int, under: Int) -> Bool { under != own }
+
+    /// Hands carried cards to the system as a drag of their files, begun
+    /// from the mouse drag in progress, so they can be dropped on another
+    /// library window, on Finder or on another app. The cards' pictures
+    /// go with the pointer as they were held. False when no drag could
+    /// begin; `ended` once the drag is over, taken or not.
+    func handOff(
+        _ carried: CarriedCards, pictures: [URL: NSImage], from window: NSWindow, ended: @escaping @MainActor () -> Void
+    ) -> Bool {
+        guard let view = window.contentView, let event = NSApp.currentEvent, event.type == .leftMouseDragged else { return false }
+        let pointer = view.convert(event.locationInWindow, from: nil)
+        let down: CGFloat = view.isFlipped ? 1 : -1
+        let items = carried.urls.enumerated().map { index, url in
+            let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+            let size = carried.sizes[url] ?? CGSize(width: 150, height: 200)
+            let fan = CGFloat(min(index, 3)) * 4
+            let center = CGPoint(
+                x: pointer.x - carried.grab.width + fan,
+                y: pointer.y - (carried.grab.height - fan) * down
+            )
+            item.setDraggingFrame(
+                CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height),
+                contents: pictures[url]
+            )
+            return item
+        }
+        guard !items.isEmpty else { return false }
+        let source = LibraryDragSource(ended: ended)
+        let session = view.beginDraggingSession(with: items, event: event, source: source)
+        // Not taken: the pictures fly back to where the cards are.
+        session.animatesToStartingPositionsOnCancelOrFail = true
+        session.draggingFormation = .none
+        sources.insert(source)
+        source.release = { [weak self, weak source] in
+            if let source { self?.sources.remove(source) }
+        }
+        return true
+    }
+}
+
+/// The source of a drag of cards out of their window. A library that
+/// takes the drop moves the files itself; Finder and other apps may move
+/// or copy them.
+@MainActor
+final class LibraryDragSource: NSObject, NSDraggingSource {
+    private let ended: @MainActor () -> Void
+    var release: () -> Void = {}
+
+    init(ended: @escaping @MainActor () -> Void) {
+        self.ended = ended
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.move, .copy]
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        ended()
+        release()
     }
 }
 

@@ -375,6 +375,31 @@ struct LibraryTests {
         return values.reduce(0, +) / Double(max(values.count, 1))
     }
 
+    /// What a library window does with cards dropped on it from another
+    /// library window: the files move into the folder it shows.
+    @Test func aDropFromAnotherLibraryMovesTheFiles() async throws {
+        let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let note = root.appendingPathComponent("old.md")
+        let other = root.appendingPathComponent("alpha", isDirectory: true)
+        await withCheckedContinuation { done in
+            let took = LibraryDrag.shared.drop([note], into: other) { done.resume() }
+            if !took { done.resume() }
+        }
+        #expect(!FileManager.default.fileExists(atPath: note.path))
+        #expect(FileManager.default.fileExists(atPath: other.appendingPathComponent("old.md").path))
+        // Dropped on the window it came from: nothing to move.
+        #expect(!LibraryDrag.shared.drop([other.appendingPathComponent("old.md")], into: other))
+    }
+
+    /// Cards are handed to the system once the pointer is over anything
+    /// but their own window: past its edge, or on a window over it.
+    @Test func cardsLeaveTheirWindowWithThePointer() {
+        #expect(!LibraryDrag.left(own: 12, under: 12))
+        #expect(LibraryDrag.left(own: 12, under: 31))
+        #expect(LibraryDrag.left(own: 12, under: 0))
+    }
+
     @Test func movesSkipTheirOwnFolderAndFoldersIntoThemselves() {
         let root = URL(fileURLWithPath: "/tmp/library")
         let note = root.appendingPathComponent("a.md")

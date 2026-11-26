@@ -41,6 +41,7 @@ struct LibraryView: View {
     /// last folder's cards are not drawn under the new name.
     @State private var listedFolder: URL?
     @AppStorage(FolderListing.showsHiddenKey) private var showsHidden = false
+    @Environment(\.colorScheme) private var colorScheme
     @State private var hovered: HoverTarget?
     @State private var renaming = false
     @State private var renameText = ""
@@ -364,6 +365,8 @@ struct LibraryView: View {
     }
 
     private func carry(to point: CGPoint) {
+        // Out of the window, the cards become a drag of their files.
+        if carried != nil, let window = navigation.window, LibraryDrag.pointerLeft(window), handOff(from: window) { return }
         carried?.point = point
         let over = cards.rects.first { url, rect in
             rect.contains(point) && listing.folders.contains { $0.url == url } && carried?.urls.contains(url) != true
@@ -375,6 +378,37 @@ struct LibraryView: View {
                 dropTab = tab
             }
         }
+    }
+
+    /// Gives the carried cards to the system to drag, and lets them back
+    /// into the grid: they stay in their folder until a drop moves them,
+    /// when the folder's watcher takes them off the page.
+    private func handOff(from window: NSWindow) -> Bool {
+        guard let carried else { return false }
+        var pictures: [URL: NSImage] = [:]
+        for url in carried.urls {
+            let size = carried.sizes[url] ?? .zero
+            let renderer = ImageRenderer(
+                content: carriedCard(url).frame(width: size.width, height: size.height).environment(\.colorScheme, colorScheme)
+            )
+            renderer.scale = window.backingScaleFactor
+            pictures[url] = renderer.nsImage
+        }
+        let began = LibraryDrag.shared.handOff(carried, pictures: pictures, from: window) {
+            // The mouse came up in the system's drag, not in the gesture.
+            dragMode = nil
+            dragEnded = Date()
+            Task { await reload() }
+        }
+        guard began else { return false }
+        dragMode = .ignored
+        withAnimation(.spring(duration: 0.22, bounce: 0.2)) {
+            dropTarget = nil
+            dropTab = nil
+        }
+        withAnimation(Self.lift) { self.carried = nil }
+        settle(carried.urls)
+        return true
     }
 
     /// Over a folder or a tab, the cards sink into it and move there;

@@ -18,6 +18,8 @@ struct LibraryTabBar: View {
     @State private var lit: UUID?
     /// The tab a carried card is held over.
     var dropTab: UUID?
+    /// The tab a drag from outside the window is held over.
+    @State private var outsideDropTab: UUID?
     static let slide = Animation.spring(duration: 0.2, bounce: 0.15)
 
     private var frontID: UUID? {
@@ -47,11 +49,18 @@ struct LibraryTabBar: View {
                     // A card held over a tab rings it; let go, it moves
                     // into the tab's folder.
                     .overlay {
-                        if dropTab == tab.id { Capsule().strokeBorder(LibrarySelectionRing.color, lineWidth: 1.5) }
+                        if dropTab == tab.id || outsideDropTab == tab.id { Capsule().strokeBorder(LibrarySelectionRing.color, lineWidth: 1.5) }
                     }
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                // Files dragged from Finder or another library window
+                // move into the tab's folder too.
+                .dropDestination(for: URL.self) { dropped, _ in
+                    LibraryDrag.shared.drop(dropped, into: tab.folder)
+                } isTargeted: { over in
+                    if over { outsideDropTab = tab.id } else if outsideDropTab == tab.id { outsideDropTab = nil }
+                }
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LibraryDrag.shared.tabFrames[tab.id] = $0 }
                 .onDisappear { LibraryDrag.shared.tabFrames[tab.id] = nil }
                 .overlay(MiddleClick { navigation.closeTab(index) })
